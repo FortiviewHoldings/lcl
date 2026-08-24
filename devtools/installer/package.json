@@ -1,0 +1,12 @@
+{
+  "name": "lcl-setup",
+  "productName": "lcl-Setup",
+  "version": "1.0.3",
+  "description": "Install .lcl — Local Compute Layer",
+  "main": "main.js",
+  "author": "PragOptics",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^28.0.0"
+  }
+}

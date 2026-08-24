@@ -1,0 +1,269 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Install .lcl</title>
+<style>
+/* THE INSTALLER IS THE PRODUCT'S FIRST SENTENCE.
+   Every value here is lifted from app/renderer/styles.css. Nothing invented,
+   so the handshake and the app are visibly the same object. */
+:root{
+  --bg:#050505; --bg-raise:#0b0b0b; --bg-raise-2:#111112;
+  --line:#1c1c1e; --line-strong:#2b2b2e; --line-bright:#3d3d42;
+  --text:#f4f4f5; --text-dim:#a1a1a6; --text-faint:#6b6b70;
+  --accent:#ffffff; --attn:#e0c98f; --danger:#ff6b6b;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:22px;
+  --fs-micro:9.5px; --fs-tiny:10.5px; --fs-sm:11.5px; --fs-base:12.5px;
+  --fs-md:13.5px; --fs-lg:15px; --fs-xl:20px;
+  --radius-sm:6px; --radius:10px; --radius-lg:14px;
+  --ease:180ms cubic-bezier(.2,.7,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);overflow:hidden}
+body{
+  font:var(--fs-base)/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  color:var(--text); -webkit-font-smoothing:antialiased;
+}
+
+/* THE WINDOW. Rounded, borderless, its own chrome. */
+/* Fills an OPAQUE window. The rounding is Windows 11's, not CSS: the radius
+   here only ever mattered for the transparent window, and that window did not
+   composite at all under elevation on a HiDPI display. Drawing a border on top
+   of the real one just produced two. */
+#shell{
+  position:absolute; inset:0;
+  background:radial-gradient(120% 90% at 50% -10%,#141418 0%,var(--bg) 62%);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#bar{
+  height:44px; flex:0 0 44px; display:flex; align-items:center;
+  justify-content:flex-end; padding:0 var(--sp-2);
+  -webkit-app-region:drag;
+}
+#bar button{
+  -webkit-app-region:no-drag; width:34px; height:28px;
+  background:none; border:0; color:var(--text-faint);
+  border-radius:var(--radius-sm); cursor:pointer; font-size:14px; line-height:1;
+  transition:color var(--ease),background var(--ease);
+}
+#bar button:hover{color:var(--text);background:var(--bg-raise-2)}
+#bar #x:hover{background:#3a1418;color:#ff9d9d}
+
+#stage{flex:1;display:flex;align-items:center;justify-content:center;padding:0 56px}
+.page{width:100%;max-width:520px;text-align:center;display:none}
+.page.on{display:block;animation:rise 320ms cubic-bezier(.2,.7,.3,1)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+#mark{width:132px;opacity:1;filter:drop-shadow(0 0 40px rgba(255,255,255,.22))}
+/* THE NAME, SAID ONCE, BEFORE THE PROMISE. */
+.lcl-name{
+  margin-top:var(--sp-4); font-size:var(--fs-sm); letter-spacing:.22em;
+  text-transform:uppercase; color:var(--text-dim);
+}
+.tag{
+  margin-top:var(--sp-2); font-size:var(--fs-tiny); letter-spacing:.16em;
+  text-transform:uppercase; color:var(--text-faint);
+}
+h1{font-size:var(--fs-xl);font-weight:600;letter-spacing:-.01em;margin-bottom:var(--sp-2)}
+p.lede{color:var(--text-dim);font-size:var(--fs-md);line-height:1.65}
+
+/* the one row of facts, the app's own meta language */
+#facts{
+  margin-top:var(--sp-5); display:flex; gap:var(--sp-2); justify-content:center;
+}
+#facts div{
+  flex:1; padding:var(--sp-3); border:1px solid var(--line);
+  border-radius:var(--radius); background:var(--bg-raise);
+}
+#facts b{display:block;font-size:var(--fs-md);font-weight:600}
+#facts span{font-size:var(--fs-micro);letter-spacing:.1em;text-transform:uppercase;color:var(--text-faint)}
+
+/* path row */
+.path{
+  margin-top:var(--sp-5); display:flex; gap:var(--sp-2); align-items:center;
+  text-align:left;
+}
+.path input{
+  flex:1; background:var(--bg-raise); border:1px solid var(--line-strong);
+  border-radius:var(--radius); color:var(--text); padding:11px var(--sp-3);
+  font:var(--fs-sm)/1.4 ui-monospace,Consolas,monospace; outline:none;
+}
+.path input:focus{border-color:var(--line-bright)}
+
+/* progress — a drawn bar, not a Win32 control */
+#track{
+  margin-top:var(--sp-5); height:3px; border-radius:2px;
+  background:var(--line); overflow:hidden;
+}
+#fill{
+  height:100%; width:0%; border-radius:2px; background:var(--accent);
+  box-shadow:0 0 18px rgba(255,255,255,.5);
+  transition:width 160ms linear;
+}
+/* ONE LINE, AND IT MOVES TOO FAST TO READ. That is the point of it: proof that
+   something real is happening, not a spinner asserting it. Monospace and fixed
+   height so a long path does not shift the layout as it streams. */
+#step{
+  margin-top:var(--sp-3); height:16px; line-height:16px;
+  font:var(--fs-tiny)/16px ui-monospace,Consolas,monospace;
+  color:var(--text-faint); white-space:nowrap; overflow:hidden;
+  text-overflow:ellipsis; direction:rtl; text-align:center;
+}
+#pct{margin-top:var(--sp-2);font-size:var(--fs-sm);color:var(--text-dim)}
+
+/* the checkbox that was black on black — drawn, so it cannot be */
+.check{
+  margin-top:var(--sp-5); display:inline-flex; gap:var(--sp-2); align-items:center;
+  cursor:pointer; user-select:none; color:var(--text-dim); font-size:var(--fs-base);
+}
+.check .box{
+  width:17px;height:17px;border-radius:5px;border:1px solid var(--line-bright);
+  background:var(--bg-raise); display:grid; place-items:center;
+  transition:background var(--ease),border-color var(--ease);
+}
+.check.on .box{background:var(--accent);border-color:var(--accent)}
+.check.on .box::after{content:"";width:9px;height:5px;border:2px solid #050505;
+  border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.check:hover{color:var(--text)}
+
+#foot{
+  flex:0 0 auto; padding:var(--sp-4) 56px var(--sp-5);
+  display:flex; gap:var(--sp-2); justify-content:center;
+}
+button.act{
+  min-width:150px; padding:11px var(--sp-5); border-radius:999px;
+  border:1px solid var(--line-bright); background:var(--bg-raise-2);
+  color:var(--text); font-size:var(--fs-base); font-weight:500; cursor:pointer;
+  transition:background var(--ease),border-color var(--ease),transform var(--ease);
+}
+button.act:hover{background:var(--bg-raise);border-color:var(--text-faint)}
+button.act.primary{background:var(--accent);border-color:var(--accent);color:#050505;font-weight:600}
+button.act.primary:hover{transform:translateY(-1px);box-shadow:0 8px 26px rgba(255,255,255,.16)}
+button.act:active{transform:translateY(0)}
+.hint{font-size:var(--fs-micro);color:var(--text-faint);letter-spacing:.08em;text-transform:uppercase}
+</style>
+
+<div id="shell">
+  <div id="bar"><button id="min">&#8211;</button><button id="x">&#10005;</button></div>
+
+  <div id="stage">
+
+    <section class="page on" id="p-welcome">
+      <img id="mark" src="assets/wordmark-trim.png" alt=".lcl">
+      <div class="lcl-name">Local Compute Layer</div>
+      <div class="tag">AI on your own machine &middot; nothing leaves it unless you say so</div>
+      <div id="facts">
+        <div><b>1.5 GB</b><span>download</span></div>
+        <div><b>Offline</b><span>no account</span></div>
+        <div><b>64 books</b><span>indexed</span></div>
+      </div>
+    </section>
+
+    <section class="page" id="p-where">
+      <h1 id="where-h">Where should it live?</h1>
+      <p class="lede" id="where-p">Everything stays in this folder. Models and conversations sit beside it.</p>
+      <div class="path">
+        <input id="dir" value="C:\Users\you\AppData\Local\Programs\lcl" spellcheck="false">
+        <button class="act" id="browse" style="min-width:auto">Change</button>
+      </div>
+    </section>
+
+    <section class="page" id="p-doing">
+      <h1>Installing</h1>
+      <p class="lede">The engine, the reference library and the offline tools.</p>
+      <div id="track"><div id="fill"></div></div>
+      <div id="step"></div>
+      <div id="pct">0%</div>
+    </section>
+
+    <section class="page" id="p-done">
+      <img id="mark" src="assets/wordmark-trim.png" alt=".lcl" style="width:104px">
+      <h1 style="margin-top:var(--sp-5)">Installed.</h1>
+      <p class="lede">Turn the network off and it still works. That is the point.</p>
+      <label class="check on" id="runbox"><span class="box"></span> Open .lcl now</label>
+    </section>
+
+  </div>
+
+  <div id="foot">
+    <button class="act" id="back">Back</button>
+    <button class="act primary" id="next">Install</button>
+  </div>
+</div>
+
+<script>
+const PAGES = ["p-welcome","p-where","p-doing","p-done"];
+const LABEL = ["Continue","Install","Installing\u2026","Finish"];
+let i = 0;
+const $ = (x) => document.getElementById(x);
+const api = window.lclSetup || null;          // absent when previewing the look
+
+function show(n){
+  i = n;
+  PAGES.forEach((p,k)=>$(p).classList.toggle("on",k===n));
+  $("next").textContent = LABEL[n];
+  // display, NOT visibility: a hidden button still holds its column and pushed
+  // the only remaining button off centre on three of the four pages
+  $("back").style.display = (n===0||n>=2) ? "none" : "";
+  $("next").disabled = (n===2);
+  $("next").style.opacity = (n===2) ? .5 : 1;
+}
+
+async function beginInstall(){
+  show(2);
+  const dir = $("dir").value.trim();
+  const r = await api.install(dir).catch(e => ({ ok:false, error:String(e && e.message || e) }));
+  if (r && r.ok) { $("fill").style.width = "100%"; $("pct").textContent = "100%"; show(3); }
+  else {
+    show(3);
+    $("p-done").querySelector("h1").textContent = "It did not finish.";
+    $("p-done").querySelector("p.lede").textContent =
+      (r && r.error) || "Something stopped the install.";
+    $("runbox").style.display = "none";
+  }
+}
+
+$("next").onclick = async ()=>{
+  if (i === 1 && api) return beginInstall();
+  if (i < 3) return show(i+1);
+  if (api) { await api.finish($("runbox").classList.contains("on")); }
+  window.close();
+};
+$("back").onclick = ()=>{ if(i>0) show(i-1); };
+$("runbox").onclick = (e)=>{ e.currentTarget.classList.toggle("on"); };
+$("x").onclick   = ()=> (api ? api.quit() : window.close());
+$("min").onclick = ()=> api && api.minimise();
+$("browse").onclick = async ()=>{
+  if (!api) return;
+  const p = await api.pickFolder($("dir").value);
+  if (p) $("dir").value = p;
+};
+
+if (api) {
+  api.onProgress(({ pct, file }) => {
+    $("fill").style.width = pct.toFixed(1) + "%";
+    $("pct").textContent = Math.round(pct) + "%";
+    // rtl + ellipsis keeps the TAIL of a long path visible, which is the part
+    // that says what is happening
+    if (file) $("step").textContent = "\u202a" + file;
+  });
+  api.defaultDir().then(d => {
+    if (!d) return;
+    $("dir").value = d;
+    // AN UPGRADE SHOULD SAY IT IS ONE. Landing on top of an existing copy is
+    // the intent, and the page that asks for a folder is the only place to say
+    // so before it happens.
+    api.isUpgrade(d).then(up => {
+      if (!up) return;
+      $("where-h").textContent = "Replacing the copy you have";
+      $("where-p").textContent =
+        "The existing install is updated in place. Your sessions, models and " +
+        "settings are untouched.";
+      // change the LABEL, and only repaint the button if that page is the one
+      // on screen — this was assigning both and so wrote "Update" onto the
+      // welcome page's Continue button
+      LABEL[1] = "Update";
+      if (i === 1) $("next").textContent = LABEL[1];
+    });
+  });
+}
+show(0);
+</script>

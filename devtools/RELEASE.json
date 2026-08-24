@@ -1,0 +1,4 @@
+{
+  "official": 5,
+  "_comment": "The OFFICIAL patch base — the shared, repo-sourced number every install compares against. The release gatekeeper bumps this when cutting a release with `node devtools/release.js --release`, then tags it. Local/dev builds read it as the base they sit on but never change it; a machine's own divergence is the LOCAL marker in the (gitignored) build-seq.json."
+}

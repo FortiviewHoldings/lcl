@@ -1,0 +1,390 @@
+{
+ "note": "Generated from devtools/fetch-knowledge.js. The source URL for every document in the shipped corpus, so a document whose PDF was not downloaded can offer to fetch itself instead of reporting a dead end. MANIFEST.md carries licences and attribution; it records no URLs, which is why this file exists.",
+ "generatedFrom": "devtools/fetch-knowledge.js",
+ "docs": [
+  {
+   "path": "physics/Electromagnetics-I-Steven-W.-Ellingson-Virginia-Tech.pdf",
+   "file": "Electromagnetics-I-Steven-W.-Ellingson-Virginia-Tech.pdf",
+   "url": "https://vtechworks.lib.vt.edu/bitstreams/9c823491-b65b-4884-a6cb-8221febf270f/download",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "electrical/DOE-HDBK-1011-Electrical-Science-Vol1.pdf",
+   "file": "DOE-HDBK-1011-Electrical-Science-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1011-92_VOL1.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "electrical/DOE-HDBK-1011-Electrical-Science-Vol2.pdf",
+   "file": "DOE-HDBK-1011-Electrical-Science-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1011-92_VOL2.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "electrical/DOE-HDBK-1011-Electrical-Science-Vol3.pdf",
+   "file": "DOE-HDBK-1011-Electrical-Science-Vol3.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1011-92_VOL3.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "electrical/DOE-HDBK-1011-Electrical-Science-Vol4.pdf",
+   "file": "DOE-HDBK-1011-Electrical-Science-Vol4.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1011-92_VOL4.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "electrical/DOE-HDBK-1013-Instrumentation-Control-Vol1.pdf",
+   "file": "DOE-HDBK-1013-Instrumentation-Control-Vol1.pdf",
+   "url": "https://www.osti.gov/servlets/purl/7295868",
+   "licence": "public domain"
+  },
+  {
+   "path": "electrical/DOE-HDBK-1016-Engineering-Symbology-Vol1.pdf",
+   "file": "DOE-HDBK-1016-Engineering-Symbology-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1016-93_VOL1.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "electrical/DOE-HDBK-1016-Engineering-Symbology-Vol2.pdf",
+   "file": "DOE-HDBK-1016-Engineering-Symbology-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1016-93_VOL2.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "electrical/Kuphaldt-Lessons-In-Industrial-Instrumentation.pdf",
+   "file": "Kuphaldt-Lessons-In-Industrial-Instrumentation.pdf",
+   "url": "https://www.ibiblio.org/kuphaldt/socratic/sinst/book/liii.pdf",
+   "licence": "CC BY 4.0"
+  },
+  {
+   "path": "electrical/Kuphaldt-LIEC-Vol1-DC.pdf",
+   "file": "Kuphaldt-LIEC-Vol1-DC.pdf",
+   "url": "https://www.ibiblio.org/kuphaldt/electricCircuits/DC/DC.pdf",
+   "licence": "CC BY"
+  },
+  {
+   "path": "electrical/Kuphaldt-LIEC-Vol2-AC.pdf",
+   "file": "Kuphaldt-LIEC-Vol2-AC.pdf",
+   "url": "https://www.ibiblio.org/kuphaldt/electricCircuits/AC/AC.pdf",
+   "licence": "CC BY"
+  },
+  {
+   "path": "electrical/Kuphaldt-LIEC-Vol3-Semiconductors.pdf",
+   "file": "Kuphaldt-LIEC-Vol3-Semiconductors.pdf",
+   "url": "https://www.ibiblio.org/kuphaldt/electricCircuits/Semi/SEMI.pdf",
+   "licence": "CC BY"
+  },
+  {
+   "path": "electrical/Kuphaldt-LIEC-Vol4-Digital.pdf",
+   "file": "Kuphaldt-LIEC-Vol4-Digital.pdf",
+   "url": "https://www.ibiblio.org/kuphaldt/electricCircuits/Digital/DIGI.pdf",
+   "licence": "CC BY"
+  },
+  {
+   "path": "electrical/Kuphaldt-LIEC-Vol5-Reference.pdf",
+   "file": "Kuphaldt-LIEC-Vol5-Reference.pdf",
+   "url": "https://www.ibiblio.org/kuphaldt/electricCircuits/Ref/REF.pdf",
+   "licence": "CC BY"
+  },
+  {
+   "path": "electrical/Kuphaldt-LIEC-Vol6-Experiments.pdf",
+   "file": "Kuphaldt-LIEC-Vol6-Experiments.pdf",
+   "url": "https://www.ibiblio.org/kuphaldt/electricCircuits/Exper/EXP.pdf",
+   "licence": "CC BY"
+  },
+  {
+   "path": "electrical/NASA-EEE-INST-002-derating.pdf",
+   "file": "NASA-EEE-INST-002-derating.pdf",
+   "url": "https://nepp.nasa.gov/docuploads/FFB52B88-36AE-4378-A05B2C084B5EE2CC/EEE-INST-002_add1.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "electrical/NBS-Handbook-100-Copper-Wire-Tables.pdf",
+   "file": "NBS-Handbook-100-Copper-Wire-Tables.pdf",
+   "url": "https://archive.org/download/copperwiretables100unit/copperwiretables100unit.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "electrical/NIST-Monograph-175-thermocouple-reference.pdf",
+   "file": "NIST-Monograph-175-thermocouple-reference.pdf",
+   "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/MONO/nistmonograph175.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "logic/forall-x-Calgary---An-Introduction-to-Formal-Logic.pdf",
+   "file": "forall-x-Calgary---An-Introduction-to-Formal-Logic.pdf",
+   "url": "https://forallx.openlogicproject.org/forallxyyc.pdf",
+   "licence": "CC BY 4.0"
+  },
+  {
+   "path": "logic/The-Open-Logic-Text-Complete-Build.pdf",
+   "file": "The-Open-Logic-Text-Complete-Build.pdf",
+   "url": "https://builds.openlogicproject.org/open-logic-complete.pdf",
+   "licence": "CC BY 4.0"
+  },
+  {
+   "path": "mathematics/Abstract-Algebra-Theory-and-Applications-Judson-2025-annual-edition.pdf",
+   "file": "Abstract-Algebra-Theory-and-Applications-Judson-2025-annual-edition.pdf",
+   "url": "https://judsonbooks.org/aata-files/aata-20250801.pdf",
+   "licence": "GFDL 1.2+ (copyleft; commercial redistribution permitted but license text must accompany copies; not CC)"
+  },
+  {
+   "path": "mathematics/Basic-Analysis-I-Introduction-to-Real-Analysis-Vol.-1-Jiri-Lebl-v6.3.pdf",
+   "file": "Basic-Analysis-I-Introduction-to-Real-Analysis-Vol.-1-Jiri-Lebl-v6.3.pdf",
+   "url": "https://www.jirka.org/ra/realanal.pdf",
+   "licence": "Dual: CC BY-SA 4.0 or CC BY-NC-SA 4.0 (shippable under the BY-SA option)"
+  },
+  {
+   "path": "mathematics/Basic-Analysis-II-Introduction-to-Real-Analysis-Vol.-2-Jiri-Lebl-v6.3.pdf",
+   "file": "Basic-Analysis-II-Introduction-to-Real-Analysis-Vol.-2-Jiri-Lebl-v6.3.pdf",
+   "url": "https://www.jirka.org/ra/realanal2.pdf",
+   "licence": "Dual: CC BY-SA 4.0 or CC BY-NC-SA 4.0 (shippable under the BY-SA option)"
+  },
+  {
+   "path": "mathematics/DOE-HDBK-1014-Mathematics-Vol1.pdf",
+   "file": "DOE-HDBK-1014-Mathematics-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1014-92_VOL1.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "mathematics/DOE-HDBK-1014-Mathematics-Vol2.pdf",
+   "file": "DOE-HDBK-1014-Mathematics-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1014-92_VOL2.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "mathematics/Fundamentals-of-Calculus-Benjamin-Crowell---math-support-for-physics.pdf",
+   "file": "Fundamentals-of-Calculus-Benjamin-Crowell---math-support-for-physics.pdf",
+   "url": "https://archive.org/download/fund_20220102/fund.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "mathematics/Homotopy-Type-Theory-Univalent-Foundations-of-Mathematics-HoTT-Book.pdf",
+   "file": "Homotopy-Type-Theory-Univalent-Foundations-of-Mathematics-HoTT-Book.pdf",
+   "url": "https://hott.github.io/book/hott-online-82-g578b85c.pdf",
+   "licence": "CC BY-SA 3.0 Unported"
+  },
+  {
+   "path": "mathematics/Linear-Algebra-Jim-Hefferon-4th-ed..pdf",
+   "file": "Linear-Algebra-Jim-Hefferon-4th-ed..pdf",
+   "url": "https://jheffero.w3.uvm.edu/linearalgebra/book.pdf",
+   "licence": "Dual: GFDL or CC BY-SA (author's choice clause)"
+  },
+  {
+   "path": "mathematics/Mathematics-for-Computer-Science-LehmanLeightonMeyer-June-2018-revision.pdf",
+   "file": "Mathematics-for-Computer-Science-LehmanLeightonMeyer-June-2018-revision.pdf",
+   "url": "https://courses.csail.mit.edu/6.042/spring18/mcs.pdf",
+   "licence": "CC BY-SA 3.0 (stated on the book's own copyright page; the OCW course wrapper is NC but the book is not)"
+  },
+  {
+   "path": "mechanical/DOE-HDBK-1017-Material-Science-Vol1.pdf",
+   "file": "DOE-HDBK-1017-Material-Science-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1017-93_VOL1.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "mechanical/DOE-HDBK-1017-Material-Science-Vol2.pdf",
+   "file": "DOE-HDBK-1017-Material-Science-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1017-93_VOL2.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "mechanical/DOE-HDBK-1018-Mechanical-Science-Vol1.pdf",
+   "file": "DOE-HDBK-1018-Mechanical-Science-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1018-93_VOL1.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "mechanical/DOE-HDBK-1018-Mechanical-Science-Vol2.pdf",
+   "file": "DOE-HDBK-1018-Mechanical-Science-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1018-93_VOL2.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "mechanical/FED-STD-H28-21B-metric-threads.pdf",
+   "file": "FED-STD-H28-21B-metric-threads.pdf",
+   "url": "https://everyspec.com/FED-STD/FED-STD-H28_21B_40274/",
+   "licence": "public domain"
+  },
+  {
+   "path": "mechanical/FED-STD-H28A-screw-thread-standards.pdf",
+   "file": "FED-STD-H28A-screw-thread-standards.pdf",
+   "url": "https://everyspec.com/FED-STD/FED-STD-H28A_22694/",
+   "licence": "public domain"
+  },
+  {
+   "path": "mechanical/MIL-HDBK-5J-metallic-materials.pdf",
+   "file": "MIL-HDBK-5J-metallic-materials.pdf",
+   "url": "https://everyspec.com/MIL-HDBK/MIL-HDBK-0001-0099/download.php?spec=MIL_HDBK_5J.139.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "mechanical/NASA-RP-1228-Fastener-Design-Manual.pdf",
+   "file": "NASA-RP-1228-Fastener-Design-Manual.pdf",
+   "url": "https://ntrs.nasa.gov/api/citations/19900009424/downloads/19900009424.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "mechanical/TC-9-524-Fundamentals-of-Machine-Tools.pdf",
+   "file": "TC-9-524-Fundamentals-of-Machine-Tools.pdf",
+   "url": "https://armypubs.army.mil/epubs/DR_pubs/DR_a/pdf/web/tc9_524.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "metrology/BIPM-SI-Brochure-9.pdf",
+   "file": "BIPM-SI-Brochure-9.pdf",
+   "url": "https://www.bipm.org/documents/20126/41483022/SI-Brochure-9.pdf",
+   "licence": "CC BY 4.0"
+  },
+  {
+   "path": "metrology/NIST-SP-330-2019-SI.pdf",
+   "file": "NIST-SP-330-2019-SI.pdf",
+   "url": "https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.330-2019.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "metrology/NIST-SP-811-2008-SI-guide.pdf",
+   "file": "NIST-SP-811-2008-SI-guide.pdf",
+   "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication811e2008.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "metrology/NIST-TN-1297-uncertainty.pdf",
+   "file": "NIST-TN-1297-uncertainty.pdf",
+   "url": "https://nvlpubs.nist.gov/nistpubs/Legacy/TN/nbstechnicalnote1297.pdf",
+   "licence": "public domain"
+  },
+  {
+   "path": "physics/CODATA-2022-paper-RevModPhys.pdf",
+   "file": "CODATA-2022-paper-RevModPhys.pdf",
+   "url": "https://arxiv.org/pdf/2409.03787",
+   "licence": "CC BY 4.0"
+  },
+  {
+   "path": "physics/Conceptual-Physics-Benjamin-Crowell.pdf",
+   "file": "Conceptual-Physics-Benjamin-Crowell.pdf",
+   "url": "https://archive.org/download/cp_20220102/cp.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/DOE-HDBK-1010-Classical-Physics.pdf",
+   "file": "DOE-HDBK-1010-Classical-Physics.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1010-92.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/DOE-HDBK-1012-Thermo-HeatTransfer-FluidFlow-Vol1.pdf",
+   "file": "DOE-HDBK-1012-Thermo-HeatTransfer-FluidFlow-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1012-92_VOL1.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/DOE-HDBK-1012-Thermo-HeatTransfer-FluidFlow-Vol2.pdf",
+   "file": "DOE-HDBK-1012-Thermo-HeatTransfer-FluidFlow-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1012-92_VOL2.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/DOE-HDBK-1012-Thermo-HeatTransfer-FluidFlow-Vol3.pdf",
+   "file": "DOE-HDBK-1012-Thermo-HeatTransfer-FluidFlow-Vol3.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1012-92_VOL3.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/DOE-HDBK-1015-Chemistry-Vol1.pdf",
+   "file": "DOE-HDBK-1015-Chemistry-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1015-93_VOL1.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/DOE-HDBK-1015-Chemistry-Vol2.pdf",
+   "file": "DOE-HDBK-1015-Chemistry-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1015-93_VOL2.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/DOE-HDBK-1019-Nuclear-Physics-Reactor-Theory-Vol1.pdf",
+   "file": "DOE-HDBK-1019-Nuclear-Physics-Reactor-Theory-Vol1.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1019-93_VOL1.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/DOE-HDBK-1019-Nuclear-Physics-Reactor-Theory-Vol2.pdf",
+   "file": "DOE-HDBK-1019-Nuclear-Physics-Reactor-Theory-Vol2.pdf",
+   "url": "https://www.energy.gov/sites/default/files/2026-04/DOE-HDBK-1019-93_VOL2.pdf",
+   "licence": "public domain (US Gov)"
+  },
+  {
+   "path": "physics/Fields-and-Circuits-Benjamin-Crowell---EM-Simple-Nature-successor-vol.-2.pdf",
+   "file": "Fields-and-Circuits-Benjamin-Crowell---EM-Simple-Nature-successor-vol.-2.pdf",
+   "url": "https://archive.org/download/fac_20220102/fac.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/General-Relativity-Benjamin-Crowell.pdf",
+   "file": "General-Relativity-Benjamin-Crowell.pdf",
+   "url": "https://ia601700.us.archive.org/7/items/genrel/genrel.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/Light-and-Matter-Benjamin-Crowell---algebra-based-intro-physics.pdf",
+   "file": "Light-and-Matter-Benjamin-Crowell---algebra-based-intro-physics.pdf",
+   "url": "https://archive.org/download/lm_20220102/lm.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/Maxwell---A-Treatise-on-Electricity-and-Magnetism-Vol.-1-1873.pdf",
+   "file": "Maxwell---A-Treatise-on-Electricity-and-Magnetism-Vol.-1-1873.pdf",
+   "url": "https://archive.org/download/electricandmagne01maxwrich/electricandmagne01maxwrich.pdf",
+   "licence": "Public domain (published 1873)"
+  },
+  {
+   "path": "physics/Maxwell---A-Treatise-on-Electricity-and-Magnetism-Vol.-2-1873.pdf",
+   "file": "Maxwell---A-Treatise-on-Electricity-and-Magnetism-Vol.-2-1873.pdf",
+   "url": "https://archive.org/download/electricandmagne02maxwrich/electricandmagne02maxwrich.pdf",
+   "licence": "Public domain (published 1873)"
+  },
+  {
+   "path": "physics/Mechanics-Benjamin-Crowell---calculus-based-Simple-Nature-successor-vol.-1.pdf",
+   "file": "Mechanics-Benjamin-Crowell---calculus-based-Simple-Nature-successor-vol.-1.pdf",
+   "url": "https://archive.org/download/me_20220102/me.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/Modern-Physics-Benjamin-Crowell---relativity-and-quantum-Simple-Nature-successor.pdf",
+   "file": "Modern-Physics-Benjamin-Crowell---relativity-and-quantum-Simple-Nature-successor.pdf",
+   "url": "https://archive.org/download/mod_20220102/mod.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/Planck---Treatise-on-Thermodynamics-1903-English-translation.pdf",
+   "file": "Planck---Treatise-on-Thermodynamics-1903-English-translation.pdf",
+   "url": "https://archive.org/download/treatiseonthermo00planuoft/treatiseonthermo00planuoft.pdf",
+   "licence": "Public domain (pre-1930 publication)"
+  },
+  {
+   "path": "physics/Problems-in-Introductory-Physics-Crowell-Shotwell.pdf",
+   "file": "Problems-in-Introductory-Physics-Crowell-Shotwell.pdf",
+   "url": "https://www.lightandmatter.com/problems/problems.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/Relativity-for-Poets-Benjamin-Crowell---nonmathematical-relativity.pdf",
+   "file": "Relativity-for-Poets-Benjamin-Crowell---nonmathematical-relativity.pdf",
+   "url": "https://dn720001.ca.archive.org/0/items/poets_202201/poets.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/Special-Relativity-Benjamin-Crowell.pdf",
+   "file": "Special-Relativity-Benjamin-Crowell.pdf",
+   "url": "https://archive.org/download/sr_20220102/sr.pdf",
+   "licence": "CC BY-SA 4.0"
+  },
+  {
+   "path": "physics/US-Standard-Atmosphere-1976.pdf",
+   "file": "US-Standard-Atmosphere-1976.pdf",
+   "url": "https://ntrs.nasa.gov/api/citations/19770009539/downloads/19770009539.pdf",
+   "licence": "public domain"
+  }
+ ]
+}
