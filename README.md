@@ -10,6 +10,8 @@
 ![platform Windows](https://img.shields.io/badge/platform-Windows-555)
 ![license MIT](https://img.shields.io/badge/license-MIT-555)
 
+**[Try the lite version in your browser](https://fortiviewholdings.github.io/lcl/)** · **[Download the latest release](https://github.com/FortiviewHoldings/lcl/releases/latest)**
+
 </div>
 
 ---

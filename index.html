@@ -93,8 +93,10 @@
   /* ============================================================
      THE APP FRAME — one viewport, exactly the new-session moment.
      ============================================================ */
-  #app { height: 100vh; display: flex; flex-direction: column;
-         background: var(--bg); position: relative; overflow: hidden; }
+  /* min-height, not height: a viewport too short for the bench's minimum
+     lets the frame grow and the page scroll — never a clipped composer */
+  #app { min-height: 100vh; display: flex; flex-direction: column;
+         background: var(--bg); position: relative; }
 
   /* ---- LANDING (new-session backdrop) — geometry from styles.css ---- */
   #landing { position: relative; flex: 1; min-height: 0;
@@ -200,7 +202,7 @@
     padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); }
   #chat-title { flex: 1; font-size: var(--fs-md); font-weight: 600;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #chat-scroll { flex: 1; overflow-y: auto; padding: var(--sp-5); }
+  #chat-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-5); }
   #chat { display: flex; flex-direction: column; gap: var(--sp-3);
           max-width: 860px; margin: 0 auto; }
   .msg-user { align-self: flex-end; padding: var(--sp-3) var(--sp-4); max-width: 76%;
@@ -258,6 +260,14 @@
             font-size: var(--fs-tiny); letter-spacing: var(--ls-tight);
             text-align: right; }
   #bar-track { height: 2px; margin-top: var(--sp-2); }
+  /* the chat lives on a page that CONTINUES — say so under the composer */
+  #bench-more { flex: none; display: block; text-align: center;
+    padding: 5px 0 7px; font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+    text-transform: uppercase; color: var(--text-faint); text-decoration: none;
+    border-top: 1px solid var(--line); background: var(--bg); }
+  #bench-more:hover { color: var(--text-dim); }
+  #bench-more .arr { display: inline-block; animation: bob 2.2s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: none; } 50% { transform: translateY(3px); } }
   #bar { display: block; height: 2px; width: 0%; background: var(--accent);
          opacity: .8; transition: width .3s; }
   #model-menu { position: absolute; bottom: calc(100% + 6px); left: var(--sp-5);
@@ -351,10 +361,24 @@
   .card .n { font-size: 22px; font-weight: 700; color: var(--text-faint);
              margin-bottom: var(--sp-1); }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
-  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
   th { color: var(--text-dim); font-weight: 600; font-size: var(--fs-base); }
   td.y { color: var(--risk-green); } td.n { color: var(--text-faint); }
+  tr.cat td { padding: 20px 12px 5px; color: var(--text-faint);
+    font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+    text-transform: uppercase; border-bottom: 1px solid var(--line-strong); }
   .tablewrap { overflow-x: auto; }
+  /* concrete asks, spoken in the app's own bubble */
+  .card.ask .q { background: linear-gradient(180deg, #1e1e22, #131316);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
+    padding: var(--sp-2) var(--sp-3); font-size: var(--fs-md);
+    margin-bottom: var(--sp-2); }
+  .card.ask .tools { display: inline-block; margin-top: var(--sp-2);
+    padding: 2px 8px; border-radius: 7px; border: 1px solid var(--line-strong);
+    background: var(--bg-raise-2); color: var(--text-faint);
+    font-size: var(--fs-tiny); }
   #dl-meta { margin-top: var(--sp-2); font-size: var(--fs-tiny); color: var(--text-faint); }
   details.faq { border-bottom: 1px solid var(--line); padding: var(--sp-3) 0; }
   details.faq summary { cursor: pointer; font-size: var(--fs-md); font-weight: 600;
@@ -482,6 +506,8 @@
           <div id="bar-track"><b id="bar"></b></div>
         </div>
       </div>
+      <a id="bench-more" href="#features"><span class="arr">↓</span>
+        this chat sits on a full workbench — see what it does</a>
     </div>
 
     <div id="workspace">
@@ -549,6 +575,7 @@
     src="app/assets/mark-small.png" alt=""><span class="brand">.lcl</span></a>
   <span class="links">
     <a href="#features">Features</a>
+    <a href="#asks">Uses</a>
     <a href="#patching">Patching</a>
     <a href="#requirements">Requirements</a>
     <a href="#compare">Lite vs full</a>
@@ -585,6 +612,53 @@
            local log — debugging starts with reading it, not screenshotting an error prompt.</p></div>
     </div>
     <div id="dl-meta"></div>
+  </div>
+</section>
+
+<section id="asks">
+  <div class="wrap">
+    <div class="micro">what it is actually for</div>
+    <h2>Things you can just ask it</h2>
+    <p class="lead">Each of these is one sentence typed into the same chat you just tried.
+      The difference is that the full app is allowed to act — after asking you first.</p>
+    <div class="grid">
+      <div class="card ask">
+        <div class="q">Go through last night's logs and tell me what broke.</div>
+        <p>Link the folder once; it lists, reads and searches the real files, and answers
+           with the failing lines quoted.</p>
+        <span class="tools">file tools · linked workspace</span>
+      </div>
+      <div class="card ask">
+        <div class="q">Pull every table, image and form out of this 300-page PDF.</div>
+        <p>The extractor takes the whole document — born-digital or scanned — and hands
+           the pieces back as files.</p>
+        <span class="tools">PDF extraction · OCR</span>
+      </div>
+      <div class="card ask">
+        <div class="q">What board is on COM4, and what is it running?</div>
+        <p>It identifies the silicon, reads the boot log, and can back up the flash
+           before anything is touched.</p>
+        <span class="tools">hardware · serial · ask-first</span>
+      </div>
+      <div class="card ask">
+        <div class="q">What does the standard say about fillet weld sizing?</div>
+        <p>The offline library answers with the document and page cited — no internet
+           involved.</p>
+        <span class="tools">reference library · citations</span>
+      </div>
+      <div class="card ask">
+        <div class="q">Merge these six CSVs and give me totals by month.</div>
+        <p>It queries the files in place with SQL — no import step, no spreadsheet
+           wrangling.</p>
+        <span class="tools">SQL over CSV</span>
+      </div>
+      <div class="card ask">
+        <div class="q">Draw this system as a clean diagram.</div>
+        <p>Described in text, rendered on your machine — diagrams via Graphviz, images
+           via local Stable Diffusion.</p>
+        <span class="tools">diagrams · image generation</span>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -632,17 +706,75 @@
   <div class="wrap">
     <div class="micro">honest comparison</div>
     <h2>Lite vs full</h2>
+    <p class="lead">The page you are on is the taste; the download is the workbench. Everything
+      in the full column is permission-gated — none of it runs without your click.</p>
     <div class="tablewrap"><table>
       <tr><th></th><th>This page (lite)</th><th>The full app</th></tr>
-      <tr><td>Local inference</td><td class="y">yes — WebGPU, small models</td><td class="y">yes — llama.cpp, up to 9B on a laptop</td></tr>
-      <tr><td>Sessions</td><td class="y">yes — saved in this browser</td><td class="y">yes — on your disk</td></tr>
-      <tr><td>A file workspace</td><td class="y">lite — notes in browser storage</td><td class="y">real folders, revertable edits</td></tr>
-      <tr><td>Works fully offline</td><td class="n">after the model caches</td><td class="y">yes, by default</td></tr>
-      <tr><td>Tools (scripts, SQL, PDF, OCR…)</td><td class="n">stubs — the buttons show what asks</td><td class="y">60+, permission-gated</td></tr>
-      <tr><td>Reference library with citations</td><td class="n">—</td><td class="y">~64 volumes, offline index</td></tr>
-      <tr><td>Hardware (boards, serial, flashing)</td><td class="n">—</td><td class="y">yes, ask-first</td></tr>
-      <tr><td>Signed patches from this repo</td><td class="n">—</td><td class="y">one click</td></tr>
+
+      <tr class="cat"><td colspan="3">Thinking</td></tr>
+      <tr><td>Local inference</td><td class="y">WebGPU — 0.5–1.5B models</td>
+          <td class="y">llama.cpp — a 4B daily driver, up to a 9B flagship, CPU or GPU</td></tr>
+      <tr><td>Where it can think</td><td>this browser only</td>
+          <td>your machine · a machine you own · an API vendor · a rented GPU — chosen per
+              conversation, never hidden</td></tr>
+      <tr><td>Works fully offline</td><td class="n">after the model caches</td>
+          <td class="y">yes — offline is the default state</td></tr>
+      <tr><td>Multi-step work</td><td class="n">single answers</td>
+          <td class="y">plans, runs tool chains, audits its own output, concludes</td></tr>
+
+      <tr class="cat"><td colspan="3">Workspace</td></tr>
+      <tr><td>Sessions</td><td class="y">saved in this browser</td>
+          <td class="y">on your disk, every one resumable</td></tr>
+      <tr><td>Files</td><td class="y">notes in browser storage, read by the model</td>
+          <td class="y">real folders — listed, read, edited; every change shown, every change
+              revertable</td></tr>
+      <tr><td>Terminal</td><td class="n">—</td>
+          <td class="y">a real terminal beside the chat — human keystrokes only, never the
+              model's</td></tr>
+
+      <tr class="cat"><td colspan="3">Tools</td></tr>
+      <tr><td>Tool count</td><td>4 demo stubs that explain themselves</td>
+          <td class="y">60+, permission-gated</td></tr>
+      <tr><td>Scripts &amp; automation</td><td class="n">—</td>
+          <td class="y">writes and runs them — the exact command shown before it runs</td></tr>
+      <tr><td>Data</td><td class="n">—</td>
+          <td class="y">SQL over your CSVs, no import step</td></tr>
+      <tr><td>PDFs</td><td class="n">—</td>
+          <td class="y">extracts everything — text, scans, tables, images, forms,
+              annotations</td></tr>
+      <tr><td>Vision &amp; images</td><td class="n">—</td>
+          <td class="y">OCR on screenshots and scans · image generation on your own
+              silicon</td></tr>
+      <tr><td>Speech</td><td class="n">—</td>
+          <td class="y">local dictation — rolling transcription, audio never leaves the
+              machine</td></tr>
+
+      <tr class="cat"><td colspan="3">Knowledge</td></tr>
+      <tr><td>Reference library</td><td class="n">—</td>
+          <td class="y">~64 public-domain volumes indexed offline — answers cite the document
+              and page</td></tr>
+      <tr><td>Your own documents</td><td class="n">—</td>
+          <td class="y">add them; they join the same cited index</td></tr>
+
+      <tr class="cat"><td colspan="3">Hardware</td></tr>
+      <tr><td>Real devices</td><td class="n">—</td>
+          <td class="y">identifies boards, reads boot logs, backs up flash, compiles and
+              uploads firmware — ask-first, every step</td></tr>
+
+      <tr class="cat"><td colspan="3">Trust</td></tr>
+      <tr><td>Permissions</td><td>read-only demo</td>
+          <td class="y">deny-by-default — dangerous tools name the exact action and wait for
+              your click</td></tr>
+      <tr><td>Cost</td><td class="y">$0.00, always</td>
+          <td class="y">$0.00 local — API spend, when you choose it, tracked to the cent</td></tr>
+      <tr><td>Updates</td><td class="n">—</td>
+          <td class="y">signed one-click patches from this repo — unsigned, tampered or older
+              builds refused</td></tr>
+      <tr><td>Logs</td><td class="n">—</td>
+          <td class="y">every failure and refusal written to a local error log you can
+              read</td></tr>
       <tr><td>Account / API key</td><td class="y">none</td><td class="y">none</td></tr>
+      <tr><td>Telemetry</td><td class="y">none</td><td class="y">none</td></tr>
     </table></div>
   </div>
 </section>

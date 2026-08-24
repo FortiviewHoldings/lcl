@@ -291,6 +291,42 @@ check("a real footer — product, source, license columns",
     /<footer>/.test(s) && /MIT license/.test(s)
     && s.includes("github.com/FortiviewHoldings/lcl/releases"), null);
 
+/* ---- THE DEMO-READY PASS ----
+ * "i think the lite vs full table is severely lacking, and i also think that
+ * a little arrow to scroll down, or some sort of hint that there is more
+ * under that chat ... a lot more revealing about what the full app does" */
+check("the bench SAYS the page continues — a scroll cue under the composer, " +
+      "pointing at the sections below the chat",
+    s.includes('id="bench-more"')
+    && s.includes('href="#features"')
+    && /this chat sits on a full workbench/.test(s), null);
+check("...and a short viewport GROWS the frame instead of clipping the " +
+      "composer — min-height on the app shell, min-height:0 on the chat scroll",
+    s.includes("min-height: 100vh")
+    && !/#app \{[^}]*overflow: hidden/.test(s)
+    && /#chat-scroll \{ flex: 1; min-height: 0;/.test(s), null);
+check("the lite-vs-full table is GROUPED and specific — Thinking, Workspace, " +
+      "Tools, Knowledge, Hardware, Trust",
+    /class="cat"/.test(s)
+    && [">Thinking<", ">Workspace<", ">Tools<", ">Knowledge<", ">Hardware<", ">Trust<"]
+        .every(c => s.includes(c)), null);
+check("...and its rows reveal the real app — the four places to think, cited " +
+      "answers, cost to the cent, telemetry none",
+    s.includes("a rented GPU — chosen per")
+    && s.includes("tracked to the cent")
+    && /Telemetry/.test(s)
+    && s.includes("cite the document")
+    && s.includes("60+, permission-gated"), null);
+check("a 'things you can just ask it' section shows the app through CONCRETE " +
+      "asks, each in the app's own user bubble with the gating tools named",
+    /id="asks"/.test(s)
+    && /Things you can just ask it/.test(s)
+    && (s.match(/class="card ask"/g) || []).length >= 6
+    && /class="tools"/.test(s)
+    && s.includes("what broke")
+    && s.includes("300-page PDF")
+    && s.includes("COM4"), null);
+
 /* ---- the claims stay honest ---- */
 check("the tagline is the README's tagline — one product, one sentence",
     /An AI workbench that runs on your machine, with the network switched off/.test(s), null);
