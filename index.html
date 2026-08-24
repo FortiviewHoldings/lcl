@@ -108,7 +108,7 @@
   /* the autoplay policy forced the intro to mute — say so, quietly but
      visibly, so the visitor knows the animation has a voice */
   #intro-sound.cue { color: var(--attn); border-color: rgba(224,201,143,.45);
-    animation: sound-cue 1.6s ease-in-out 3; }
+    animation: sound-cue 1.6s ease-in-out infinite; }
   @keyframes sound-cue { 0%,100% { transform: none; }
     50% { transform: scale(1.12); box-shadow: 0 0 14px rgba(224,201,143,.35); } }
   #scroll-cue { position: absolute; bottom: var(--sp-3); left: 50%;
@@ -536,10 +536,17 @@ soundBtn.addEventListener("click", () => {
 // THE FIRST GESTURE ANYWHERE un-mutes a policy-muted intro while it still
 // plays — the visitor should not have to find the ♪ to hear what the app
 // sounds like. One shot, never after the visitor chose mute themselves.
-const firstGesture = () => {
-  if (policyMuted && !video.ended && !video.paused) unmuteIntro();
+const firstGesture = (e) => {
   document.removeEventListener("pointerdown", firstGesture);
   document.removeEventListener("keydown", firstGesture);
+  if (!policyMuted) return;
+  if ($("landing").classList.contains("hidden")) return;   // already in the bench
+  // a click that is LEAVING the landing must not restart the show behind it
+  const t = e && e.target;
+  const leaving = t && t.closest && (t.closest("#landing-skip")
+      || t.closest("#dl-btn") || t.closest("#scroll-cue"));
+  if (leaving) { if (!video.ended && !video.paused) unmuteIntro(); return; }
+  unmuteIntro();   // playing: sound comes in live; ended: replays WITH audio
 };
 document.addEventListener("pointerdown", firstGesture);
 document.addEventListener("keydown", firstGesture);
