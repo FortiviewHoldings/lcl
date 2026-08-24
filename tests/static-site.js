@@ -198,6 +198,24 @@ check("...and a refresh returns to the BENCH, not the intro — sessionStorage "
       "remembers this tab already entered",
     s.includes('sessionStorage.setItem("lcl-lite-bench"')
     && s.includes('sessionStorage.getItem("lcl-lite-bench")'), null);
+/* "it holds the page it was last on, which i want, but it has no nav back to
+ * the index page" — so the logo is the way home, everywhere: the sidebar
+ * mark, a home button in the bench header, and the nav brand. Leaving the
+ * bench clears the refresh memory and replays the intro — with its voice,
+ * since a real click brought us home (unless the visitor muted it). */
+check("the LOGO IS THE WAY HOME — sidebar mark, a home button in the bench " +
+      "header, and the nav brand all return to the opening screen",
+    /leaveBench/.test(s)
+    && s.includes('$("home-mark").addEventListener("click", leaveBench)')
+    && s.includes('$("tg-home").addEventListener("click", leaveBench)')
+    && /id="nav-home"/.test(s), null);
+check("...leaving the bench CLEARS the refresh memory, so a refresh honors " +
+      "whichever screen you are on",
+    s.includes('sessionStorage.removeItem("lcl-lite-bench")'), null);
+check("...and the return replays the intro from the top, voice included, " +
+      "respecting a visitor's own mute",
+    s.includes("playIntroWithSound(true)")
+    && /if \(userMuted\)/.test(s), null);
 check("the FILE WORKSPACE is real — per-session files created, edited in a " +
       "sheet, saved, deleted, all in browser storage",
     /paintFiles/.test(s) && /openFileSheet/.test(s)
