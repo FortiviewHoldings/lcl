@@ -283,6 +283,11 @@ check("the nav brand is the APP ICON itself — the full-resolution icon at real
     /id="nav-home"[^>]*><img\s+src="app\/assets\/icon\.png"/.test(s.replace(/\n\s*/g, " "))
     && /#site-nav img \{ width: 32px; height: 32px;/.test(s)
     && !/class="brand"/.test(s), null);
+check("...and the sidebar's home mark is the same full-resolution icon, sized " +
+      "to be seen — not the muddy miniature",
+    /id="home-mark" src="app\/assets\/icon\.png"/.test(s)
+    && /#sidebar-head img \{ width: 28px; height: 28px;/.test(s)
+    && !s.includes("mark-small.png"), null);
 check("the patching story is a SECTION — cut and signed, detected and verified, " +
       "installed on your click",
     /Signed one-click patches/.test(s) && /Cut and signed/.test(s)

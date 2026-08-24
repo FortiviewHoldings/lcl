@@ -174,8 +174,9 @@
   #sidebar.collapsed { display: none; }
   #sidebar-head { padding: var(--sp-3) var(--sp-4); display: flex; align-items: center;
     gap: var(--sp-2); border-bottom: 1px solid var(--line); }
-  #sidebar-head img { width: 18px; height: 18px; cursor: pointer; opacity: .9; }
-  #sidebar-head img:hover { opacity: 1; }
+  #sidebar-head img { width: 28px; height: 28px; border-radius: 7px;
+    cursor: pointer; opacity: .92; }
+  #sidebar-head img:hover { opacity: 1; filter: brightness(1.15); }
   #sidebar-head .t { flex: 1; font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
     text-transform: uppercase; color: var(--text-faint); }
   #new-session { font-size: 15px; width: 26px; height: 26px; }
@@ -478,7 +479,7 @@
   <div id="bench">
     <div id="sidebar">
       <div id="sidebar-head">
-        <img id="home-mark" src="app/assets/mark-small.png" alt=".lcl"
+        <img id="home-mark" src="app/assets/icon.png" alt=".lcl"
              title="Back to the opening screen">
         <span class="t">Sessions</span>
         <button id="new-session" class="icon-btn" title="New session">+</button>
