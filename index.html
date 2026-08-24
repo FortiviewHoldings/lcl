@@ -33,6 +33,7 @@
     --font: "Segoe UI Variable Display", "Segoe UI", Inter, Roboto, system-ui, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
   html, body { height: 100%; }
   body { background: var(--bg); color: var(--text);
          font-family: var(--font); font-size: var(--fs-base); line-height: 1.55; }
@@ -73,6 +74,20 @@
                     background: rgba(255,255,255,.06); }
   .icon-btn svg { width: 15px; height: 15px; }
 
+  /* ---- the site nav (over the sections, not the landing) ---- */
+  #site-nav { position: sticky; top: 0; z-index: 60; display: flex;
+    align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-4);
+    background: rgba(5,5,5,.88); backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line); }
+  #site-nav img { width: 18px; height: 18px; }
+  #site-nav .brand { font-weight: 700; letter-spacing: var(--ls-tight); }
+  #site-nav .links { flex: 1; display: flex; gap: var(--sp-3); justify-content: center;
+    flex-wrap: wrap; }
+  #site-nav .links a { color: var(--text-dim); text-decoration: none;
+    font-size: var(--fs-base); }
+  #site-nav .links a:hover { color: var(--text); }
+  #site-nav .primary { padding: 6px 14px; }
+
   /* ============================================================
      THE APP FRAME — one viewport, exactly the new-session moment.
      ============================================================ */
@@ -105,8 +120,7 @@
     border: 1px solid rgba(255,255,255,.10); color: var(--text-dim);
     background: rgba(5,5,5,.5); font-size: 15px; }
   #intro-sound:hover { color: var(--text); border-color: rgba(255,255,255,.22); }
-  /* the autoplay policy forced the intro to mute — say so, quietly but
-     visibly, so the visitor knows the animation has a voice */
+  /* the autoplay policy silenced the intro — say so, visibly, until it is heard */
   #intro-sound.cue { color: var(--attn); border-color: rgba(224,201,143,.45);
     animation: sound-cue 1.6s ease-in-out infinite; }
   @keyframes sound-cue { 0%,100% { transform: none; }
@@ -119,8 +133,9 @@
 
   /* ============================================================
      THE WORKBENCH — sidebar · chat · workspace, like the app.
-     Full-app-only pieces are STUBS that say so; what the lite
-     really does (load a model, chat, log activity) is LIVE.
+     Sessions and the file workspace are REAL here, persisted in
+     the browser's own storage. Full-app-only surfaces are honest
+     stubs that say so.
      ============================================================ */
   #bench { display: none; flex: 1; min-height: 0; }
   #bench.live { display: flex; }
@@ -132,20 +147,27 @@
   #sidebar-head { padding: var(--sp-3) var(--sp-4); display: flex; align-items: center;
     gap: var(--sp-2); border-bottom: 1px solid var(--line); }
   #sidebar-head img { width: 18px; height: 18px; }
-  #sidebar-head .t { font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+  #sidebar-head .t { flex: 1; font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
     text-transform: uppercase; color: var(--text-faint); }
+  #new-session { font-size: 15px; width: 26px; height: 26px; }
   #sessions { flex: 1; overflow-y: auto; padding: var(--sp-2); }
   .session-card { display: flex; align-items: center; gap: var(--sp-2);
     padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-sm);
-    color: var(--text-dim); font-size: var(--fs-base); }
+    color: var(--text-dim); font-size: var(--fs-base); cursor: pointer;
+    border: 1px solid transparent; }
+  .session-card:hover { background: rgba(255,255,255,.04); }
   .session-card.active { background: var(--bg-raise-2); color: var(--text);
-    border: 1px solid var(--line-strong); }
+    border-color: var(--line-strong); }
   .session-card .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
   .dot.idle { background: #0b0b0f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.34); }
   .dot.working { background: #c8c8d0; }
-  .dot.approval { background: #f5a524; box-shadow: 0 0 6px rgba(245,165,36,.6); }
+  .dot.approval { background: rgb(245,165,36); }
   .session-card .name { flex: 1; overflow: hidden; text-overflow: ellipsis;
                         white-space: nowrap; }
+  .session-card .del { opacity: 0; color: var(--text-faint); font-size: 12px;
+                       flex: none; padding: 0 2px; }
+  .session-card:hover .del { opacity: 1; }
+  .session-card .del:hover { color: var(--text); }
   .session-hint { padding: var(--sp-2) var(--sp-3); font-size: var(--fs-tiny);
                   color: var(--text-faint); }
   #machine-dock { flex: none; border-top: 1px solid var(--line);
@@ -172,7 +194,7 @@
     padding: var(--sp-1) 0; }
   .msg-meta { align-self: stretch; display: flex; gap: var(--sp-2);
     font-size: var(--fs-tiny); color: var(--text-faint); }
-  .msg-meta .chip { padding: 2px 8px; border-radius: var(--radius-pill, 7px);
+  .msg-meta .chip { padding: 2px 8px; border-radius: 7px;
     border: 1px solid var(--line-strong); background: rgba(30,39,36,.6);
     color: #9adfae; }
   .msg-meta .chip.plain { background: var(--bg-raise-2); color: var(--text-dim); }
@@ -184,7 +206,6 @@
     border-top: 1px solid var(--line);
     background: linear-gradient(0deg, #0b0b0d 25%, rgba(5,5,5,0)); }
   #composer-inner { max-width: 860px; margin: 0 auto; }
-  /* THE ASK IS A POPUP AT THE COMPOSER — the app's perm-popup-layer */
   #perm-popup-layer { position: absolute; bottom: 100%; left: var(--sp-5);
     right: var(--sp-5); margin-bottom: var(--sp-2); z-index: 850;
     pointer-events: none; display: flex; justify-content: center; }
@@ -206,8 +227,6 @@
     padding: var(--sp-3) var(--sp-4); font-family: var(--font);
     font-size: var(--fs-lg); line-height: 1.5; outline: none; }
   #box:focus { border-color: var(--line-bright); }
-  /* THE BUTTON ROW BELOW THE FIELD — folder, book, shield, mic, then the
-     model selector joining that row; Send stays with the field, like the app */
   #tool-row { display: flex; gap: var(--sp-2); align-items: center;
               margin-top: var(--sp-2); flex-wrap: wrap; }
   #model-btn { display: inline-flex; align-items: center; gap: var(--sp-2);
@@ -222,7 +241,6 @@
   #bar-track { height: 2px; margin-top: var(--sp-2); }
   #bar { display: block; height: 2px; width: 0%; background: var(--accent);
          opacity: .8; transition: width .3s; }
-  /* the model menu — compact, grouped like the app's picker */
   #model-menu { position: absolute; bottom: calc(100% + 6px); left: var(--sp-5);
     z-index: 900; min-width: 320px; background: var(--bg-raise-2);
     border: 1px solid var(--line-bright); border-radius: var(--radius);
@@ -256,40 +274,85 @@
              color: var(--text-dim); }
   .ws-sec.min .ws-body { display: none; }
   .ws-row { display: flex; justify-content: space-between; gap: var(--sp-2);
-    padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,.05); }
+    padding: 4px 0; border-bottom: 1px dashed rgba(255,255,255,.05);
+    align-items: center; }
   .ws-row:last-child { border-bottom: none; }
   .ws-row .k { color: var(--text-faint); }
+  .ws-row.file { cursor: pointer; }
+  .ws-row.file:hover { color: var(--text); }
+  .ws-row .mini { opacity: 0; font-size: 11px; color: var(--text-faint); }
+  .ws-row:hover .mini { opacity: 1; }
   .ws-stub { font-size: var(--fs-tiny); color: var(--text-faint);
              margin-top: var(--sp-2); line-height: 1.5; }
   .ws-stub a { color: var(--text-dim); }
   #activity .ws-row { border-bottom: none; padding: 2px 0; font-size: var(--fs-tiny); }
+  .ws-add { margin-top: var(--sp-2); display: flex; gap: var(--sp-1); }
+  .ws-add input { flex: 1; min-width: 0; background: var(--bg-raise-2);
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+    color: var(--text); padding: 4px 8px; font-family: var(--font);
+    font-size: var(--fs-base); outline: none; }
+
+  /* the file editor — a sheet in the app's own style */
+  #file-sheet { position: fixed; inset: 0; z-index: 1000; display: none;
+    align-items: center; justify-content: center; background: rgba(0,0,0,.6); }
+  #file-sheet.open { display: flex; }
+  #file-card { width: min(680px, 92vw); max-height: 82vh; display: flex;
+    flex-direction: column; background: var(--bg-raise-2);
+    border: 1px solid var(--line-bright); border-radius: var(--radius);
+    box-shadow: 0 24px 70px rgba(0,0,0,.7); }
+  #file-card .head { display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4); border-bottom: 1px solid var(--line); }
+  #file-name { flex: 1; font-weight: 600; font-size: var(--fs-md);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #file-text { flex: 1; min-height: 260px; resize: none; background: var(--bg);
+    color: var(--text); border: none; outline: none; padding: var(--sp-4);
+    font: 13px/1.6 ui-monospace, "Cascadia Code", Consolas, monospace; }
+  #file-card .foot { display: flex; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4);
+    border-top: 1px solid var(--line); }
+  #file-card .foot .spacer { flex: 1; }
 
   @media (max-width: 900px) { #workspace { display: none; } }
   @media (max-width: 640px) { #sidebar { display: none; } }
 
   /* ============================================================
-     BELOW THE FOLD — same skin, quieter register.
+     BELOW THE FOLD — same skin, production register.
      ============================================================ */
-  section { padding: 52px 0; border-top: 1px solid var(--line); }
-  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
-  h2 { font-size: 17px; letter-spacing: var(--ls-tight); margin-bottom: 4px; }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
+  h2 { font-size: 19px; letter-spacing: var(--ls-tight); margin-bottom: 4px; }
   .micro { font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
            text-transform: uppercase; color: var(--text-faint); margin-bottom: var(--sp-2); }
-  .lead { color: var(--text-dim); margin-bottom: var(--sp-5); font-size: var(--fs-md); }
+  .lead { color: var(--text-dim); margin-bottom: var(--sp-5); font-size: var(--fs-md);
+          max-width: 700px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
   .card { background: var(--bg-raise); border: 1px solid var(--line);
           border-radius: var(--radius); padding: var(--sp-4); }
   .card h3 { font-size: var(--fs-md); margin-bottom: 4px; }
   .card p { font-size: var(--fs-base); color: var(--text-dim); }
+  .card .n { font-size: 22px; font-weight: 700; color: var(--text-faint);
+             margin-bottom: var(--sp-1); }
   table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
   th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
   th { color: var(--text-dim); font-weight: 600; font-size: var(--fs-base); }
   td.y { color: var(--risk-green); } td.n { color: var(--text-faint); }
   .tablewrap { overflow-x: auto; }
   #dl-meta { margin-top: var(--sp-2); font-size: var(--fs-tiny); color: var(--text-faint); }
-  footer { padding: 36px 0 48px; border-top: 1px solid var(--line);
-           color: var(--text-faint); font-size: var(--fs-base); text-align: center; }
-  footer a { color: var(--text-dim); }
+  details.faq { border-bottom: 1px solid var(--line); padding: var(--sp-3) 0; }
+  details.faq summary { cursor: pointer; font-size: var(--fs-md); font-weight: 600;
+    list-style: none; display: flex; justify-content: space-between; gap: var(--sp-3); }
+  details.faq summary::after { content: "+"; color: var(--text-faint); }
+  details.faq[open] summary::after { content: "–"; }
+  details.faq p { margin-top: var(--sp-2); color: var(--text-dim);
+                  font-size: var(--fs-base); max-width: 760px; }
+  footer { padding: 40px 0 52px; border-top: 1px solid var(--line);
+           color: var(--text-faint); font-size: var(--fs-base); }
+  footer .cols { display: flex; gap: 48px; flex-wrap: wrap; }
+  footer .col .h { color: var(--text-dim); font-weight: 600; margin-bottom: var(--sp-2);
+    font-size: var(--fs-tiny); letter-spacing: var(--ls-wide); text-transform: uppercase; }
+  footer a { color: var(--text-faint); display: block; padding: 2px 0;
+             text-decoration: none; }
+  footer a:hover { color: var(--text); }
+  footer .fine { margin-top: var(--sp-5); }
 </style>
 </head>
 <body>
@@ -298,18 +361,24 @@
      THE APP, OPENING. The real new-session screen: the same clip
      the app plays once per visit, the same veil, wordmark and
      subtitle, the same two-button choice — with "Link a workspace
-     folder" become the download, because that is this page's link
-     to the real thing.
+     folder" become the download.
+
+     The intro's VOICE is a dedicated audio element (the clip's own
+     track, loudness-normalized) so the page owns its playback
+     rather than trusting the video element's output path — which
+     delivered decode without audible sound.
      ============================================================ -->
+<audio id="intro-audio" src="app/assets/landing-intro.m4a" preload="auto"></audio>
+
 <div id="app">
   <div id="landing">
     <div id="landing-anim" aria-hidden="true">
-      <video id="landing-video" src="app/assets/landing.mp4"
+      <video id="landing-video" src="app/assets/landing.mp4" muted
              playsinline preload="auto" disablepictureinpicture
              disableremoteplayback tabindex="-1"></video>
       <div id="landing-veil"></div>
     </div>
-    <button id="intro-sound" title="Mute the intro"><span id="intro-sound-icon">♪</span></button>
+    <button id="intro-sound" title="Intro sound"><span id="intro-sound-icon">♪</span></button>
     <div id="landing-content">
       <img id="landing-title" src="app/assets/wordmark-trim.png" alt=".lcl">
       <div id="landing-sub">AI on your own machine — nothing leaves it unless you say so</div>
@@ -324,31 +393,25 @@
         or press Just chat to run a small model right here, in your browser.
       </div>
     </div>
-    <a id="scroll-cue" href="#more">↓ what the full app does</a>
+    <a id="scroll-cue" href="#features">↓ what the full app does</a>
   </div>
 
   <!-- ==========================================================
-       THE WORKBENCH. Sidebar · chat · workspace, the app's own
-       arrangement. What the lite really does is LIVE (model load,
-       chat, activity); what only the full app can do is a STUB
-       that says so and points at the download.
+       THE WORKBENCH. Sessions and the file workspace are REAL —
+       persisted in the browser's own storage, per session. What
+       only the full app can do is an honest stub that says so.
        ========================================================== -->
   <div id="bench">
     <div id="sidebar">
       <div id="sidebar-head">
         <img src="app/assets/mark-small.png" alt="">
         <span class="t">Sessions</span>
+        <button id="new-session" class="icon-btn" title="New session">+</button>
       </div>
-      <div id="sessions">
-        <div class="session-card active"><span class="dot working" id="live-dot"></span>
-          <span class="name">Lite demo — in your browser</span></div>
-        <div class="session-card"><span class="dot idle"></span>
-          <span class="name">Bench notes</span></div>
-        <div class="session-card"><span class="dot approval"></span>
-          <span class="name">Firmware flash — waiting on you</span></div>
-        <div class="session-hint">In the full app every conversation lives here,
-          with a status dot that tells working from waiting-on-you at a glance.</div>
-      </div>
+      <div id="sessions"></div>
+      <div class="session-hint">Sessions live in this browser's local storage —
+        close the tab, come back, they are still here. The full app keeps them
+        on your disk.</div>
       <div id="machine-dock">
         <div><b>this machine</b> · <span id="mk-cores">–</span> cores ·
              WebGPU <span id="mk-gpu">–</span></div>
@@ -358,7 +421,7 @@
 
     <div id="main">
       <div id="chat-head">
-        <span id="chat-title">Lite demo — in your browser</span>
+        <span id="chat-title">Lite session</span>
         <button class="icon-btn" id="tg-side" title="Toggle the session list">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg></button>
         <button class="icon-btn" id="tg-ws" title="Toggle the workspace panel">
@@ -367,13 +430,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></button>
       </div>
 
-      <div id="chat-scroll">
-        <div id="chat">
-          <div class="msg-sys">The full app answers with the network unplugged. This lite page
-            needs it once, to fetch the model — after that, every word of inference runs on your
-            GPU via WebGPU, and nothing you type leaves this page.</div>
-        </div>
-      </div>
+      <div id="chat-scroll"><div id="chat"></div></div>
 
       <div id="composer">
         <div id="perm-popup-layer"></div>
@@ -384,7 +441,7 @@
             <button id="send" class="primary" disabled>Send</button>
           </div>
           <div id="tool-row">
-            <button class="icon-btn stub" data-stub="folder" title="Link a workspace folder — full app">
+            <button class="icon-btn stub" data-stub="folder" title="Link a real folder — full app">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
             <button class="icon-btn stub" data-stub="book" title="Knowledge libraries — full app">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V4H6.5A2.5 2.5 0 0 0 4 6.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg></button>
@@ -408,10 +465,14 @@
         <div class="ws-head"><span class="grip">⋮⋮</span><span class="t">Files</span>
           <button data-min="ws-files" title="Minimize">–</button></div>
         <div class="ws-body">
-          <div class="ws-row"><span>no folder linked</span></div>
-          <div class="ws-stub">In the full app this lists a real folder the model can read
-            and edit — every change shown, every change revertable.
-            <a href="#" class="dl-jump">Get the full app ↓</a></div>
+          <div id="file-list"></div>
+          <div class="ws-add">
+            <input id="file-new-name" placeholder="new-note.md" spellcheck="false">
+            <button class="icon-btn" id="file-add" title="Create the file">+</button>
+          </div>
+          <div class="ws-stub">A real lite workspace, stored in this browser. The model
+            reads these files when you ask about them. The full app links real folders
+            on your disk — every change shown, every change revertable.</div>
         </div>
       </div>
       <div class="ws-sec" id="ws-tasks">
@@ -431,7 +492,7 @@
           <button data-min="ws-perms" title="Minimize">–</button></div>
         <div class="ws-body">
           <div class="ws-row"><span class="k">network</span><span>this page only</span></div>
-          <div class="ws-row"><span class="k">files</span><span>none — no folder</span></div>
+          <div class="ws-row"><span class="k">files</span><span>browser storage only</span></div>
           <div class="ws-row"><span class="k">scripts</span><span>never</span></div>
           <div class="ws-row"><span class="k">hardware</span><span>never</span></div>
           <div class="ws-stub">The full app is deny-by-default across 60+ tools —
@@ -442,11 +503,42 @@
   </div>
 </div>
 
-<section id="more">
+<!-- the lite file editor -->
+<div id="file-sheet">
+  <div id="file-card">
+    <div class="head">
+      <span id="file-name">file</span>
+      <button class="icon-btn" id="file-close" title="Close">✕</button>
+    </div>
+    <textarea id="file-text" spellcheck="false"></textarea>
+    <div class="foot">
+      <button class="ghost" id="file-insert" title="Put this file's text into the message box">Insert into chat</button>
+      <span class="spacer"></span>
+      <button class="ghost" id="file-delete">Delete</button>
+      <button class="primary" id="file-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<nav id="site-nav">
+  <img src="app/assets/mark-small.png" alt=""><span class="brand">.lcl</span>
+  <span class="links">
+    <a href="#features">Features</a>
+    <a href="#patching">Patching</a>
+    <a href="#requirements">Requirements</a>
+    <a href="#compare">Lite vs full</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/FortiviewHoldings/lcl">Source</a>
+  </span>
+  <a class="primary" id="nav-dl" href="https://github.com/FortiviewHoldings/lcl/releases/latest">Download</a>
+</nav>
+
+<section id="features">
   <div class="wrap">
     <div class="micro">the full app</div>
     <h2>What you just saw, plus everything it exists for</h2>
-    <p class="lead">Everything is deny-by-default — this list is a permission map, not a brag sheet.</p>
+    <p class="lead">An AI workbench that runs on your machine, with the network switched off.
+      Everything is deny-by-default — this list is a permission map, not a brag sheet.</p>
     <div class="grid">
       <div class="card"><h3>Offline is the default state</h3>
         <p>Unplug the network and it keeps working: local llama.cpp inference, on-device OCR,
@@ -463,23 +555,65 @@
       <div class="card"><h3>Four places to think</h3>
         <p>This machine, a machine you own, an API vendor, or a rented GPU — chosen per
            conversation, never hidden, with a rented box never dressed as yours.</p></div>
-      <div class="card"><h3>Signed one-click patches</h3>
-        <p>Updates come from this repository as Ed25519-signed releases: downloaded, verified
-           against the baked public key, rollback-guarded, then installed on your click.</p></div>
+      <div class="card"><h3>An error log that answers "why"</h3>
+        <p>Every handler failure, rejected promise, and refused download leaves a JSON line in a
+           local log — debugging starts with reading it, not screenshotting an error prompt.</p></div>
     </div>
     <div id="dl-meta"></div>
   </div>
 </section>
 
-<section>
+<section id="patching">
+  <div class="wrap">
+    <div class="micro">how updates work</div>
+    <h2>Signed one-click patches, from this repository</h2>
+    <p class="lead">The app you download tonight patches itself from the same public repo you can
+      read — and refuses anything that does not prove itself.</p>
+    <div class="grid">
+      <div class="card"><div class="n">1</div><h3>Cut and signed</h3>
+        <p>Every release passes the full gate — thousands of checks plus a driven-UI harness —
+           then the build is signed with an offline Ed25519 key. The public half ships inside
+           the app.</p></div>
+      <div class="card"><div class="n">2</div><h3>Detected and verified</h3>
+        <p>Your install polls this repo's releases. A newer official build downloads with its
+           progress on the button, is hash-matched against the signed manifest, and rollbacks are
+           refused — an unsigned or tampered file never launches.</p></div>
+      <div class="card"><div class="n">3</div><h3>Installed on your click</h3>
+        <p>The app waits until the installer has genuinely started before it closes, and says so
+           honestly if the Windows prompt was dismissed. Nothing changes without you.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="requirements">
+  <div class="wrap">
+    <div class="micro">will it run</div>
+    <h2>System requirements</h2>
+    <p class="lead">Windows today. Real numbers, enforced by the app's own load planner — a model
+      that will not fit is refused with the shortfall stated, never allowed to freeze the
+      machine.</p>
+    <div class="tablewrap"><table>
+      <tr><th></th><th>Minimum</th><th>Comfortable</th><th>To run everything</th></tr>
+      <tr><td>RAM in the machine</td><td>8 GB</td><td>16 GB</td><td>32 GB</td></tr>
+      <tr><td>Disk for models</td><td>6 GB</td><td>25 GB</td><td>60 GB</td></tr>
+      <tr><td>CPU</td><td>any x64</td><td>8 cores</td><td>16+ cores</td></tr>
+      <tr><td>GPU</td><td class="n">not required</td><td class="n">optional</td><td class="n">optional</td></tr>
+      <tr><td>Network</td><td class="y">never required</td><td class="y">never required</td><td class="y">never required</td></tr>
+    </table></div>
+  </div>
+</section>
+
+<section id="compare">
   <div class="wrap">
     <div class="micro">honest comparison</div>
     <h2>Lite vs full</h2>
     <div class="tablewrap"><table>
       <tr><th></th><th>This page (lite)</th><th>The full app</th></tr>
       <tr><td>Local inference</td><td class="y">yes — WebGPU, small models</td><td class="y">yes — llama.cpp, up to 9B on a laptop</td></tr>
+      <tr><td>Sessions</td><td class="y">yes — saved in this browser</td><td class="y">yes — on your disk</td></tr>
+      <tr><td>A file workspace</td><td class="y">lite — notes in browser storage</td><td class="y">real folders, revertable edits</td></tr>
       <tr><td>Works fully offline</td><td class="n">after the model caches</td><td class="y">yes, by default</td></tr>
-      <tr><td>Tools (files, scripts, SQL, PDF, OCR…)</td><td class="n">stubs — the buttons show what asks</td><td class="y">60+, permission-gated</td></tr>
+      <tr><td>Tools (scripts, SQL, PDF, OCR…)</td><td class="n">stubs — the buttons show what asks</td><td class="y">60+, permission-gated</td></tr>
       <tr><td>Reference library with citations</td><td class="n">—</td><td class="y">~64 volumes, offline index</td></tr>
       <tr><td>Hardware (boards, serial, flashing)</td><td class="n">—</td><td class="y">yes, ask-first</td></tr>
       <tr><td>Signed patches from this repo</td><td class="n">—</td><td class="y">one click</td></tr>
@@ -488,130 +622,344 @@
   </div>
 </section>
 
+<section id="faq">
+  <div class="wrap">
+    <div class="micro">questions with real answers</div>
+    <h2>FAQ</h2>
+    <details class="faq"><summary>Does anything I type here leave my machine?</summary>
+      <p>No. The lite chat runs the model in your browser via WebGPU — the weights download once
+         from the model's public repository and cache locally; after that, generation happens on
+         your GPU. This page has no analytics, no trackers, and no server of its own. Your
+         sessions and files live in your browser's storage, on your machine.</p></details>
+    <details class="faq"><summary>Why does the download weigh ~1.7 GB?</summary>
+      <p>It brings its own everything: llama.cpp, stable-diffusion.cpp, whisper.cpp, Tesseract,
+         ffmpeg, qpdf, ImageMagick, SQLite, Graphviz, a starter model, and the offline reference
+         index. No Python, no Docker, no account — it answers the moment it installs.</p></details>
+    <details class="faq"><summary>Is my data used to train anything?</summary>
+      <p>No. There is no cloud side. Local models run locally; if you deliberately link an API
+         vendor, that conversation goes to that vendor under their terms — and the app names the
+         destination on a card before anything leaves.</p></details>
+    <details class="faq"><summary>How do updates work?</summary>
+      <p>The app checks this repository's releases. A newer official build downloads with visible
+         progress, is verified against an Ed25519-signed manifest baked at build time, and installs
+         only on your click. Unsigned, tampered, or older builds are refused outright.</p></details>
+    <details class="faq"><summary>Can I read the source?</summary>
+      <p>All of it — this page, the app, the engine, the tests, and the release tooling live in
+         <a href="https://github.com/FortiviewHoldings/lcl">the public repository</a>, MIT
+         licensed. The test suites are the honest spec: thousands of checks, many quoting the
+         exact failure that forced them.</p></details>
+    <details class="faq"><summary>Mac or Linux?</summary>
+      <p>Windows today. A Mac build is planned; the lite page runs anywhere WebGPU does.</p></details>
+  </div>
+</section>
+
 <footer>
   <div class="wrap">
-    .lcl — MIT licensed · © PragOptics ·
-    <a href="https://github.com/FortiviewHoldings/lcl">github.com/FortiviewHoldings/lcl</a>
+    <div class="cols">
+      <div class="col"><div class="h">Product</div>
+        <a href="https://github.com/FortiviewHoldings/lcl/releases/latest" id="foot-dl">Download for Windows</a>
+        <a href="#compare">Lite vs full</a>
+        <a href="#requirements">Requirements</a></div>
+      <div class="col"><div class="h">Source</div>
+        <a href="https://github.com/FortiviewHoldings/lcl">Repository</a>
+        <a href="https://github.com/FortiviewHoldings/lcl/releases">Releases</a>
+        <a href="https://github.com/FortiviewHoldings/lcl/blob/main/README.md">README</a></div>
+      <div class="col"><div class="h">Legal</div>
+        <a href="https://github.com/FortiviewHoldings/lcl/blob/main/LICENSE">MIT license</a></div>
+    </div>
+    <div class="fine">.lcl — © PragOptics · an AI workbench that runs on your machine,
+      with the network switched off.</div>
   </div>
 </footer>
 
 <script type="module">
 const $ = (id) => document.getElementById(id);
 
-/* ---- THE INTRO, exactly as the app runs it: played explicitly (never the
-   autoplay attribute), once per visit, WITH its audio when the policy
-   allows and muted when it does not, and the same ♪ / ✕ toggle. ---- */
+/* ============================================================
+   THE INTRO AND ITS VOICE. The video is ALWAYS muted (so the
+   visual autoplays under every policy); the sound is the clip's
+   own track in a dedicated audio element the page controls.
+   Play with audio is attempted immediately; when the policy
+   refuses, the cue pulses until the first gesture delivers it —
+   live in sync mid-clip, or as a full replay once it has ended.
+   ============================================================ */
 const video = $("landing-video");
+const intro = $("intro-audio");
 const soundBtn = $("intro-sound");
 const soundIcon = $("intro-sound-icon");
-let policyMuted = false;             // the BROWSER muted it, not the visitor
+intro.volume = 1;
+let policyMuted = false;
+let userMuted = false;
 video.currentTime = 0;
-video.play().catch(() => {           // autoplay policy blocked audio — the
-  video.muted = true;                // app's own fallback: run it muted
+video.play().catch(() => {});
+intro.play().catch(() => {
   policyMuted = true;
-  soundBtn.classList.add("cue");     // the intro HAS a voice — say so
+  soundBtn.classList.add("cue");
   soundBtn.title = "Click for sound";
-  video.play().catch(() => {});
 });
-function paintSound() { soundIcon.textContent = video.muted ? "✕" : "♪"; }
-function unmuteIntro() {
-  // a click IS the gesture the policy wants. Mid-clip: sound comes in live.
-  // After the clip: rewind and play it again properly, with its audio — the
-  // visitor asked to hear the intro, so they get the intro.
-  soundBtn.classList.remove("cue");
-  soundBtn.title = "Mute the intro";
-  policyMuted = false;
-  video.muted = false;
+function paintSound() {
+  soundIcon.textContent = (policyMuted || userMuted) ? "✕" : "♪";
+  if (!policyMuted) { soundBtn.classList.remove("cue"); soundBtn.title = "Intro sound"; }
+}
+intro.addEventListener("play", paintSound);
+function playIntroWithSound() {
+  policyMuted = false; userMuted = false;
   if (video.ended || video.currentTime >= (video.duration || 5) - 0.1) {
-    video.currentTime = 0;
+    video.currentTime = 0; intro.currentTime = 0;   // replay the show, WITH audio
+    video.play().catch(() => {});
+  } else {
+    intro.currentTime = video.currentTime;   // sound joins the picture, in sync
   }
-  if (video.paused) video.play().catch(() => {});
+  intro.play().catch(() => {});
   paintSound();
 }
 soundBtn.addEventListener("click", () => {
-  if (video.muted) { unmuteIntro(); return; }
-  video.muted = true;
-  paintSound();
+  if (!intro.paused) { intro.pause(); userMuted = true; paintSound(); return; }
+  playIntroWithSound();
 });
-// THE FIRST GESTURE ANYWHERE un-mutes a policy-muted intro while it still
-// plays — the visitor should not have to find the ♪ to hear what the app
-// sounds like. One shot, never after the visitor chose mute themselves.
+// THE FIRST GESTURE ON THE LANDING delivers the audio — live mid-clip, or a
+// full replay when the 5-second clip has already finished. A click that is
+// LEAVING the landing never restarts the show behind itself.
 const firstGesture = (e) => {
   document.removeEventListener("pointerdown", firstGesture);
   document.removeEventListener("keydown", firstGesture);
   if (!policyMuted) return;
-  if ($("landing").classList.contains("hidden")) return;   // already in the bench
-  // a click that is LEAVING the landing must not restart the show behind it
+  if ($("landing").classList.contains("hidden")) return;
   const t = e && e.target;
   const leaving = t && t.closest && (t.closest("#landing-skip")
       || t.closest("#dl-btn") || t.closest("#scroll-cue"));
-  if (leaving) { if (!video.ended && !video.paused) unmuteIntro(); return; }
-  unmuteIntro();   // playing: sound comes in live; ended: replays WITH audio
+  if (leaving) { if (!video.ended && !video.paused) playIntroWithSound(); return; }
+  playIntroWithSound();
 };
 document.addEventListener("pointerdown", firstGesture);
 document.addEventListener("keydown", firstGesture);
-video.addEventListener("play", paintSound);
 setTimeout(paintSound, 300);
 
-/* ---- the download button points at the LATEST release's installer ---- */
+/* ---- the download buttons point at the LATEST release's installer ---- */
 (async () => {
   try {
     const r = await fetch("https://api.github.com/repos/FortiviewHoldings/lcl/releases/latest",
                           { headers: { "Accept": "application/vnd.github+json" } });
-    if (!r.ok) return;               // the static releases-page href stands
+    if (!r.ok) return;               // the static releases-page hrefs stand
     const rel = await r.json();
     const exe = (rel.assets || []).find(a => /Installer.*\.exe$/i.test(a.name));
     if (!exe) return;
-    $("dl-btn").href = exe.browser_download_url;
+    for (const id of ["dl-btn", "nav-dl", "foot-dl"]) $(id).href = exe.browser_download_url;
     $("dl-sub").textContent = rel.tag_name + " · " + (exe.size / 1e9).toFixed(1) + " GB · Windows";
     $("dl-meta").textContent =
-      "The download is an Ed25519-signed release — the app verifies the same file before every patch.";
-  } catch { /* fallback stands */ }
+      "The download is an Ed25519-signed release — the app verifies the same signature chain before every patch.";
+  } catch { /* fallbacks stand */ }
 })();
 
-/* ---- "Just chat" — the app's own transition: landing hides, bench lives ---- */
-$("landing-skip").addEventListener("click", () => {
-  try { video.pause(); } catch {}
-  $("landing").classList.add("hidden");
-  $("bench").classList.add("live");
-  logAct("session opened — lite demo");
-  $("box").focus();
+/* ============================================================
+   SESSIONS AND THE LITE WORKSPACE — real, in browser storage.
+   localStorage carries the durable record (sessions, messages,
+   files); sessionStorage remembers that THIS tab already entered
+   the bench, so a refresh returns to work, not the intro.
+   ============================================================ */
+const STORE_KEY = "lcl-lite-v1";
+const MAX_SESSIONS = 30, MAX_MSGS = 200;
+function loadStore() {
+  try { const j = JSON.parse(localStorage.getItem(STORE_KEY));
+        if (j && Array.isArray(j.sessions)) return j; } catch {}
+  return { sessions: [], activeId: null };
+}
+function saveStore() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); } catch {}
+}
+let store = loadStore();
+function newSession() {
+  const s = { id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              title: "New session", at: Date.now(), messages: [], files: [] };
+  store.sessions.unshift(s);
+  if (store.sessions.length > MAX_SESSIONS) store.sessions.pop();
+  store.activeId = s.id;
+  saveStore();
+  return s;
+}
+function activeSession() {
+  let s = store.sessions.find(x => x.id === store.activeId);
+  if (!s) s = store.sessions[0];
+  if (!s) s = newSession();
+  store.activeId = s.id;
+  return s;
+}
+
+/* ---- painting ---- */
+const chat = $("chat"), box = $("box"), send = $("send"),
+      statusEl = $("status"), bar = $("bar");
+let generating = false;
+
+function addMsgEl(cls, text) {
+  const d = document.createElement("div");
+  d.className = cls;
+  d.textContent = text;
+  chat.appendChild(d);
+  $("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
+  return d;
+}
+function addMetaEl(meta) {
+  const d = document.createElement("div");
+  d.className = "msg-meta";
+  const c1 = document.createElement("span"); c1.className = "chip"; c1.textContent = "$0.00 · your GPU";
+  const c2 = document.createElement("span"); c2.className = "chip plain"; c2.textContent = meta;
+  d.append(c1, c2); chat.appendChild(d);
+}
+function paintChat() {
+  const s = activeSession();
+  chat.innerHTML = "";
+  addMsgEl("msg-sys", "The full app answers with the network unplugged. This lite page needs it " +
+    "once, to fetch the model — after that, every word of inference runs on your GPU via WebGPU, " +
+    "and nothing you type leaves this page.");
+  for (const m of s.messages) {
+    if (m.role === "user") addMsgEl("msg-user", m.content);
+    else if (m.role === "assistant") { addMsgEl("msg-assistant", m.content);
+      if (m.meta) addMetaEl(m.meta); }
+  }
+  $("chat-title").textContent = s.title;
+}
+function paintSessions() {
+  const el = $("sessions");
+  el.innerHTML = "";
+  for (const s of store.sessions) {
+    const card = document.createElement("div");
+    card.className = "session-card" + (s.id === store.activeId ? " active" : "");
+    const dot = document.createElement("span");
+    dot.className = "dot " + (s.id === store.activeId && generating ? "working" : "idle");
+    const name = document.createElement("span"); name.className = "name"; name.textContent = s.title;
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+    del.title = "Delete this session";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      store.sessions = store.sessions.filter(x => x.id !== s.id);
+      if (store.activeId === s.id) store.activeId = store.sessions[0] && store.sessions[0].id;
+      saveStore(); paintSessions(); paintChat(); paintFiles();
+      logAct("session deleted");
+    });
+    card.append(dot, name, del);
+    card.addEventListener("click", () => {
+      if (store.activeId === s.id) return;
+      store.activeId = s.id; saveStore();
+      paintSessions(); paintChat(); paintFiles();
+      logAct("switched session");
+    });
+    el.appendChild(card);
+  }
+}
+$("new-session").addEventListener("click", () => {
+  newSession(); paintSessions(); paintChat(); paintFiles(); box.focus();
+  logAct("new session");
 });
 
-/* ---- the workbench chrome: live where it can be, honest where it cannot ---- */
+/* ---- the lite file workspace, per session ---- */
+let openFile = null;
+function paintFiles() {
+  const s = activeSession();
+  const list = $("file-list");
+  list.innerHTML = "";
+  if (!s.files.length) {
+    const r = document.createElement("div"); r.className = "ws-row";
+    const k = document.createElement("span"); k.className = "k";
+    k.textContent = "no files yet — add a note below";
+    r.appendChild(k); list.appendChild(r);
+  }
+  for (const f of s.files) {
+    const r = document.createElement("div"); r.className = "ws-row file";
+    const n = document.createElement("span"); n.textContent = f.name;
+    const m = document.createElement("span"); m.className = "mini";
+    m.textContent = (f.text || "").length + " chars";
+    r.append(n, m);
+    r.addEventListener("click", () => openFileSheet(f.name));
+    list.appendChild(r);
+  }
+}
+function openFileSheet(name) {
+  const s = activeSession();
+  const f = s.files.find(x => x.name === name);
+  if (!f) return;
+  openFile = name;
+  $("file-name").textContent = f.name;
+  $("file-text").value = f.text || "";
+  $("file-sheet").classList.add("open");
+}
+$("file-add").addEventListener("click", () => {
+  const s = activeSession();
+  let name = ($("file-new-name").value || "").trim();
+  if (!name) name = "note-" + (s.files.length + 1) + ".md";
+  if (!/\.[a-z0-9]+$/i.test(name)) name += ".md";
+  if (s.files.some(f => f.name === name)) { openFileSheet(name); return; }
+  s.files.push({ name, text: "", at: Date.now() });
+  saveStore(); paintFiles(); $("file-new-name").value = "";
+  logAct("created " + name);
+  openFileSheet(name);
+});
+$("file-new-name").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") $("file-add").click();
+});
+$("file-save").addEventListener("click", () => {
+  const s = activeSession();
+  const f = s.files.find(x => x.name === openFile);
+  if (f) { f.text = $("file-text").value; saveStore(); paintFiles();
+           logAct("saved " + f.name); }
+  $("file-sheet").classList.remove("open");
+});
+$("file-delete").addEventListener("click", () => {
+  const s = activeSession();
+  s.files = s.files.filter(x => x.name !== openFile);
+  saveStore(); paintFiles(); logAct("deleted " + openFile);
+  $("file-sheet").classList.remove("open");
+});
+$("file-insert").addEventListener("click", () => {
+  box.value = (box.value ? box.value + "\n\n" : "") + $("file-text").value;
+  $("file-sheet").classList.remove("open");
+  box.focus();
+});
+$("file-close").addEventListener("click", () => $("file-sheet").classList.remove("open"));
+$("file-sheet").addEventListener("click", (e) => {
+  if (e.target === $("file-sheet")) $("file-sheet").classList.remove("open");
+});
+
+/* ---- entering the bench (and returning to it on refresh) ---- */
+function enterBench() {
+  try { video.pause(); intro.pause(); } catch {}
+  $("landing").classList.add("hidden");
+  $("bench").classList.add("live");
+  try { sessionStorage.setItem("lcl-lite-bench", "1"); } catch {}
+  paintSessions(); paintChat(); paintFiles();
+  box.focus();
+}
+$("landing-skip").addEventListener("click", () => { enterBench(); logAct("session opened"); });
+try { if (sessionStorage.getItem("lcl-lite-bench") === "1") enterBench(); } catch {}
+
+/* ---- workbench chrome ---- */
 $("mk-cores").textContent = navigator.hardwareConcurrency || "?";
 $("mk-gpu").textContent = navigator.gpu ? "yes" : "no";
 $("tg-side").addEventListener("click", () => $("sidebar").classList.toggle("collapsed"));
 $("tg-ws").addEventListener("click", () => $("workspace").classList.toggle("collapsed"));
 document.querySelectorAll("[data-min]").forEach(b =>
   b.addEventListener("click", () => $(b.dataset.min).classList.toggle("min")));
-
 function logAct(text) {
   const a = $("activity");
   const d = document.createElement("div");
   d.className = "ws-row";
   d.textContent = new Date().toLocaleTimeString() + " · " + text;
   a.prepend(d);
-  while (a.children.length > 12) a.removeChild(a.lastChild);
+  while (a.children.length > 14) a.removeChild(a.lastChild);
 }
 function setTask(text) {
   $("tasks-body").innerHTML = "";
   const d = document.createElement("div");
   d.className = "ws-row";
-  d.innerHTML = "";
   d.textContent = text || "nothing running";
-  if (!text) d.classList.add("k");
   $("tasks-body").appendChild(d);
 }
 
-/* ---- THE STUBS: each full-app button raises the app's own ask, at the
-   composer, styled as the real permission popup — and says plainly that
-   the capability lives in the full app. ---- */
+/* ---- THE STUBS: the app's own ask, at the composer ---- */
 const STUBS = {
-  folder: ["fs.write — link a workspace folder",
-    "In the full app this links a real folder: the model lists, reads and edits " +
-    "its files, every change is shown, and every change can be reverted. " +
-    "The lite page has no file access at all."],
+  folder: ["fs.write — link a real folder",
+    "The lite workspace to the right is real — files saved in this browser. The " +
+    "full app links folders on your DISK: the model lists, reads and edits real " +
+    "files, every change shown, every change revertable."],
   book: ["knowledge — link a reference library",
     "The full app ships an offline index over ~64 public-domain volumes: answers " +
     "cite the document and the page, and missing sources download in one click — " +
@@ -624,7 +972,6 @@ const STUBS = {
     "The full app dictates into this box locally via whisper.cpp: rolling " +
     "transcription while you speak, and the audio never leaves the machine."]
 };
-let stubOpen = null;
 document.querySelectorAll(".stub").forEach(b => b.addEventListener("click", () => {
   const [badge, body] = STUBS[b.dataset.stub];
   const layer = $("perm-popup-layer");
@@ -637,17 +984,13 @@ document.querySelectorAll(".stub").forEach(b => b.addEventListener("click", () =
   const get = document.createElement("a"); get.className = "primary"; get.textContent = "Get the full app";
   get.href = $("dl-btn").href;
   const ok = document.createElement("button"); ok.className = "ghost"; ok.textContent = "Got it";
-  ok.addEventListener("click", () => { layer.innerHTML = ""; stubOpen = null; });
+  ok.addEventListener("click", () => { layer.innerHTML = ""; });
   row.append(get, ok); card.append(bd, tx, row); layer.appendChild(card);
-  stubOpen = b.dataset.stub;
   logAct("asked about " + b.dataset.stub + " — full app capability");
 }));
 $("tg-term").addEventListener("click", () => {
   logAct("terminal is a full-app surface — human keystrokes only, never the model");
 });
-document.querySelectorAll(".dl-jump").forEach(a => a.addEventListener("click", (e) => {
-  e.preventDefault(); location.href = $("dl-btn").href;
-}));
 
 /* ---- the model picker: the app's grouped menu, lite edition ---- */
 const MODELS = [
@@ -656,22 +999,28 @@ const MODELS = [
   { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", name: "Llama 3.2 1B", meta: "~0.8 GB" },
 ];
 let chosen = MODELS[1];
+try { const saved = localStorage.getItem("lcl-lite-model");
+      const f = MODELS.find(m => m.id === saved); if (f) chosen = f; } catch {}
 const menu = $("model-menu");
 function paintMenu() {
   menu.innerHTML = "";
-  const t1 = document.createElement("div"); t1.className = "tier"; t1.textContent = "Local — in this browser";
+  const t1 = document.createElement("div"); t1.className = "tier";
+  t1.textContent = "Local — in this browser";
   menu.appendChild(t1);
   for (const m of MODELS) {
     const r = document.createElement("button");
     r.className = "row" + (m.id === chosen.id ? " on" : "");
-    r.innerHTML = "";
     const n = document.createElement("span"); n.textContent = m.name;
     const me = document.createElement("span"); me.className = "meta"; me.textContent = m.meta;
     r.append(n, me);
-    r.addEventListener("click", () => { chosen = m; menu.classList.remove("open"); paintModelBtn(); loadModel(); });
+    r.addEventListener("click", () => {
+      chosen = m; try { localStorage.setItem("lcl-lite-model", m.id); } catch {}
+      menu.classList.remove("open"); paintModelBtn(); loadModel();
+    });
     menu.appendChild(r);
   }
-  const t2 = document.createElement("div"); t2.className = "tier"; t2.textContent = "Local nodes · APIs · rented GPU — full app";
+  const t2 = document.createElement("div"); t2.className = "tier";
+  t2.textContent = "Local nodes · APIs · rented GPU — full app";
   menu.appendChild(t2);
   for (const label of ["a machine you own", "an API vendor", "a GPU by the hour"]) {
     const r = document.createElement("button"); r.className = "row dis";
@@ -687,46 +1036,35 @@ function paintModelBtn(loaded) {
 }
 $("model-btn").addEventListener("click", () => { paintMenu(); menu.classList.toggle("open"); });
 document.addEventListener("click", (e) => {
-  if (!menu.contains(e.target) && e.target.id !== "model-btn"
-      && !$("model-btn").contains(e.target)) menu.classList.remove("open");
+  if (!menu.contains(e.target) && !$("model-btn").contains(e.target)) menu.classList.remove("open");
 });
 paintModelBtn();
 
 /* ---- the lite chat: WebLLM, entirely client-side ---- */
-const chat = $("chat"), box = $("box"), send = $("send"),
-      statusEl = $("status"), bar = $("bar");
-let engine = null, busy = false, loading = false;
-const history = [{ role: "system", content:
-  "You are .lcl lite — a small local model running in the visitor's own browser as a demo of " +
-  ".lcl, an offline-first AI workbench for Windows. Be concise and practical. If asked about " +
-  "capabilities like file tools, hardware, or the reference library, say those live in the full " +
-  "app (the download on the landing screen) — you are the in-browser taste of it." }];
-
-function addMsg(cls, text) {
-  const d = document.createElement("div");
-  d.className = cls;
-  d.textContent = text;
-  chat.appendChild(d);
-  $("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
-  return d;
+let engine = null, loading = false;
+function workspaceContext() {
+  const s = activeSession();
+  if (!s.files.length) return "";
+  return "\nThe session's lite workspace holds these files (browser storage):\n" +
+    s.files.map(f => "- " + f.name + " (" + (f.text || "").length + " chars):\n" +
+      String(f.text || "").slice(0, 2000)).join("\n") +
+    "\nUse them when the user asks about their files or notes.";
 }
-function addMeta(seconds) {
-  const d = document.createElement("div");
-  d.className = "msg-meta";
-  const c1 = document.createElement("span"); c1.className = "chip"; c1.textContent = "$0.00 · your GPU";
-  const c2 = document.createElement("span"); c2.className = "chip plain";
-  c2.textContent = chosen.name + " · " + seconds + "s · local";
-  d.append(c1, c2); chat.appendChild(d);
+function systemMsg() {
+  return { role: "system", content:
+    "You are .lcl lite — a small local model running in the visitor's own browser as a demo of " +
+    ".lcl, an offline-first AI workbench for Windows. Be concise and practical. If asked about " +
+    "capabilities like real file tools, hardware, scripts, or the reference library, say those " +
+    "live in the full app (the download on the landing screen) — you are the in-browser taste " +
+    "of it." + workspaceContext() };
 }
-
 async function loadModel() {
-  if (busy || loading) return;
+  if (generating || loading) return;
   if (!navigator.gpu) {
     statusEl.textContent = "this browser has no WebGPU — use Chrome or Edge on desktop";
     return;
   }
   loading = true; engine = null;
-  $("live-dot").className = "dot working";
   statusEl.textContent = "fetching WebLLM…";
   setTask("loading " + chosen.name + "…");
   logAct("loading " + chosen.name);
@@ -746,41 +1084,50 @@ async function loadModel() {
     setTask("");
     logAct(chosen.name + " loaded — inference is local now");
     box.disabled = false; send.disabled = false; box.focus();
-    addMsg("msg-sys", "Model loaded. From here on, inference runs on your GPU — try it.");
   } catch (e) {
     statusEl.textContent = "could not load: " + String(e && e.message || e).slice(0, 120);
     setTask(""); logAct("model load failed");
   }
   loading = false;
 }
-
 async function ask() {
   const q = box.value.trim();
-  if (!q || busy) return;
+  if (!q || generating) return;
   if (!engine) { loadModel(); return; }
-  busy = true; send.disabled = true; box.value = "";
-  addMsg("msg-user", q);
-  history.push({ role: "user", content: q });
-  const out = addMsg("msg-assistant", "…");
+  const s = activeSession();
+  generating = true; send.disabled = true; box.value = "";
+  s.messages.push({ role: "user", content: q });
+  if (s.title === "New session") {
+    s.title = q.slice(0, 42) + (q.length > 42 ? "…" : "");
+    $("chat-title").textContent = s.title;
+  }
+  if (s.messages.length > MAX_MSGS) s.messages = s.messages.slice(-MAX_MSGS);
+  saveStore(); paintSessions();
+  addMsgEl("msg-user", q);
+  const out = addMsgEl("msg-assistant", "…");
   const t0 = Date.now();
   setTask("generating…");
   try {
+    const msgs = [systemMsg(), ...s.messages.map(m => ({ role: m.role, content: m.content }))];
     const stream = await engine.chat.completions.create({
-      messages: history, stream: true, temperature: 0.7, max_tokens: 512 });
+      messages: msgs, stream: true, temperature: 0.7, max_tokens: 512 });
     let text = "";
     for await (const chunk of stream) {
       text += (chunk.choices[0] && chunk.choices[0].delta.content) || "";
       out.textContent = text;
       $("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
     }
-    history.push({ role: "assistant", content: text });
-    addMeta(((Date.now() - t0) / 1000).toFixed(1));
-    logAct("answered locally in " + ((Date.now() - t0) / 1000).toFixed(1) + "s");
+    const secs = ((Date.now() - t0) / 1000).toFixed(1);
+    const meta = chosen.name + " · " + secs + "s · local";
+    s.messages.push({ role: "assistant", content: text, meta });
+    saveStore();
+    addMetaEl(meta);
+    logAct("answered locally in " + secs + "s");
   } catch (e) {
     out.textContent = "generation failed: " + String(e && e.message || e).slice(0, 140);
   }
   setTask("");
-  busy = false; send.disabled = false; box.focus();
+  generating = false; send.disabled = false; paintSessions(); box.focus();
 }
 send.addEventListener("click", ask);
 box.addEventListener("keydown", (e) => {

@@ -82,10 +82,6 @@ check("the page OPENS AS THE APP OPENS — the real new-session landing: the sam
     && /landing-veil/.test(s)
     && s.includes('src="app/assets/wordmark-trim.png"')
     && s.includes("AI on your own machine — nothing leaves it unless you say so"), null);
-check("...with the app's intro-sound toggle, and the app's own fallback: play " +
-      "with audio, drop to muted when the autoplay policy refuses",
-    /intro-sound/.test(s) && /video.muted = true/.test(s)
-    && /♪/.test(s) && /✕/.test(s), null);
 check("...and the app's own two-action choice — the download in the primary " +
       "slot, 'Just chat' dropping into the lite chat like the real transition",
     /Just chat/.test(s) && /landing-skip/.test(s)
@@ -99,46 +95,92 @@ check("THE SKIN IS THE APP'S SKIN — its ground (#050505), its font stack, and 
 check("...down to the app's bubble geometry for the lite chat",
     s.includes("linear-gradient(180deg, #1e1e22, #131316)"), null);
 
-/* ---- THE INTRO HAS A VOICE, AND THE VISITOR GETS TO HEAR IT ----
- * "i still have no intro audio for that new session animation intro" — the
- * browser's autoplay policy refuses unmuted playback on a first visit, so the
- * page must EARN the audio: the first gesture anywhere un-mutes the intro
- * while it still plays; the sound button replays it WITH audio once it has
- * ended; and a policy-muted intro shows a visible cue so nobody has to guess
- * that the animation has a voice. */
-check("a policy-muted intro un-mutes on the FIRST GESTURE anywhere, live, " +
-      "while the clip still plays",
+/* ---- THE INTRO HAS A VOICE, AND THE PAGE OWNS ITS PLAYBACK ----
+ * "still no audio, my machine is not muted. the volume is all the way up,
+ * no audio." — the video element decoded audio without delivering it, so the
+ * intro's voice is now a DEDICATED audio element carrying the clip's own
+ * track, loudness-normalized. The video stays muted (the visual autoplays
+ * under every policy); sound is attempted immediately, and when the autoplay
+ * policy refuses, the first gesture on the landing DELIVERS it — in sync
+ * mid-clip, or as a full replay once the 5-second clip has ended. */
+check("the intro's voice is a dedicated audio element with the clip's own " +
+      "track — the page owns playback instead of trusting the video element",
+    s.includes('id="intro-audio"')
+    && s.includes('src="app/assets/landing-intro.m4a"')
+    && /intro\.play\(\)/.test(s), null);
+check("...the visual always autoplays (video stays muted) so no policy can " +
+      "black the landing",
+    /<video[^>]*muted/.test(s), null);
+check("a policy-refused intro is DELIVERED by the first gesture on the landing " +
+      "— live and in sync mid-clip, a full replay with audio once it has ended",
     /policyMuted/.test(s) && /firstGesture/.test(s)
-    && s.includes('document.addEventListener("pointerdown", firstGesture)'), null);
-check("...the sound button REPLAYS the intro with audio when it already ended — " +
-      "the visitor asked to hear the intro, so they get the intro",
-    /video.ended || video.currentTime/.test(s)
+    && s.includes('document.addEventListener("pointerdown", firstGesture)')
+    && s.includes("intro.currentTime = video.currentTime")
     && s.includes("video.currentTime = 0;"), null);
+check("...a click that is LEAVING the landing never restarts the show behind " +
+      "itself",
+    /leaving/.test(s) && s.includes('closest("#landing-skip")'), null);
 check("...and the forced mute is VISIBLE — the button cues and says 'Click for " +
       "sound' instead of leaving the voice a secret",
     s.includes('soundBtn.classList.add("cue")')
-    && s.includes("Click for sound"), null);
+    && s.includes("Click for sound")
+    && /♪/.test(s) && /✕/.test(s), null);
 {
-    // the clip itself must CARRY audio — a metadata strip once came one flag
+    // both intro assets must CARRY audio — a metadata strip once came one flag
     // away from discarding the track. Guarded only where the local ffprobe
     // exists (it is fetched, not tracked), so a fresh clone still passes.
     const probe = path.join(ROOT, "tools", "ffmpeg", "win-x64", "ffprobe.exe");
     if (fs.existsSync(probe)) {
-        let hasAudio = false;
-        try {
-            const out = execFileSync(probe, ["-v", "quiet", "-show_streams",
-                path.join(ROOT, "app", "assets", "landing.mp4")], { encoding: "utf8" });
-            hasAudio = /codec_type=audio/.test(out);
-        } catch { /* probe failed — fall through to the check */ }
+        const hasAudio = (rel) => {
+            try {
+                const out = execFileSync(probe, ["-v", "quiet", "-show_streams",
+                    path.join(ROOT, rel)], { encoding: "utf8" });
+                return /codec_type=audio/.test(out);
+            } catch { return false; }
+        };
         check("landing.mp4 still carries its AUDIO TRACK — the intro's voice is " +
               "part of the asset, not an accident a re-encode may drop",
-            hasAudio, null);
+            hasAudio("app/assets/landing.mp4"), null);
+        check("...and landing-intro.m4a is a real audio stream, not an empty shell",
+            hasAudio("app/assets/landing-intro.m4a"), null);
     } else {
-        console.log("     (ffprobe not fetched on this machine — audio-track check skipped)");
+        console.log("     (ffprobe not fetched on this machine — audio-track checks skipped)");
     }
 }
 
-/* ---- THE WORKBENCH CHROME, AS DEMO STUBS ----
+/* ---- SESSIONS AND THE WORKSPACE ARE REAL, IN BROWSER STORAGE ----
+ * "the sessions in lite are not functional, amongst other items like
+ * workspaces etc. that should all be built to use local and session storage
+ * in the browser." — so they are: sessions, their transcripts, and a
+ * per-session file workspace persist in localStorage; sessionStorage
+ * remembers that this tab already entered the bench, so a refresh returns
+ * to work instead of replaying the intro. */
+check("sessions PERSIST in localStorage — create, switch, delete, and the " +
+      "transcript survives closing the tab",
+    s.includes('localStorage.setItem(STORE_KEY')
+    && s.includes('"lcl-lite-v1"')
+    && /newSession/.test(s) && /activeSession/.test(s)
+    && s.includes("store.sessions.filter"), null);
+check("...a session titles itself from its first message, the way real " +
+      "workbenches do",
+    s.includes('s.title === "New session"') && s.includes("q.slice(0, 42)"), null);
+check("...and a refresh returns to the BENCH, not the intro — sessionStorage " +
+      "remembers this tab already entered",
+    s.includes('sessionStorage.setItem("lcl-lite-bench"')
+    && s.includes('sessionStorage.getItem("lcl-lite-bench")'), null);
+check("the FILE WORKSPACE is real — per-session files created, edited in a " +
+      "sheet, saved, deleted, all in browser storage",
+    /paintFiles/.test(s) && /openFileSheet/.test(s)
+    && s.includes('id="file-sheet"') && s.includes('id="file-save"')
+    && s.includes('id="file-delete"') && s.includes('id="file-add"'), null);
+check("...and the MODEL READS the workspace — the files ride the system " +
+      "message, so asking about your notes actually works",
+    /workspaceContext/.test(s)
+    && s.includes("s.files.map"), null);
+check("...with an Insert-into-chat path from the editor to the composer",
+    s.includes('id="file-insert"'), null);
+
+/* ---- THE WORKBENCH CHROME, LIVE WHERE LITE CAN BE ----
  * "the lite chat should have a majority of the ui likeness, as demo stubs" —
  * the sidebar with session cards and status dots, the machine dock, the
  * workspace panel's modular sections, the composer's icon row (folder, book,
@@ -150,9 +192,9 @@ check("the bench is the app's three-pane arrangement — sessions sidebar, chat,
     /id="sidebar"/.test(s) && /id="workspace"/.test(s)
     && /tg-side/.test(s) && /tg-ws/.test(s)
     && s.includes('classList.toggle("collapsed")'), null);
-check("the sidebar carries session cards with the app's status dots and the " +
-      "machine dock pinned at the bottom, reading REAL facts (cores, WebGPU)",
-    /session-card/.test(s) && /dot working/.test(s) && /dot approval/.test(s)
+check("the sidebar carries LIVE session cards with the app's status dots (idle, " +
+      "working) and the machine dock reading REAL facts (cores, WebGPU)",
+    /session-card/.test(s) && /"working" : "idle"/.test(s)
     && /machine-dock/.test(s) && /hardwareConcurrency/.test(s), null);
 check("the composer carries the app's icon row — folder, book, shield, mic — " +
       "with the model selector JOINING that row and Send staying with the field",
@@ -174,6 +216,32 @@ check("the workspace panel has the app's modular sections — Files, Tasks, " +
 check("an answered turn carries the app's meta chips — $0.00 on your own GPU, " +
       "said the way the app says it",
     /msg-meta/.test(s) && s.includes("$0.00 · your GPU"), null);
+
+/* ---- PRODUCTION REGISTER BELOW THE FOLD ----
+ * "i also want this more production grade landing page" — a sticky nav over
+ * the sections, how-patching-works, real system requirements, an FAQ with
+ * real answers, and a proper footer. Same skin throughout. */
+check("a sticky site nav over the sections — features, patching, requirements, " +
+      "comparison, FAQ, source, and the download in the primary slot",
+    /id="site-nav"/.test(s) && /#patching/.test(s) && /#requirements/.test(s)
+    && /#faq/.test(s) && /id="nav-dl"/.test(s), null);
+check("the patching story is a SECTION — cut and signed, detected and verified, " +
+      "installed on your click",
+    /Signed one-click patches/.test(s) && /Cut and signed/.test(s)
+    && /Detected and verified/.test(s) && /Installed on your click/.test(s), null);
+check("system requirements are a REAL table — RAM, disk, CPU, GPU optional, " +
+      "network never required",
+    /System requirements/.test(s) && /8 GB/.test(s) && /16 GB/.test(s)
+    && /32 GB/.test(s) && /never required/.test(s), null);
+check("an FAQ that answers the real questions — privacy, the 1.7 GB, training, " +
+      "updates, source, platforms",
+    /id="faq"/.test(s)
+    && /Does anything I type here leave my machine\?/.test(s)
+    && /Is my data used to train anything\?/.test(s)
+    && /Can I read the source\?/.test(s), null);
+check("a real footer — product, source, license columns",
+    /<footer>/.test(s) && /MIT license/.test(s)
+    && s.includes("github.com/FortiviewHoldings/lcl/releases"), null);
 
 /* ---- the claims stay honest ---- */
 check("the tagline is the README's tagline — one product, one sentence",
