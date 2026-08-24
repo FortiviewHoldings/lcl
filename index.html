@@ -125,6 +125,16 @@
     animation: sound-cue 1.6s ease-in-out infinite; }
   @keyframes sound-cue { 0%,100% { transform: none; }
     50% { transform: scale(1.12); box-shadow: 0 0 14px rgba(224,201,143,.35); } }
+  /* the browser refuses sound-on-load for a first visit — SAY what unlocks it */
+  #sound-hint { display: none; position: absolute; top: calc(var(--sp-4) + 42px);
+    right: var(--sp-4); z-index: 3; padding: 4px 10px;
+    border: 1px solid rgba(224,201,143,.25); border-radius: var(--radius-sm);
+    background: rgba(5,5,5,.6); color: var(--attn);
+    font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+    text-transform: uppercase; animation: hint-in 400ms ease-out; }
+  #sound-hint.on { display: block; }
+  @keyframes hint-in { from { opacity: 0; transform: translateY(-4px); }
+                       to { opacity: 1; transform: none; } }
   #scroll-cue { position: absolute; bottom: var(--sp-3); left: 50%;
     transform: translateX(-50%); z-index: 3; color: var(--text-faint);
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
@@ -379,6 +389,7 @@
       <div id="landing-veil"></div>
     </div>
     <button id="intro-sound" title="Intro sound"><span id="intro-sound-icon">♪</span></button>
+    <div id="sound-hint">click anywhere for sound</div>
     <div id="landing-content">
       <img id="landing-title" src="app/assets/wordmark-trim.png" alt=".lcl">
       <div id="landing-sub">AI on your own machine — nothing leaves it unless you say so</div>
@@ -696,6 +707,7 @@ intro.play().catch(() => {
   policyMuted = true;
   soundBtn.classList.add("cue");
   soundBtn.title = "Click for sound";
+  $("sound-hint").classList.add("on");
 });
 function paintSound() {
   soundIcon.textContent = (policyMuted || userMuted) ? "✕" : "♪";
@@ -704,6 +716,7 @@ function paintSound() {
 intro.addEventListener("play", paintSound);
 function playIntroWithSound() {
   policyMuted = false; userMuted = false;
+  $("sound-hint").classList.remove("on");
   if (video.ended || video.currentTime >= (video.duration || 5) - 0.1) {
     video.currentTime = 0; intro.currentTime = 0;   // replay the show, WITH audio
     video.play().catch(() => {});

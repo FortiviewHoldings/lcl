@@ -125,6 +125,12 @@ check("...and the forced mute is VISIBLE — the button cues and says 'Click for
     s.includes('soundBtn.classList.add("cue")')
     && s.includes("Click for sound")
     && /♪/.test(s) && /✕/.test(s), null);
+check("...with an ON-SCREEN caption saying what unlocks it — 'click anywhere " +
+      "for sound' appears when the policy refuses, clears once it is heard",
+    s.includes('id="sound-hint"')
+    && s.includes("click anywhere for sound")
+    && s.includes('$("sound-hint").classList.add("on")')
+    && s.includes('$("sound-hint").classList.remove("on")'), null);
 {
     // both intro assets must CARRY audio — a metadata strip once came one flag
     // away from discarding the track. Guarded only where the local ffprobe
