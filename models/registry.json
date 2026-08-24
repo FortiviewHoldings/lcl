@@ -1,0 +1,327 @@
+{
+  "//": "What each model is FOR. The router scores a task against these traits to pick a model; it never hardcodes a filename. Models live here flat because a model is not owned by an engine - the pairing is decided at call time.",
+
+  "models": [
+    {
+      "id": "phi-3-mini-4k-q4",
+      "file": "Phi-3-mini-4k-instruct-q4.gguf",
+      "family": "phi-3",
+      "params": "3.8B",
+      "quant": "Q4_K_M",
+      "contextMax": 4096,
+      "sizeBytes": 2393231072,
+      "layers": 32,
+      "kvBytesPerToken": 393216,
+      "runtime": "llama.cpp",
+      "license": "MIT",
+      "present": false,
+      "traits": {
+        "chat": 3,
+        "code": 2,
+        "toolCalling": 2,
+        "reasoning": 3,
+        "speed": 4,
+        "longContext": 1
+      },
+      "notes": "Removed from the local fleet 2026-07-28: superseded on every axis by phi-4-mini (same 3.8B at the same quant, 8x the context, stronger reasoning, same MIT license). Its 4k window also made it the one model where grounding injection could evict the conversation. Entry kept so old audit rows still resolve."
+    },
+
+    {
+      "id": "qwen2.5-coder-1.5b-q4",
+      "file": "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf",
+      "family": "qwen2.5-coder",
+      "params": "1.5B",
+      "quant": "Q4_K_M",
+      "contextMax": 32768,
+      "sizeBytes": 1117320768,
+      "layers": 28,
+      "kvBytesPerToken": 28672,
+      "runtime": "llama.cpp",
+      "license": "Apache-2.0",
+      "present": true,
+      "traits": {
+        "chat": 3,
+        "code": 4,
+        "toolCalling": 4,
+        "reasoning": 3,
+        "speed": 5,
+        "longContext": 4
+      },
+      "notes": "The bundled floor - the model every install is guaranteed to have, and the LAST rung of the preferred ladder, never the first choice when anything stronger is on disk. Measured on Arc via Vulkan: 802 t/s prompt, 44.4 t/s generation - 10.5x and 2.5x faster than Phi-3 on CPU, at half the size, with 8x the context."
+    },
+
+    {
+      "id": "qwen2.5-coder-7b-q4",
+      "file": "qwen2.5-coder-7b-instruct-q4_k_m.gguf",
+      "family": "qwen2.5-coder",
+      "params": "7B",
+      "quant": "Q4_K_M",
+      "contextMax": 32768,
+      "sizeBytes": 4683074336,
+      "layers": 28,
+      "kvBytesPerToken": 57344,
+      "runtime": "llama.cpp",
+      "license": "Apache-2.0",
+      "present": true,
+      "traits": {
+        "chat": 4,
+        "code": 5,
+        "toolCalling": 5,
+        "reasoning": 4,
+        "speed": 2,
+        "longContext": 4
+      },
+      "notes": "The heavy coder. On a 15.6 GB shared-memory machine the planner will pick CPU inference for it - GPU offload on an iGPU duplicates the weights in the same physical RAM and the load peak (~10 GB) does not fit. Never co-load with image generation.",
+      "//kv": "kvBytesPerToken = layers x 2 (K+V) x kv_heads x head_dim x 2 bytes fp16. Qwen2.5 7B: 28x2x4x128x2. Qwen2.5 1.5B: 28x2x2x128x2. Phi-3-mini is full MHA (32 heads x 96 dim), hence its 12x bigger cache per token - that is WHY its contextMax is 4k."
+    },
+
+    {
+      "id": "glm-4-9b-0414-iq4xs",
+      "file": "glm-4-9b-0414-iq4_xs.gguf",
+      "family": "glm4",
+      "params": "9B",
+      "quant": "IQ4_XS",
+      "contextMax": 32768,
+      "sizeBytes": 5262275968,
+      "layers": 40,
+      "kvBytesPerToken": 40960,
+      "runtime": "llama.cpp",
+      "license": "MIT",
+      "present": true,
+      "traits": {
+        "chat": 5,
+        "code": 5,
+        "toolCalling": 4,
+        "reasoning": 5,
+        "speed": 1,
+        "longContext": 5
+      },
+      "notes": "The flagship - the largest model this 15.6 GB machine can actually run, and the quant choice is the whole story. Q4_K_M (6.17 GB) was downloaded first and the load planner REFUSED it: 6.17 x 1.1 CPU load peak + 0.45 GB compute + the 2.2 GB OS floor = 9.5 GB needed against 9.15 GB available on an idle box. It ran fine under a bare llama-cli at 512 context (10.1 t/s prompt, 7.3 t/s generation) - which is exactly the trap, because planning for the steady state instead of the load PEAK is what froze this machine before. IQ4_XS holds near-Q4 quality at 5.26 GB, needing ~8.4 GB, so it fits with real margin. CPU-only here (iGPU offload duplicates weights in the same physical RAM); never co-load with image generation. GQA with just 2 KV heads (from GGUF metadata: block_count 40, head_count 32, head_count_kv 2, key/value_length 128) makes it unusually KV-cheap at 40 KB/token fp16 - lighter than the 4B - so context is not what constrains it. arch 'glm4', supported by this llama.cpp build. Note GLM-4.5-Air and GLM-4-32B need 20-60 GB and do NOT fit at any quant.",
+      "//kv": "kvBytesPerToken = block_count 40 x 2 (K+V) x head_count_kv 2 x head_dim 128 x 2 bytes fp16 = 40960."
+    },
+
+    {
+      "id": "sdxl-turbo-q4",
+      "file": "sdxl-turbo-q4_k.gguf",
+      "family": "sdxl-turbo",
+      "params": "3.5B",
+      "quant": "Q4_K",
+      "contextMax": 77,
+      "sizeBytes": 2797752960,
+      "runtime": "stable-diffusion.cpp",
+      "license": "Stability AI Community License",
+      "present": true,
+      "role": "image",
+      "traits": { "imageGen": 4, "speed": 4 },
+      "notes": "Text-to-image, 1-4 step distilled SDXL, native 512x512, loads-generates-exits per call with --vae-tiling and --diffusion-fa. Requantised locally from the fp16 safetensors master (kept alongside) after the q8's real peak (>5.5 GB with untiled VAE) tripped the render watchdog on 15.6 GB. MEASURED 2026-07-27: 3.38 GB peak draw, 16-19s per 512x512 at 4 steps; q8 with the same flags draws 4.77 GB. Same-seed quality comparison showed no visible degradation. The q8 file remains on disk for capable machines."
+    },
+
+    {
+      "id": "qwen3-4b-instruct-2507",
+      "file": "qwen3-4b-instruct-2507-q4_k_m.gguf",
+      "family": "qwen3",
+      "params": "4B",
+      "quant": "Q4_K_M",
+      "contextMax": 32768,
+      "sizeBytes": 2497281120,
+      "layers": 36,
+      "kvBytesPerToken": 147456,
+      "runtime": "llama.cpp",
+      "license": "Apache-2.0",
+      "present": true,
+      "traits": {
+        "chat": 5,
+        "code": 4,
+        "toolCalling": 4,
+        "reasoning": 5,
+        "speed": 3,
+        "longContext": 4
+      },
+      "notes": "Best general model this machine can actually run. Replaced the qwen2.5-3b placeholder, whose license turned out to be Qwen Research (non-commercial) - wrong for a workhorse. Heavy KV (144 KB/token, 8 GQA heads x 36 layers), so the planner will trim context under pressure; typically CPU at 4-8k on this machine."
+    },
+
+    {
+      "id": "phi-4-mini-instruct-q4",
+      "file": "phi-4-mini-instruct-q4_k_m.gguf",
+      "family": "phi-4",
+      "params": "3.8B",
+      "quant": "Q4_K_M",
+      "contextMax": 32768,
+      "sizeBytes": 2491874688,
+      "layers": 32,
+      "kvBytesPerToken": 131072,
+      "runtime": "llama.cpp",
+      "license": "MIT",
+      "present": true,
+      "traits": {
+        "chat": 4,
+        "code": 3,
+        "toolCalling": 3,
+        "reasoning": 5,
+        "speed": 3,
+        "longContext": 4
+      },
+      "notes": "Family-diverse second opinion: a Qwen critic reviewing Qwen output shares its blind spots, so the critic role alternates here. MIT licensed. GQA (8 KV heads x 32 layers x 128 dim = 128 KB/token fp16), planner-friendly at q8 cache."
+    },
+
+    {
+      "id": "qwen3-vl-4b-instruct",
+      "file": "qwen3-vl-4b-instruct-q4_k_m.gguf",
+      "mmproj": "qwen3-vl-4b-mmproj-f16.gguf",
+      "mmprojBytes": 836180640,
+      "family": "qwen3-vl",
+      "params": "4B",
+      "quant": "Q4_K_M",
+      "contextMax": 32768,
+      "sizeBytes": 2497282336,
+      "layers": 36,
+      "kvBytesPerToken": 147456,
+      "runtime": "llama.cpp",
+      "license": "Apache-2.0",
+      "present": true,
+      "vision": true,
+      "traits": {
+        "chat": 4,
+        "code": 3,
+        "toolCalling": 4,
+        "reasoning": 4,
+        "speed": 3,
+        "longContext": 4,
+        "vision": 5
+      },
+      "notes": "The model that SEES. Same Qwen3-4B text tower (planner treats weights as gguf + mmprojBytes, ~3.3 GB effective), projector loaded via llama-server --mmproj, images reach it as data-URI parts through the same chat API. read_image is offered only while this model is the one running."
+    },
+
+    {
+      "id": "deepseek-r1-distill-qwen-7b",
+      "file": "deepseek-r1-distill-qwen-7b-q4_k_m.gguf",
+      "family": "deepseek-r1",
+      "params": "7B",
+      "quant": "Q4_K_M",
+      "contextMax": 32768,
+      "sizeBytes": 4683073504,
+      "layers": 28,
+      "kvBytesPerToken": 57344,
+      "runtime": "llama.cpp",
+      "license": "MIT",
+      "present": true,
+      "reasoningModel": true,
+      "traits": {
+        "chat": 3,
+        "code": 4,
+        "toolCalling": 2,
+        "reasoning": 5,
+        "speed": 2,
+        "longContext": 4
+      },
+      "notes": "A different KIND of model, not another instruct variant: it thinks in the open, emitting a <think> block before its answer, which is what makes it strong on multi-step problems and slow on everything else. Budget tokens accordingly — a short answer still pays for the reasoning that preceded it, and its tool-calling is weak, so route tool work elsewhere. Qwen2 architecture (verified from the GGUF: 28 layers, 4 KV heads, embedding_length 3584 / 28 heads = 128 head_dim), so 57344 bytes/token — the same light KV as the Qwen 7B coder, which is why it holds 16k context where a 7B usually cannot. contextMax capped at 32768 against the file's advertised 131072, which no machine here can honour. MIT licensed.",
+      "//kv": "28 layers x 2 (K+V) x 4 kv_heads x 128 head_dim x 2 bytes fp16 = 57344."
+    },
+
+    {
+      "id": "glm-4-9b-0414-iq3m",
+      "file": "glm-4-9b-0414-iq3_m.gguf",
+      "family": "glm4",
+      "params": "9B",
+      "quant": "IQ3_M",
+      "contextMax": 32768,
+      "sizeBytes": 4721800576,
+      "layers": 40,
+      "kvBytesPerToken": 40960,
+      "runtime": "llama.cpp",
+      "license": "MIT",
+      "present": false,
+      "traits": {
+        "chat": 4,
+        "code": 4,
+        "toolCalling": 4,
+        "reasoning": 4,
+        "speed": 1,
+        "longContext": 5
+      },
+      "notes": "Removed from the local fleet 2026-07-28. Its one purpose was the 0.6 GB band where the IQ4_XS flagship is refused — but qwen3-4b outranks it in that band on the trait table (5/4/5 vs 4/4/4) at half the RAM and several times the speed, so the niche never earns its 4.7 GB. Entry kept so old audit rows still resolve. Geometry identical to its IQ4_XS sibling (40 layers, 2 KV heads x 128); I-quants are slower than K-quants on CPU.",
+      "//alt": "Deliberately NOT the flagship. roles.flagship stays on IQ4_XS."
+    },
+
+    {
+      "id": "gemma-3-4b-it",
+      "file": "gemma-3-4b-it-q4_k_m.gguf",
+      "family": "gemma3",
+      "params": "4B",
+      "quant": "Q4_K_M",
+      "contextMax": 32768,
+      "sizeBytes": 2489758112,
+      "layers": 34,
+      "kvBytesPerToken": 139264,
+      "runtime": "llama.cpp",
+      "license": "Gemma Terms of Use",
+      "present": true,
+      "traits": {
+        "chat": 5,
+        "code": 4,
+        "toolCalling": 4,
+        "reasoning": 4,
+        "speed": 3,
+        "longContext": 5
+      },
+      "notes": "Family diversity that is not another Qwen — a Google model, so its blind spots differ from the rest of the lineup, which is what makes it useful as a second opinion. Metadata read from the GGUF: gemma3 arch, 34 layers, 4 KV heads x 256 dim = 139264 bytes/token fp16. The file advertises contextMax 131072, but that is 8.9 GB of KV cache at q8 on its own, so the registry caps it at 32768 and the planner trims from there — an honest ceiling beats a number the machine cannot honour. The ONLY candidate model that still loads while the machine is busy (~6 GB free), which makes it the practical everyday choice when GLM will not fit.",
+      "//kv": "34 layers x 2 (K+V) x 4 kv_heads x 256 head_dim x 2 bytes fp16 = 139264."
+    },
+
+    {
+      "id": "bge-reranker-v2-m3",
+      "file": "bge-reranker-v2-m3-q8_0.gguf",
+      "family": "bge",
+      "params": "568M",
+      "quant": "Q8_0",
+      "contextMax": 8192,
+      "sizeBytes": 635676416,
+      "layers": 24,
+      "runtime": "llama.cpp",
+      "license": "MIT",
+      "present": true,
+      "role": "reranker",
+      "traits": { "reranking": 5, "speed": 3 },
+      "notes": "The PRECISION half of retrieval. bge-small scores query and passage separately, so it can only say 'these are about similar things' — which is why it clusters a whole library into a 0.5-0.7 band and cannot reliably order within it. This cross-encoder reads the query and passage TOGETHER and scores the pair, so it is far better at deciding which candidate actually answers the question. Too slow to search with (it must score every pair), so it never replaces the embedder — it re-judges the embedder's top ~20. Runs via llama-server --reranking --pooling rank. Encoder architecture, so it has no KV cache and needs no planner entry.",
+      "//role": "Loaded on demand by app/core/reranker.js and stopped after 3 minutes idle — at 640 MB it is worth idling out, unlike the 35 MB embedder."
+    },
+
+    {
+      "id": "bge-small-en-v1.5",
+      "file": "bge-small-en-v1.5-q8_0.gguf",
+      "family": "bge",
+      "params": "33M",
+      "quant": "Q8_0",
+      "contextMax": 512,
+      "sizeBytes": 36806944,
+      "runtime": "llama.cpp",
+      "license": "MIT",
+      "present": true,
+      "role": "embedding",
+      "traits": { "embedding": 4, "speed": 5 },
+      "notes": "Groundwork for local semantic search over linked folders (the feature lands next). 35 MB - cheap enough to keep resident when the search ships."
+    }
+  ],
+
+  "//routing": "Selection is score-based, not a lookup table. A task declares required traits and a minimum bar; the router filters by present+fits-in-memory, then ranks. Ties break toward the smaller model.",
+
+  "//preferred": "The default-model ladder, best first. findModel() walks it and names the first entry whose file is on THIS machine — so a user who downloaded the 4B gets the 4B, instead of silently getting the bundled 1.5B floor forever (which is exactly what happened: every session without an explicit pick ran on the 1.5B coder). Fit is NOT judged here; engine.start() plans against live memory and degrades down this same ladder with a visible note. GLM-9B is deliberately absent: its trait row ties qwen3-4b on chat/reasoning while costing 2x the RAM and running at 7 t/s — it stays the flagship you pick on purpose, not a default.",
+  "preferred": [
+    "qwen3-4b-instruct-2507",
+    "gemma-3-4b-it",
+    "phi-4-mini-instruct-q4",
+    "qwen2.5-coder-1.5b-q4"
+  ],
+
+  "roles": {
+    "default": "qwen3-4b-instruct-2507",
+    "code": "qwen2.5-coder-1.5b-q4",
+    "code-heavy": "qwen2.5-coder-7b-q4",
+    "flagship": "glm-4-9b-0414-iq4xs",
+    "critic": "qwen3-4b-instruct-2507",
+    "embedding": "bge-small-en-v1.5",
+    "reranker": "bge-reranker-v2-m3",
+    "image": "sdxl-turbo-q4",
+    "vision": "qwen3-vl-4b-instruct"
+  }
+}

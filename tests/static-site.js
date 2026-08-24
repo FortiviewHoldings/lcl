@@ -1,0 +1,85 @@
+/**
+ * THE STATIC SITE IS PART OF THE PRODUCT — same bar as everything else.
+ *
+ * The operator's ask: "the index for the static page that is going to serve
+ * .lcl to utilize in browser, and download with a link to click. the download
+ * should install and be the latest release ... a lite version of .lcl,
+ * showcasing its full functionality ... all local, in the static site and
+ * browser."
+ *
+ * What this pins:
+ *   - the page exists at the repo root (GitHub Pages serves it as-is)
+ *   - every LOCAL asset it references exists and is TRACKED (a Pages deploy
+ *     serves the repo tree — an untracked asset is a broken image in prod)
+ *   - the download button resolves the LATEST release's installer via the
+ *     GitHub API, with a static fallback to the releases page when JS/API fail
+ *   - the lite chat is CLIENT-SIDE local inference (WebLLM/WebGPU), refuses
+ *     honestly without WebGPU, and the page carries no analytics or trackers
+ *   - the claims stay honest: lite-vs-full is a table, not a blur
+ */
+const fs = require("fs");
+const path = require("path");
+const { execFileSync } = require("child_process");
+
+const ROOT = path.join(__dirname, "..");
+const FILE = path.join(ROOT, "index.html");
+
+let pass = 0, fail = 0;
+function check(name, cond, detail) {
+    if (cond) { pass++; console.log("PASS |", name); }
+    else { fail++; console.log("FAIL |", name,
+        detail !== undefined ? "- " + String(JSON.stringify(detail)).slice(0, 240) : ""); }
+}
+
+check("index.html exists at the repo root", fs.existsSync(FILE));
+const s = fs.existsSync(FILE) ? fs.readFileSync(FILE, "utf8") : "";
+
+/* ---- local assets: present AND tracked ---- */
+{
+    const refs = [...s.matchAll(/(?:src|href)="([^"]+)"/g)].map(m => m[1])
+        .filter(u => !/^https?:|^#|^mailto:/.test(u));
+    check("the page references local assets (brand art, favicon)", refs.length >= 2, refs);
+    const missing = refs.filter(r => !fs.existsSync(path.join(ROOT, r)));
+    check("every local asset it references exists on disk", missing.length === 0, missing);
+    let untracked = [];
+    try {
+        const tracked = new Set(execFileSync("git", ["-C", ROOT, "ls-files"],
+            { encoding: "utf8" }).split(/\r?\n/));
+        untracked = refs.filter(r => !tracked.has(r.replace(/\\/g, "/")));
+    } catch { /* no git — existence check above stands */ }
+    check("...and every one is TRACKED — Pages serves the repo tree, so an " +
+          "untracked asset is a broken image in production", untracked.length === 0, untracked);
+}
+
+/* ---- the download: latest release, one click, honest fallback ---- */
+check("the download button resolves the LATEST release's installer via the API",
+    s.includes("api.github.com/repos/FortiviewHoldings/lcl/releases/latest")
+    && /Installer.*\\.exe\$\/i?\.test|\/Installer\.\*\\\.exe\$\/i/.test(s), null);
+check("...with a static fallback href to the releases page when JS or the API fail",
+    s.includes('href="https://github.com/FortiviewHoldings/lcl/releases/latest"'), null);
+check("...and it says the release is signed and verified, because that is the story",
+    /Ed25519-signed release/.test(s), null);
+
+/* ---- the lite chat: local, honest, no trackers ---- */
+check("the lite chat runs CLIENT-SIDE via WebLLM", /esm\.run\/@mlc-ai\/web-llm/.test(s), null);
+check("...gated on WebGPU with an honest refusal when absent",
+    /navigator\.gpu/.test(s) && /no WebGPU/.test(s), null);
+check("...streaming, so the demo feels like the app", /stream:\s*true/.test(s), null);
+check("...and it says plainly that inference is local and nothing typed leaves the page",
+    /nothing you type leaves this page/i.test(s), null);
+check("NO analytics, trackers, or beacons — a page about local-first computing " +
+      "must not phone home itself",
+    !/gtag|googletagmanager|google-analytics|plausible|fathom|hotjar|segment\.com|facebook|mixpanel|sentry/i.test(s), null);
+
+/* ---- the claims stay honest ---- */
+check("the tagline is the README's tagline — one product, one sentence",
+    /An AI workbench that runs on your machine, with the network switched off/.test(s), null);
+check("lite-vs-full is an explicit table, not a blur — the lite page does not " +
+      "pretend to carry the tools, the library, or the hardware",
+    /Lite vs full/.test(s) && /60\+, permission-gated/.test(s), null);
+check("the system prompt tells the model what it IS — a lite in-browser demo " +
+      "that points capability questions at the full app",
+    /You are \.lcl lite/.test(s), null);
+
+console.log(`\n${pass}/${pass + fail} static-site checks passed`);
+process.exit(fail ? 1 : 0);

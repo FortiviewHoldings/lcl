@@ -1,0 +1,27 @@
+{
+  "name": "lcl",
+  "productName": ".lcl",
+  "version": "1.0.6",
+  "description": ".lcl — local compute layer",
+  "main": "main.js",
+  "author": "PragOptics",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder --config builder-config.json",
+    "release": "node ../devtools/release.js",
+    "release:fast": "node ../devtools/release.js --skip-tests"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.6.0"
+  },
+  "build": {
+    "extends": "./builder-config.json"
+  },
+  "dependencies": {
+    "pdfjs-dist": "^4.10.38",
+    "tesseract.js": "^7.0.0"
+  }
+}

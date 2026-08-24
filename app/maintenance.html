@@ -1,0 +1,169 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>.lcl</title>
+<style>
+/* The same tokens as the app and the installer, so removing it looks like the
+   same object that installed it. */
+:root{
+  --bg:#050505; --bg-raise:#0b0b0b; --bg-raise-2:#111112;
+  --line:#1c1c1e; --line-strong:#2b2b2e; --line-bright:#3d3d42;
+  --text:#f4f4f5; --text-dim:#a1a1a6; --text-faint:#6b6b70;
+  --accent:#ffffff; --attn:#e0c98f; --danger:#ff6b6b;
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:22px;
+  --fs-micro:9.5px; --fs-tiny:10.5px; --fs-sm:11.5px; --fs-base:12.5px;
+  --fs-md:13.5px; --fs-lg:15px; --fs-xl:20px;
+  --radius-sm:6px; --radius:10px; --radius-lg:14px;
+  --ease:180ms cubic-bezier(.2,.7,.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);overflow:hidden}
+body{font:var(--fs-base)/1.5 "Segoe UI Variable Text","Segoe UI",system-ui,sans-serif;
+  color:var(--text);-webkit-font-smoothing:antialiased}
+#shell{position:absolute;inset:0;
+  background:radial-gradient(120% 90% at 50% -10%,#141418 0%,var(--bg) 62%);
+  display:flex;flex-direction:column;overflow:hidden}
+#bar{height:40px;flex:0 0 40px;display:flex;align-items:center;justify-content:flex-end;
+  padding:0 var(--sp-2);-webkit-app-region:drag}
+#bar button{-webkit-app-region:no-drag;width:32px;height:26px;background:none;border:0;
+  color:var(--text-faint);border-radius:var(--radius-sm);cursor:pointer;font-size:13px}
+#bar button:hover{color:var(--text);background:var(--bg-raise-2)}
+#stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:0 40px;text-align:center}
+h1{font-size:var(--fs-xl);font-weight:600;letter-spacing:-.01em;margin-bottom:var(--sp-3)}
+p.lede{color:var(--text-dim);font-size:var(--fs-md);line-height:1.6;max-width:400px}
+.paths{margin-top:var(--sp-4);font:var(--fs-tiny)/1.6 ui-monospace,Consolas,monospace;
+  color:var(--text-faint);word-break:break-all;max-width:420px}
+
+/* the data choice — the one decision that matters, and it defaults to keep */
+.choice{margin-top:var(--sp-5);display:inline-flex;gap:var(--sp-3);align-items:flex-start;
+  cursor:pointer;user-select:none;text-align:left;max-width:430px;
+  padding:var(--sp-3) var(--sp-4);border:1px solid var(--line-strong);
+  border-radius:var(--radius);background:var(--bg-raise)}
+.choice:hover{border-color:var(--line-bright)}
+.choice .box{flex:0 0 auto;width:17px;height:17px;margin-top:1px;border-radius:5px;
+  border:1px solid var(--line-bright);background:var(--bg-raise-2);display:grid;place-items:center;
+  transition:background var(--ease),border-color var(--ease)}
+.choice.on .box{background:var(--danger);border-color:var(--danger)}
+.choice.on .box::after{content:"";width:9px;height:5px;border:2px solid #050505;
+  border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.choice .t{font-size:var(--fs-sm)}
+.choice .t b{color:var(--text);font-weight:600;display:block;margin-bottom:2px}
+.choice .t span{color:var(--text-faint)}
+.choice.on .t b{color:var(--danger)}
+.keepnote{margin-top:var(--sp-3);font-size:var(--fs-tiny);color:var(--attn);max-width:420px}
+
+#foot{flex:0 0 auto;padding:var(--sp-4) 40px var(--sp-5);display:flex;gap:var(--sp-2);justify-content:center}
+button.act{min-width:130px;padding:10px var(--sp-5);border-radius:999px;border:1px solid var(--line-bright);
+  background:var(--bg-raise-2);color:var(--text);font-size:var(--fs-base);font-weight:500;cursor:pointer;
+  transition:background var(--ease),border-color var(--ease),transform var(--ease)}
+button.act:hover{background:var(--bg-raise);border-color:var(--text-faint)}
+button.act.danger{background:var(--danger);border-color:var(--danger);color:#160707;font-weight:600}
+button.act.danger:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(255,107,107,.22)}
+button.act.primary{background:var(--accent);border-color:var(--accent);color:#050505;font-weight:600}
+.working{color:var(--text-faint);font-size:var(--fs-sm);margin-top:var(--sp-4)}
+</style>
+
+<div id="shell">
+  <div id="bar"><button id="min">&#8211;</button><button id="x">&#10005;</button></div>
+  <div id="stage">
+
+    <section id="uninstall">
+      <h1>Remove .lcl?</h1>
+      <p class="lede">The application and its shortcuts will be removed from this machine.</p>
+      <div class="paths" id="u-paths"></div>
+      <label class="choice" id="databox">
+        <span class="box"></span>
+        <span class="t">
+          <b>Also remove everything I set up</b>
+          <span>Sessions, downloaded models, API keys, and the connection to your
+                Spark. Leave this off and a reinstall comes straight back to a
+                working setup.</span>
+        </span>
+      </label>
+      <div class="keepnote" id="keepnote">Your setup will be kept. A reinstall will find it.</div>
+    </section>
+
+    <section id="repair" hidden>
+      <h1>Repair .lcl</h1>
+      <p class="lede">Reinstalls the application files over the current copy, fixing anything
+        damaged, without touching your sessions or settings.</p>
+      <p class="lede" style="margin-top:var(--sp-3);color:var(--text-faint);font-size:var(--fs-sm)">
+        This re-runs your installer. If it can't be found, you'll be asked where it is.</p>
+    </section>
+
+    <section id="busy" hidden>
+      <h1 id="busy-h">Working…</h1>
+      <p class="lede" id="busy-p"></p>
+    </section>
+
+  </div>
+  <div id="foot">
+    <button class="act" id="cancel">Cancel</button>
+    <button class="act danger" id="go">Remove</button>
+  </div>
+</div>
+
+<script>
+const $ = (x) => document.getElementById(x);
+/* MODE comes from the URL first — main.js passes ?mode=… on loadFile — so the
+ * right screen is chosen with no IPC round-trip. The bridge only confirms it.
+ * This is why a slow or missing bridge can no longer show the wrong view. */
+let MODE = new URLSearchParams(location.search).get("mode") || "uninstall";
+if (MODE === "repair") {
+  $("uninstall").hidden = true;
+  $("repair").hidden = false;
+  $("go").textContent = "Repair";
+  $("go").className = "act primary";
+}
+
+/* THE WINDOW MUST NEVER BE BLANK. The uninstall view is shown in the markup by
+ * default, so even if the bridge is missing or slow the operator sees a real,
+ * safe screen (uninstall, data-keep) rather than the black void a hidden-by-
+ * default layout produced from the packaged build. The bridge only ADJUSTS from
+ * there. */
+/* The view is already correct from the URL above. The bridge only fills in the
+ * install path, and only if it answers — its absence changes nothing the
+ * operator can act on wrongly. */
+(async () => {
+  try {
+    if (!window.maint) return;
+    const p = await window.maint.paths();
+    if (p && p.install) $("u-paths").textContent = p.install;
+  } catch (e) { /* the path line stays blank; the screen is still correct */ }
+})();
+
+$("databox").onclick = () => {
+  const on = $("databox").classList.toggle("on");
+  $("keepnote").textContent = on
+    ? "Everything you set up will be permanently deleted, including the Spark connection."
+    : "Your setup will be kept. A reinstall will find it.";
+  $("keepnote").style.color = on ? "var(--danger)" : "var(--attn)";
+  $("go").textContent = on ? "Remove everything" : "Remove";
+};
+
+$("go").onclick = async () => {
+  $("uninstall").hidden = true; $("repair").hidden = true;
+  $("busy").hidden = false; $("foot").style.display = "none";
+  if (MODE === "repair") {
+    $("busy-h").textContent = "Opening the installer…";
+    $("busy-p").textContent = "The repair continues in the installer window.";
+    const r = await window.maint.repair();
+    if (!r.ok) {
+      $("busy-h").textContent = r.reason === "cancelled" ? "Repair cancelled." : "Could not repair.";
+      $("busy-p").textContent = "Nothing was changed.";
+      setTimeout(() => window.maint.cancel(), 1600);
+    }
+  } else {
+    const removeData = $("databox").classList.contains("on");
+    $("busy-h").textContent = "Removing .lcl…";
+    $("busy-p").textContent = removeData
+      ? "Removing the app and everything you set up."
+      : "Removing the app. Your setup is kept.";
+    await window.maint.uninstall({ removeData });
+  }
+};
+
+$("cancel").onclick = () => window.maint.cancel();
+$("x").onclick = () => window.maint.cancel();
+$("min").onclick = () => window.maint.minimise();
+</script>
