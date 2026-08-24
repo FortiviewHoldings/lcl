@@ -1,0 +1,37 @@
+{
+    "appId": "com.pragoptics.lcl.setup",
+    "productName": "lcl-Setup",
+    "copyright": "© 2026 PragOptics",
+    "directories": {
+        "output": "../dist-runtime33"
+    },
+    "files": [
+        "main.js",
+        "preload.js",
+        "install.js",
+        "payload.js",
+        "ui.html",
+        "assets/**/*",
+        "package.json"
+    ],
+    "win": {
+        "target": [
+            {
+                "target": "portable",
+                "arch": [
+                    "x64"
+                ]
+            }
+        ],
+        "icon": "assets/icon.ico",
+        "artifactName": "lcl-Setup-${version}.${ext}",
+        "publisherName": "PragOptics"
+    },
+    "portable": {
+        "artifactName": "lcl-Setup-${version}.${ext}",
+        "requestExecutionLevel": "admin",
+        "unpackDirName": "lcl-setup"
+    },
+    "compression": "normal",
+    "asar": true
+}

@@ -1,0 +1,191 @@
+[
+  {
+    "name": "NCI CACTUS Chemical Identifier Resolver",
+    "topic": "chemistry",
+    "what": "Chemical identifier conversion: name/CAS number/InChI -> SMILES, InChIKey, molfile (SDF), molecular weight, structure images (GIF/PNG). Pattern: /structure/{identifier}/{representation}. Verified live",
+    "example": "https://cactus.nci.nih.gov/chemical/structure/aspirin/smiles",
+    "terms": "Free public service from NCI/NIH CADD group (U.S. government); no registration, no stated prohibition on programmatic or commercial use. Be polite with request "
+  },
+  {
+    "name": "PubChem PUG REST",
+    "topic": "chemistry",
+    "what": "Comprehensive chemical database: compound properties (MW, formula, XLogP, TPSA), synonyms, CAS lookup, SMILES/InChI conversion, 2D/3D structures, safety (GHS) data via PUG-View. Verified live: toluene",
+    "example": "https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/toluene/property/MolecularFormula,MolecularWeight/JSON",
+    "terms": "Free U.S. government (NLM/NCBI) service; data is public domain, commercial use fine. Usage policy: max 5 requests/sec and 400 requests/min per user."
+  },
+  {
+    "name": "Frankfurter",
+    "topic": "currency",
+    "what": "ECB reference exchange rates: latest, historical, time series, ~30 currencies, updated ~16:00 CET workdays. VERIFIED ALIVE 2026-07-29 (v1 and v2 both HTTP 200). NOTE: exchangerate.host is REJECTED — v",
+    "example": "https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR,GBP",
+    "terms": "Open source, no quotas ('rate-limited to prevent abuse' only), commercial use explicitly allowed per FAQ. ECB data is public. Best keyless currency API as of 20"
+  },
+  {
+    "name": "Open-Elevation",
+    "topic": "elevation",
+    "what": "Elevation lookup for lat/lon points. CAUTION: public instance FAILED TLS handshake from two independent network paths on 2026-07-29 — down or unstable on verify date. Open source and self-hostable (Do",
+    "example": "https://api.open-elevation.com/api/v1/lookup?locations=41.161758,-8.583933",
+    "terms": "No stated restrictions or limits (donation-run public instance, no SLA). Do not build on the public instance — use OpenTopoData or Open-Meteo /v1/elevation inst"
+  },
+  {
+    "name": "OpenTopoData",
+    "topic": "elevation",
+    "what": "Elevation from named datasets (srtm90m, aster30m, etopo1, ned10m...). VERIFIED ALIVE 2026-07-29 (HTTP 200, elevation returned). Also open source and self-hostable.",
+    "example": "https://api.opentopodata.org/v1/srtm90m?locations=41.161758,-8.583933",
+    "terms": "Public API limits: 1,000 calls/day, 1 req/s, max 100 locations per request. No explicit commercial restriction; framed as 'keep the public API sustainable' with"
+  },
+  {
+    "name": "Nominatim",
+    "topic": "geocoding",
+    "what": "Forward/reverse geocoding on OpenStreetMap data. VERIFIED ALIVE 2026-07-29 (HTTP 200 with custom User-Agent).",
+    "example": "https://nominatim.openstreetmap.org/search?q=Berlin&format=jsonv2&limit=1",
+    "terms": "OSMF policy (operations.osmfoundation.org/policies/nominatim/): ABSOLUTE MAX 1 request/second, NO autocomplete-as-you-type, no bulk/systematic grids. Commercial"
+  },
+  {
+    "name": "BGS World Magnetic Model calculator",
+    "topic": "geomagnetism",
+    "what": "Magnetic declination, inclination, total intensity, and secular variation at any lat/lon/altitude/date from WMM 2025 (also IGRF via /igrf/). JSON output. Verified live: 40N,-105W on 2026-07-29 returne",
+    "example": "https://geomag.bgs.ac.uk/web_service/GMModels/wmm/2025/?latitude=40.0&longitude=-105.0&altitude=0&date=2026-07-29&format=json",
+    "terms": "WMM/IGRF model coefficients are public domain (NOAA/BGS joint product); BGS web service is free to use without registration; UK Open Government Licence conventi"
+  },
+  {
+    "name": "USGS Water Services",
+    "topic": "hydrology",
+    "what": "Streamflow (cfs), gage height, water temperature, and other parameters for thousands of U.S. river gauges; JSON (WaterML). Verified live 2026-07-29: Potomac at Little Falls (01646500) returned 2,600 c",
+    "example": "https://waterservices.usgs.gov/nwis/iv/?format=json&sites=01646500&parameterCd=00060,00065&siteStatus=all",
+    "terms": "U.S. government public domain; free commercial use; acknowledge provisional-data disclaimer for recent readings."
+  },
+  {
+    "name": "Overpass API",
+    "topic": "maps",
+    "what": "Query raw OSM features (roads, buildings, waterways, power lines, land use). Overpass QL via GET ?data= or POST form. VERIFIED ALIVE 2026-07-29 (HTTP 200 JSON both GET",
+    "example": "https://overpass-api.de/api/interpreter?data=%5Bout%3Ajson%5D%3Bnode%5B%22amenity%22%3D%22drinking_water%22%5D(50.74%2C7.1%2C50.75%2C7.2)%3Bout%203%3B",
+    "terms": "Etiquette guideline: ~10,000 requests/day and <1 GB/day per user; per-IP slot rate-limiting; default 180 s runtime / 512 MiB per query. No commercial ban, but p"
+  },
+  {
+    "name": "Crystallography Open Database (COD) OPTIMADE API",
+    "topic": "materials",
+    "what": "534k+ experimentally determined crystal structures (lattice parameters, space groups, atomic sites, publication metadata) via OPTIMADE REST. Verified live with filter=elements HAS \"Al\". Caveat found i",
+    "example": "https://www.crystallography.net/cod/optimade/structures?filter=elements%20HAS%20%22Al%22&page_limit=1",
+    "terms": "COD data is open-access and dedicated to the public domain; commercial use explicitly fine; no key."
+  },
+  {
+    "name": "OQMD OPTIMADE API",
+    "topic": "materials",
+    "what": "Open Quantum Materials Database via the standard OPTIMADE REST protocol: DFT-computed crystal structures with formation energy, band gap, space group, lattice vectors, atomic positions, stability. Ver",
+    "example": "https://oqmd.org/optimade/structures?filter=chemical_formula_reduced%3D%22Al2O3%22&page_limit=1",
+    "terms": "Free open database (Northwestern Univ.); citation of the OQMD papers requested; no key, no stated commercial restriction. Note: Materials Project's OPTIMADE end"
+  },
+  {
+    "name": "ipwho.is",
+    "topic": "network",
+    "what": "IP → country/region/city/lat-lon/timezone/ASN. HTTPS, JSON. VERIFIED ALIVE 2026-07-29 (HTTP 200 over HTTPS). NOTE: ip-api.com also works keyless (verified) but its free tier is strictly NON-COMMERCIAL",
+    "example": "https://ipwho.is/8.8.8.8",
+    "terms": "Pricing page (ipwhois.io): free tier 1,000 requests/day, 'Commercial use allowed', HTTPS included. Best keyless commercial-safe IP-geo option found; ipapi.co DN"
+  },
+  {
+    "name": "arXiv API",
+    "topic": "papers",
+    "what": "Search/fetch e-print metadata (Atom XML — the tool must parse XML, not JSON). VERIFIED ALIVE 2026-07-29 (HTTP 200 Atom feed).",
+    "example": "https://export.arxiv.org/api/query?search_query=all:kalman+filter&max_results=5",
+    "terms": "ToU: max 1 request every 3 seconds, single connection, across all your machines. Metadata is CC0 and freely usable commercially; do NOT bulk-mirror or re-serve "
+  },
+  {
+    "name": "Crossref REST API",
+    "topic": "papers",
+    "what": "DOI / scholarly metadata search: works, journals, funders. JSON. VERIFIED ALIVE 2026-07-29 (HTTP 200).",
+    "example": "https://api.crossref.org/works?query=pid+controller&rows=5&select=DOI,title&mailto=you@example.com",
+    "terms": "Explicitly no tokens/registration ('we don't want to unnecessarily burden developers... with cumbersome API tokens'). Dynamic limits advertised in X-Rate-Limit-"
+  },
+  {
+    "name": "NIST CODATA Fundamental Physical Constants",
+    "topic": "physics",
+    "what": "Machine-parseable fixed-width ASCII table of all CODATA 2022 fundamental constants (Quantity, Value, Uncertainty, Unit) — speed of light, Planck constant, G, elementary charge, etc. Verified live: 202",
+    "example": "https://physics.nist.gov/cuu/Constants/Table/allascii.txt",
+    "terms": "U.S. government work, public domain; NIST asks that CODATA be cited as the source. Commercial use fine."
+  },
+  {
+    "name": "Open Library",
+    "topic": "reference",
+    "what": "Book search, works/editions metadata, covers (covers.openlibrary.org). VERIFIED ALIVE 2026-07-29 (HTTP 200 search JSON).",
+    "example": "https://openlibrary.org/search.json?q=field+guide+to+birds&limit=5&fields=title,author_name,first_publish_year",
+    "terms": "1 req/s anonymous, 3 req/s if identified via User-Agent. OK for per-user lookups in a commercial app, but explicitly 'not intended to serve as a bulk data backe"
+  },
+  {
+    "name": "Wikipedia REST API",
+    "topic": "reference",
+    "what": "Page summaries, HTML, media lists, on-this-day. VERIFIED ALIVE 2026-07-29 (HTTP 200, summary JSON for 'Kalman_filter').",
+    "example": "https://en.wikipedia.org/api/rest_v1/page/summary/Kalman_filter",
+    "terms": "Documented limit 200 req/s (far above desktop needs). API use free for any purpose; article content is CC BY-SA 4.0 — the tool output should carry attribution +"
+  },
+  {
+    "name": "eCFR API",
+    "topic": "regulations",
+    "what": "Full text and structure of the Code of Federal Regulations as JSON/XML: OSHA (29 CFR), FCC (47 CFR), FAA (14 CFR), DOT pipeline/pressure (49 CFR), EPA (40 CFR) — the closest thing to a free standards-",
+    "example": "https://www.ecfr.gov/api/versioner/v1/titles.json",
+    "terms": "U.S. federal government work, public domain; free commercial use."
+  },
+  {
+    "name": "USGS Earthquake Catalog",
+    "topic": "seismic",
+    "what": "Global earthquake catalog: query by time, region, magnitude, depth; GeoJSON/CSV/QuakeML output with magnitude, location, depth, significance, tsunami flag. Verified live with GeoJSON FeatureCollection",
+    "example": "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&starttime=2026-07-01&minmagnitude=5&orderby=time",
+    "terms": "U.S. government public domain; free commercial use, no key."
+  },
+  {
+    "name": "USGS Earthquake feeds",
+    "topic": "seismic",
+    "what": "Real-time GeoJSON earthquake feeds (all_hour, significant_week, m4.5_day, ...) plus a parameterized FDSN event query API. VERIFIED ALIVE 2026-07-29 (HTTP 200, live events).",
+    "example": "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson",
+    "terms": "US government public-domain data, no key, no published rate cap; feeds regenerate ~every minute so poll no faster than that. Zero-friction inclusion."
+  },
+  {
+    "name": "NOAA SWPC",
+    "topic": "space-weather",
+    "what": "Real-time space weather JSON products: planetary K-index (geomagnetic activity), solar wind plasma/mag from DSCOVR, GOES X-ray flux, proton flux, aurora forecast, NOAA scales (R/S/G storms). Directory",
+    "example": "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json",
+    "terms": "U.S. government (NOAA) data, public domain, free for commercial use, no key or registration."
+  },
+  {
+    "name": "IETF Datatracker API",
+    "topic": "standards",
+    "what": "Metadata for every RFC and Internet-Draft: title, abstract, status/std-level, obsoletes/updates relations, working group, pages. Verified live: RFC 9110 returned title 'HTTP Semantics', std_level stan",
+    "example": "https://datatracker.ietf.org/api/v1/doc/document/?name=rfc9110&format=json",
+    "terms": "Open public API run by the IETF; no key; heavy bulk users are asked to use rsync mirrors instead. RFC texts are freely redistributable under the IETF Trust lice"
+  },
+  {
+    "name": "USGS Seismic Design Web Services",
+    "topic": "structural",
+    "what": "Code-referenced seismic design parameters by lat/lon for ASCE 7-05/10/16/22, IBC, AASHTO, NEHRP: Ss, S1, SDS, SD1, PGA, seismic design category, full design spectra arrays. Verified live for LA (34.05",
+    "example": "https://earthquake.usgs.gov/ws/building-codes/asce7-16/calculate?latitude=34.05&longitude=-118.25&riskCategory=II&siteClass=C&title=Example",
+    "terms": "U.S. government public domain; free, no key. Real structural-engineering workhorse (values feed directly into ASCE 7 design)."
+  },
+  {
+    "name": "NOAA CO-OPS Tides & Currents API",
+    "topic": "tides",
+    "what": "Water levels, tide predictions, currents, water/air temperature, wind, and datums for U.S. coastal stations, 6-minute resolution, JSON/XML/CSV. Verified live: San Francisco station 9414290 returned a ",
+    "example": "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter?product=water_level&begin_date=20260728&end_date=20260728&datum=MLLW&station=9414290&time_zone=GMT&units=metric&format=json",
+    "terms": "U.S. government public domain; free, no key. Be reasonable with polling frequency."
+  },
+  {
+    "name": "timeapi.io",
+    "topic": "time",
+    "what": "Current time by IANA zone or IP, timezone info, DST, time conversion. JSON. VERIFIED ALIVE 2026-07-29 (HTTP 200). NOTE: worldtimeapi.org is REJECTED — officially sunset (worldtimeapi.org homepage stat",
+    "example": "https://timeapi.io/api/time/current/zone?timeZone=America%2FChicago",
+    "terms": "No published rate limits or commercial restriction; free hosted service with no SLA. For an off-grid app, prefer the OS clock + bundled tzdata and use this only"
+  },
+  {
+    "name": "NLM UCUM Web Service",
+    "topic": "units",
+    "what": "Unit conversion and validation using UCUM codes: /ucumtransform/{value}/from/{unit}/to/{unit}, /isValidUCUM/{unit}, /toBaseUnits/{unit}. Covers SI, imperial, and engineering units ([psi], [in_i], [ft_",
+    "example": "https://ucum.nlm.nih.gov/ucum-service/v1/ucumtransform/100/from/%5Bpsi%5D/to/kPa",
+    "terms": "Free U.S. National Library of Medicine service, provided as-is with no correctness guarantee; no commercial restriction stated. Do your own validation for safet"
+  },
+  {
+    "name": "NWS / api.weather.gov",
+    "topic": "weather",
+    "what": "US forecasts, alerts, observations, gridpoint data. GeoJSON/JSON-LD. US coverage only. VERIFIED ALIVE 2026-07-29 (HTTP 200 with User-Agent set).",
+    "example": "https://api.weather.gov/points/39.7456,-97.0892",
+    "terms": "US government open data: 'free to use for any purpose', no fees. Rate limit undisclosed but 'generous'; blocked requests clear in ~5 s. Docs note key-based auth"
+  }
+]

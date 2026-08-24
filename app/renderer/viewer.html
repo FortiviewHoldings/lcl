@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <!-- frame-src data: + inline styles exist for ONE feature: rendering a
+         workspace .html file inside a sandboxed, script-less iframe. The
+         sandbox attribute grants nothing (no scripts, no forms, no popups,
+         no same-origin), so the page is ink, not a program. -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-src 'self' data:;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>.lcl viewer</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="viewer.css" />
+</head>
+<body>
+    <!-- The pop-out file window. One file per window, framed by the OS so it is
+         sizeable and snappable like any other window. Same CSP, same preload,
+         same read path as the in-panel viewer — this page can show a file and
+         do nothing else. -->
+    <div id="v-app">
+        <div id="v-head">
+            <span id="v-name">…</span>
+            <span id="v-size"></span>
+            <button id="v-refresh" class="ghost small" title="Re-read the file">Refresh</button>
+        </div>
+        <div id="v-body"><div class="ws-note">reading…</div></div>
+    </div>
+    <script src="syntax.js"></script>
+    <script src="viewer.js"></script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+# ---------------------------------------------------------------
+# .lcl — version control ignores
+# ---------------------------------------------------------------
+
+# Model weights. Multi-GB and re-downloadable; GitHub rejects files
+# over 100 MB outright. Models live in the user's data dir or are
+# side-loaded, never in the repo.
+*.gguf
+*.safetensors
+*.bin
+*.onnx
+*.pt
+*.pth
+models/*
+!models/registry.json
+!models/.gitkeep
+
+# OCR language data (23 MB, re-downloadable, Apache-2.0). Fetched into
+# tools/tesseract/ — see that folder's README for the one-liner.
+*.traineddata
+
+# Dependencies and build output
+node_modules/
+dist/
+build/
+# ...but app/build is SOURCE (hand-written NSIS installer scripts), not build
+# output. The blanket pattern above silently kept installer.nsh out of git —
+# every installer fix would have vanished on a fresh clone.
+!app/build/
+!app/build/**
+out/
+*.tsbuildinfo
+
+# Runtime state — sessions, file backups, the engine auth token,
+# user settings. Private to each install and must never be committed.
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# The 0-byte placeholder interpreter; a real embedded runtime is
+# fetched at package time, not tracked here.
+python/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs and scratch
+*.log
+npm-debug.log*
+*.tmp
+*.local
+knowledge/*
+!knowledge/MANIFEST.md
+
+# ---------------------------------------------------------------
+# NOT SOURCE — fetched, not committed.
+#
+# Third-party runtimes and tool executables. Two of these exceed
+# GitHub's hard 100 MB file limit, so a repo carrying them cannot be
+# pushed at all; the rest is immutable, re-downloadable content with
+# no business in version history. Their LICENCE files DO stay.
+# Rebuild a fresh clone with:
+#   node devtools/fetch-binaries.js     runtimes, tools, models
+#   node devtools/fetch-knowledge.js    the shipped corpus
+# ---------------------------------------------------------------
+runtimes/**/*.exe
+runtimes/**/*.dll
+runtimes/**/*.dylib
+runtimes/**/*.so
+runtimes/**/*.tar.gz
+tools/**/*.exe
+tools/**/*.dll
+tools/**/*.xml
+tools/**/*.icc
+tools/**/*.bin
+tools/**/config8
+
+# electron-builder installer-runtime output (asar-lock workaround bumps the dir)
+devtools/dist-runtime*/
+
+# the monotonic patch-number counter — machine-local build state, bumped every
+# build; tracking it would dirty the tree on every release
+devtools/build-seq.json
+
+# RELEASE SIGNING — the PRIVATE key must NEVER enter the repo (the PUBLIC key,
+# release-pubkey.pem, is committed and shipped on purpose). Belt-and-suspenders
+# in case a key path is ever pointed inside the tree.
+release.key
+*.release.key
+release-signing*
+.lcl-release-signing/
+
+# ANCIENT KNOWLEDGE working documents — session audit narrative and the
+# operator's standing ground rules, written to a linked workspace root by the
+# audit loop. Linking THIS repo as a workspace (the self-patch flow) must never
+# put personal audit content one `git add -A` from public. The runtime appends
+# these same patterns to a workspace's .gitignore (ancientKnowledge.js
+# ensureIgnored) — pre-seeding them here is belt-and-suspenders, and stops that
+# append from dirtying the tracked file.
+ancient_knowledge.md
+ancient_knowledge-*.md
+ancient_knowledge.rules.md
+ancient_knowledge-*.rules.md
+
+# ---------------------------------------------------------------
+# LOCAL / INTERNAL — not part of the public repo. Working notes, dev tooling
+# state, and dev-only artifacts. The public-facing doc is README.md at the root.
+# ---------------------------------------------------------------
+PROJECT.md
+# internal build/design/planning notes
+docs/
+
+# Claude Code tooling state — worktrees, memory, session files. Never source.
+.claude/
+
+# stale root duplicates of app/main.js and app/renderer/app.js — the real files
+# live under app/.
+/main.js
+/app.js
+
+# local bleed-guard denylist and the dev test tied to the local notes
+tests/no-bleed.js
+tests/project-doc.js
+
+# dev-only local installer screenshots — not referenced by code
+devtools/installer/shots/

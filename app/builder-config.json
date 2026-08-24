@@ -1,0 +1,169 @@
+{
+  "appId": "com.pragoptics.lcl",
+  "productName": ".lcl",
+  "copyright": "© 2026 PragOptics",
+  "directories": {
+    "output": "../dist",
+    "buildResources": "assets"
+  },
+  "files": [
+    "main.js",
+    "preload.js",
+    "maintenance.js",
+    "maintenance.html",
+    "maintenance-preload.js",
+    "renderer/**/*",
+    "assets/**/*",
+    "package.json",
+    "node_modules/pdfjs-dist/legacy/**/*",
+    "node_modules/pdfjs-dist/package.json",
+    "node_modules/tesseract.js/**/*",
+    "node_modules/tesseract.js-core/**/*",
+    "node_modules/bmp-js/**/*",
+    "node_modules/idb-keyval/**/*",
+    "node_modules/is-url/**/*",
+    "node_modules/node-fetch/**/*",
+    "node_modules/whatwg-url/**/*",
+    "node_modules/tr46/**/*",
+    "node_modules/webidl-conversions/**/*",
+    "node_modules/opencollective-postinstall/**/*",
+    "node_modules/regenerator-runtime/**/*",
+    "node_modules/wasm-feature-detect/**/*",
+    "node_modules/zlibjs/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "../runtimes",
+      "to": "runtimes",
+      "filter": [
+        "**/*.exe",
+        "**/*.dll",
+        "**/*.dylib",
+        "**/*.so",
+        "**/llama-server",
+        "**/engine.json",
+        "**/config.json"
+      ]
+    },
+    {
+      "from": "../.lcl.engine",
+      "to": ".lcl.engine",
+      "filter": [
+        "core/**/*.js",
+        "core/**/*.json",
+        "core/**/*.ps1",
+        "policy/**/*.js",
+        "raster/**/*.js",
+        "raster/**/*.html",
+        "ENGINE.md"
+      ]
+    },
+    {
+      "from": "../models",
+      "to": "models",
+      "filter": [
+        "registry.json",
+        "qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
+      ]
+    },
+    {
+      "from": "../tools",
+      "to": "tools",
+      "filter": [
+        "**/*.js",
+        "**/*.json",
+        "**/*.py",
+        "**/ffmpeg.exe",
+        "**/ffprobe.exe",
+        "**/LICENSE.txt",
+        "**/*.traineddata",
+        "**/*.bin",
+        "**/whisper-cli.exe",
+        "**/whisper.dll",
+        "**/ggml*.dll",
+        "**/*.exe",
+        "**/*.dll",
+        "**/*.xml",
+        "**/*.icc",
+        "**/config8",
+        "**/NOTICE.txt"
+      ]
+    },
+    {
+      "from": "node_modules",
+      "to": "node_modules",
+      "filter": [
+        "pdfjs-dist/**/*",
+        "tesseract.js/**/*",
+        "tesseract.js-core/**/*",
+        "bmp-js/**/*",
+        "idb-keyval/**/*",
+        "is-url/**/*",
+        "node-fetch/**/*",
+        "whatwg-url/**/*",
+        "tr46/**/*",
+        "webidl-conversions/**/*",
+        "regenerator-runtime/**/*",
+        "wasm-feature-detect/**/*",
+        "zlibjs/**/*"
+      ]
+    },
+    {
+      "from": "../knowledge",
+      "to": "knowledge",
+      "filter": [
+        "index.json",
+        "vectors.f32",
+        "MANIFEST.md",
+        "sources.json",
+        "text/**/*"
+      ]
+    }
+  ],
+  "asar": true,
+  "asarUnpack": [
+    "node_modules/pdfjs-dist/**/*",
+    "node_modules/tesseract.js/**/*",
+    "node_modules/tesseract.js-core/**/*",
+    "node_modules/bmp-js/**/*",
+    "node_modules/idb-keyval/**/*",
+    "node_modules/is-url/**/*",
+    "node_modules/node-fetch/**/*",
+    "node_modules/regenerator-runtime/**/*",
+    "node_modules/wasm-feature-detect/**/*",
+    "node_modules/zlibjs/**/*",
+    "node_modules/whatwg-url/**/*",
+    "node_modules/tr46/**/*",
+    "node_modules/webidl-conversions/**/*"
+  ],
+  "compression": "maximum",
+  "mac": {
+    "target": [
+      {
+        "target": "dmg",
+        "arch": [
+          "arm64"
+        ]
+      }
+    ],
+    "icon": "assets/icon.png",
+    "category": "public.app-category.developer-tools",
+    "artifactName": "lcl-${version}-arm64.${ext}",
+    "darkModeSupport": true,
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false,
+    "identity": null
+  },
+  "win": {
+    "target": [
+      {
+        "target": "dir",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "icon": "assets/icon.ico",
+    "publisherName": "PragOptics"
+  }
+}

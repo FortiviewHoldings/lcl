@@ -1,0 +1,73 @@
+{
+  "id": "llama.cpp",
+  "name": "llama.cpp",
+  "upstream": "llama.cpp b10107 (MIT)",
+  "kind": "llm",
+  "license": "MIT",
+  "redistributable": true,
+  "protocol": "openai-chat",
+
+  "//naming": "The engine is .lcl.engine — the folder it lives under and the server binary both carry the name, so Task Manager shows .lcl.engine.exe instead of a generic llama-server.exe. The id stays 'llama.cpp' because it is the RUNTIME identifier that model registry entries and audit rows match on; renaming it would falsify history. The support DLLs (ggml*.dll, llama*.dll, *-impl.dll) MUST keep their upstream names: every exe's import table references them by literal string, and a renamed DLL simply fails to load. If .lcl ever ships a native module of its own, it will be named .lcl.ext.dll.",
+
+  "//": "ONE package per machine type. Each build ships its GPU backend AND the full CPU backend set, so the same package runs on a machine with no GPU at all — verified by hiding ggml-vulkan.dll, after which llama-server still starts and reports no devices instead of failing. There is deliberately no separate CPU-only build to keep in sync.",
+
+  "builds": [
+    {
+      "id": "win-x64",
+      "platform": "win32",
+      "arch": "x64",
+      "accelerator": "vulkan",
+      "dir": "win-x64",
+      "binary": "llama-server.exe",
+      "gpuLayers": 99,
+      "cpuFallback": true,
+      "present": true,
+      "notes": "Vulkan + 14 CPU backend variants. Measured on Core Ultra 7 155H / Arc: Phi-3 prompt 76.7 -> 302.7 t/s (3.9x), Qwen2.5-Coder 578 -> 802 t/s."
+    },
+    {
+      "id": "mac-arm64",
+      "platform": "darwin",
+      "arch": "arm64",
+      "accelerator": "metal",
+      "dir": "mac-arm64",
+      "binary": "llama-server",
+      "gpuLayers": 99,
+      "cpuFallback": true,
+      "present": false,
+      "packaged": "llama-b10107-bin-macos-arm64.tar.gz",
+      "notes": "Apple Silicon, Metal. Ships as a TARBALL, not loose files: the dylibs are held together by symlinks (libllama.dylib -> libllama.0.dylib -> libllama.0.0.10107.dylib) and marked executable, and unpacking that on Windows silently drops both — producing a build that cannot load its own engine. tools/mac-setup.sh extracts it natively on the Mac, which is also where the .dmg must be built (electron-builder needs hdiutil). present:false until that runs; selectBuild() checks the binary exists, so the manifest never lies about what is usable. Same b10107 build as win-x64, so behaviour matches across platforms."
+    },
+    {
+      "id": "linux-x64",
+      "platform": "linux",
+      "arch": "x64",
+      "accelerator": "vulkan",
+      "dir": "linux-x64",
+      "binary": "llama-server",
+      "gpuLayers": 99,
+      "cpuFallback": true,
+      "present": false
+    }
+  ],
+
+  "capabilities": {
+    "modalities": ["text"],
+    "formats": ["gguf"],
+    "streaming": true,
+    "embeddings": true,
+    "toolCalling": "prompted",
+    "contextMax": 131072
+  },
+
+  "args": {
+    "model": "--model",
+    "host": "--host",
+    "port": "--port",
+    "threads": "--threads",
+    "contextSize": "--ctx-size",
+    "gpuLayers": "--gpu-layers",
+    "apiKey": "--api-key"
+  },
+
+  "health": { "path": "/health", "okField": "status", "okValue": "ok" }
+}
