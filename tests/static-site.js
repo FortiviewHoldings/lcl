@@ -276,6 +276,13 @@ check("a sticky site nav over the sections — features, patching, requirements,
       "comparison, FAQ, source, and the download in the primary slot",
     /id="site-nav"/.test(s) && /#patching/.test(s) && /#requirements/.test(s)
     && /#faq/.test(s) && /id="nav-dl"/.test(s), null);
+/* "the .lcl app logo you have in the header ... is too small. you also have
+ * .lcl as text. you can put only the app icon there" */
+check("the nav brand is the APP ICON itself — the full-resolution icon at real " +
+      "size, no text label beside it",
+    /id="nav-home"[^>]*><img\s+src="app\/assets\/icon\.png"/.test(s.replace(/\n\s*/g, " "))
+    && /#site-nav img \{ width: 32px; height: 32px;/.test(s)
+    && !/class="brand"/.test(s), null);
 check("the patching story is a SECTION — cut and signed, detected and verified, " +
       "installed on your click",
     /Signed one-click patches/.test(s) && /Cut and signed/.test(s)

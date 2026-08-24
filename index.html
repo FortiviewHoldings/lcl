@@ -79,10 +79,11 @@
     align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-4);
     background: rgba(5,5,5,.88); backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line); }
-  #site-nav img { width: 18px; height: 18px; }
-  #site-nav .brand { font-weight: 700; letter-spacing: var(--ls-tight); }
-  #nav-home { display: inline-flex; align-items: center; gap: var(--sp-2);
+  /* the brand is the APP ICON itself — full size, no text beside it */
+  #site-nav img { width: 32px; height: 32px; border-radius: 8px; }
+  #nav-home { display: inline-flex; align-items: center;
     text-decoration: none; }
+  #nav-home:hover img { filter: brightness(1.15); }
   #site-nav .links { flex: 1; display: flex; gap: var(--sp-3); justify-content: center;
     flex-wrap: wrap; }
   #site-nav .links a { color: var(--text-dim); text-decoration: none;
@@ -605,7 +606,7 @@
 
 <nav id="site-nav">
   <a id="nav-home" href="#" title="Back to the opening screen"><img
-    src="app/assets/mark-small.png" alt=""><span class="brand">.lcl</span></a>
+    src="app/assets/icon.png" alt=".lcl"></a>
   <span class="links">
     <a href="#features">Features</a>
     <a href="#asks">Uses</a>
