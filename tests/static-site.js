@@ -99,6 +99,43 @@ check("THE SKIN IS THE APP'S SKIN — its ground (#050505), its font stack, and 
 check("...down to the app's bubble geometry for the lite chat",
     s.includes("linear-gradient(180deg, #1e1e22, #131316)"), null);
 
+/* ---- THE WORKBENCH CHROME, AS DEMO STUBS ----
+ * "the lite chat should have a majority of the ui likeness, as demo stubs" —
+ * the sidebar with session cards and status dots, the machine dock, the
+ * workspace panel's modular sections, the composer's icon row (folder, book,
+ * shield, mic, the model selector joining it), and the permission popup AT
+ * the composer — live where the lite really does the thing, honest stubs
+ * where only the full app can. */
+check("the bench is the app's three-pane arrangement — sessions sidebar, chat, " +
+      "workspace panel — with working collapse toggles like the app's",
+    /id="sidebar"/.test(s) && /id="workspace"/.test(s)
+    && /tg-side/.test(s) && /tg-ws/.test(s)
+    && s.includes('classList.toggle("collapsed")'), null);
+check("the sidebar carries session cards with the app's status dots and the " +
+      "machine dock pinned at the bottom, reading REAL facts (cores, WebGPU)",
+    /session-card/.test(s) && /dot working/.test(s) && /dot approval/.test(s)
+    && /machine-dock/.test(s) && /hardwareConcurrency/.test(s), null);
+check("the composer carries the app's icon row — folder, book, shield, mic — " +
+      "with the model selector JOINING that row and Send staying with the field",
+    /data-stub="folder"/.test(s) && /data-stub="book"/.test(s)
+    && /data-stub="shield"/.test(s) && /data-stub="mic"/.test(s)
+    && /id="model-btn"/.test(s), null);
+check("every stub raises the app's own ask — a perm-prompt AT the composer, " +
+      "naming the capability and pointing at the download, never a dead button",
+    /perm-popup-layer/.test(s) && /perm-prompt/.test(s)
+    && /Get the full app/.test(s), null);
+check("the model menu is the app's grouped picker in miniature — the local tier " +
+      "live, the node/API/GPU tiers present and honestly marked full-app",
+    /Local — in this browser/.test(s)
+    && s.includes("Local nodes · APIs · rented GPU — full app"), null);
+check("the workspace panel has the app's modular sections — Files, Tasks, " +
+      "Activity, Permissions — with minimize controls, Tasks and Activity LIVE",
+    /ws-sec/.test(s) && /data-min/.test(s)
+    && s.includes("setTask(") && s.includes("logAct("), null);
+check("an answered turn carries the app's meta chips — $0.00 on your own GPU, " +
+      "said the way the app says it",
+    /msg-meta/.test(s) && s.includes("$0.00 · your GPU"), null);
+
 /* ---- the claims stay honest ---- */
 check("the tagline is the README's tagline — one product, one sentence",
     /An AI workbench that runs on your machine, with the network switched off/.test(s), null);
