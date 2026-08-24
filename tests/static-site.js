@@ -298,11 +298,17 @@ check("a real footer — product, source, license columns",
  * "i think the lite vs full table is severely lacking, and i also think that
  * a little arrow to scroll down, or some sort of hint that there is more
  * under that chat ... a lot more revealing about what the full app does" */
-check("the bench SAYS the page continues — a scroll cue under the composer, " +
-      "pointing at the sections below the chat",
+/* "lets make that a screen width bar, like a footer almost, that becomes the
+ * header of the section below, or a page break. something not mixed into the
+ * rest of the ui" */
+check("the read-below cue is a SCREEN-WIDTH PAGE BREAK — outside the chat " +
+      "column, closing the app frame, shown only when the bench is live",
     s.includes('id="bench-more"')
     && s.includes('href="#features"')
-    && /this chat sits on a full workbench/.test(s), null);
+    && /this chat sits on a full workbench/.test(s)
+    && s.indexOf('id="bench-more"') > s.indexOf('id="workspace"')
+    && s.includes("#bench.live + #bench-more { display: block; }")
+    && /#bench-more \{ display: none;/.test(s), null);
 check("...and a short viewport GROWS the frame instead of clipping the " +
       "composer — min-height on the app shell, min-height:0 on the chat scroll",
     s.includes("min-height: 100vh")

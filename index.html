@@ -267,14 +267,16 @@
             font-size: var(--fs-tiny); letter-spacing: var(--ls-tight);
             text-align: right; }
   #bar-track { height: 2px; margin-top: var(--sp-2); }
-  /* the chat lives on a page that CONTINUES — say so under the composer,
-     lit well enough to actually be read */
-  #bench-more { flex: none; display: block; text-align: center;
-    padding: 7px 0 9px; font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+  /* the chat lives on a page that CONTINUES — a screen-width PAGE BREAK
+     closing the app frame, standing apart from the chat's own chrome */
+  #bench-more { display: none; flex: none; text-align: center;
+    padding: 11px 16px 13px; font-size: var(--fs-tiny);
+    letter-spacing: var(--ls-wide);
     text-transform: uppercase; color: #c9c9cf; text-decoration: none;
     text-shadow: 0 0 12px rgba(255,255,255,.28);
-    border-top: 1px solid var(--line-strong);
-    background: linear-gradient(0deg, #0d0d10, var(--bg)); }
+    border-top: 1px solid var(--line-bright);
+    background: linear-gradient(180deg, #0e0e11, #070708); }
+  #bench.live + #bench-more { display: block; }
   #bench-more:hover { color: var(--text);
     text-shadow: 0 0 14px rgba(255,255,255,.45); }
   #bench-more .arr { display: inline-block; color: var(--attn);
@@ -531,8 +533,6 @@
           <div id="bar-track"><b id="bar"></b></div>
         </div>
       </div>
-      <a id="bench-more" href="#features"><span class="arr">↓</span>
-        this chat sits on a full workbench — see what it does</a>
     </div>
 
     <div id="workspace">
@@ -576,6 +576,10 @@
       </div>
     </div>
   </div>
+  <!-- the page break: a screen-width band closing the app frame and opening
+       the sections below — its own element, not part of the chat's chrome -->
+  <a id="bench-more" href="#features"><span class="arr">↓</span>
+    this chat sits on a full workbench — see what it does</a>
 </div>
 
 <!-- the lite file editor -->
