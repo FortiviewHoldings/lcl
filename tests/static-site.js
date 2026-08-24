@@ -71,6 +71,34 @@ check("NO analytics, trackers, or beacons — a page about local-first computing
       "must not phone home itself",
     !/gtag|googletagmanager|google-analytics|plausible|fathom|hotjar|segment\.com|facebook|mixpanel|sentry/i.test(s), null);
 
+/* ---- IT LOOKS LIKE THE APP, because that is the entire point ----
+ * The operator's correction, verbatim: "i said i wanted it to open with my
+ * new session animation, the audio file that plays, all the logo, style,
+ * all of that good stuff ... a lite version meaning, it looks the same, so
+ * a user actually sees what they are getting before they download." */
+check("the page OPENS AS THE APP OPENS — the real new-session landing: the same " +
+      "video clip, veil, wordmark and subtitle the app shows",
+    s.includes('src="app/assets/landing.mp4"')
+    && /landing-veil/.test(s)
+    && s.includes('src="app/assets/wordmark-trim.png"')
+    && s.includes("AI on your own machine — nothing leaves it unless you say so"), null);
+check("...with the app's intro-sound toggle, and the app's own fallback: play " +
+      "with audio, drop to muted when the autoplay policy refuses",
+    /intro-sound/.test(s) && /video.muted = true/.test(s)
+    && /♪/.test(s) && /✕/.test(s), null);
+check("...and the app's own two-action choice — the download in the primary " +
+      "slot, 'Just chat' dropping into the lite chat like the real transition",
+    /Just chat/.test(s) && /landing-skip/.test(s)
+    && s.includes('classList.add("hidden")'), null);
+check("THE SKIN IS THE APP'S SKIN — its ground (#050505), its font stack, and " +
+      "the white-fill primary button, not a website's invented palette",
+    s.includes("#050505")
+    && s.includes('"Segoe UI Variable Display"')
+    && s.includes("linear-gradient(180deg, #ffffff, #d8d8da)")
+    && s.includes("#030303"), null);
+check("...down to the app's bubble geometry for the lite chat",
+    s.includes("linear-gradient(180deg, #1e1e22, #131316)"), null);
+
 /* ---- the claims stay honest ---- */
 check("the tagline is the README's tagline — one product, one sentence",
     /An AI workbench that runs on your machine, with the network switched off/.test(s), null);

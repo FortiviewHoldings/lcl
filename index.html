@@ -4,145 +4,242 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>.lcl — an AI workbench that runs on your machine</title>
-<meta name="description" content=".lcl runs language models, tools, and a cited reference library entirely on your own hardware. Try the lite version in your browser — fully local via WebGPU — then download the full app.">
+<meta name="description" content="An AI workbench that runs on your machine, with the network switched off. This page opens the way the app does — try the lite version in your browser, then download the real thing.">
 <link rel="icon" type="image/png" href="app/assets/icon.png">
 <style>
+  /* ============================================================
+     THE APP'S OWN SKIN. Every token below is copied from
+     app/renderer/styles.css — the point of this page is that a
+     visitor sees exactly what they are downloading, so the ground,
+     the type, the buttons and the landing treatment are the app's,
+     not a website's.
+     ============================================================ */
   :root {
-    --bg: #0b0b0f; --raise: #16181d; --card: #111114; --line: rgba(255,255,255,.09);
-    --text: #e8e8ec; --dim: #9a9aa4; --faint: #6d6d78;
-    --accent: #8fb8e8; --good: #9adfae; --radius: 12px;
+    --bg:          #050505;
+    --bg-raise:    #0b0b0b;
+    --bg-raise-2:  #111112;
+    --line:        #1c1c1e;
+    --line-strong: #2b2b2e;
+    --line-bright: #3d3d42;
+    --text:        #f4f4f5;
+    --text-dim:    #a1a1a6;
+    --text-faint:  #6b6b70;
+    --accent:      #ffffff;
+    --risk-green:  #6fce8f;
+    --radius-xs: 5px; --radius-sm: 7px; --radius: 11px; --radius-lg: 14px;
+    --fs-tiny: 10.5px; --fs-base: 12.5px; --fs-md: 13.5px; --fs-lg: 14.5px;
+    --ls-tight: 0.2px; --ls-wide: 1.2px;
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px;
+    --font: "Segoe UI Variable Display", "Segoe UI", Inter, Roboto, system-ui, sans-serif;
   }
   * { box-sizing: border-box; margin: 0; }
-  html { scroll-behavior: smooth; }
+  html, body { height: 100%; }
   body { background: var(--bg); color: var(--text);
-         font: 15px/1.6 system-ui, "Segoe UI", sans-serif; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+         font-family: var(--font); font-size: var(--fs-base); line-height: 1.55; }
+  a { color: var(--text); }
+  button { font-family: inherit; color: inherit; background: none; border: none; cursor: pointer; }
 
-  header { padding: 72px 0 40px; text-align: center;
-           background: radial-gradient(ellipse 90% 60% at 50% -10%, rgba(143,184,232,.14), transparent); }
-  header img.wordmark { height: 64px; max-width: 88%; object-fit: contain; }
-  header h1 { position: absolute; left: -9999px; }   /* the wordmark IS the title */
-  .tagline { margin-top: 18px; font-size: 21px; color: var(--text); font-weight: 600; }
-  .subline { margin-top: 10px; color: var(--dim); max-width: 640px;
-             margin-left: auto; margin-right: auto; }
+  /* ---- the app's buttons, verbatim ---- */
+  .primary, .ghost {
+    position: relative; overflow: hidden;
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: var(--sp-2); padding: var(--sp-2) var(--sp-3);
+    border: 1px solid transparent; border-radius: var(--radius);
+    font-size: var(--fs-base); font-weight: 600; letter-spacing: var(--ls-tight);
+    text-decoration: none;
+  }
+  .primary { color: #000; background: linear-gradient(180deg, #ffffff, #d8d8da);
+    box-shadow: 0 6px 18px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.6); }
+  .ghost { color: var(--text-dim); background: transparent;
+    border-color: rgba(255,255,255,.10); box-shadow: none; }
+  @media (hover:hover) and (pointer:fine) {
+    .primary:hover:not(:disabled), .ghost:hover:not(:disabled) {
+      transform: translateY(-1px); filter: brightness(1.05); }
+    .primary:hover:not(:disabled) {
+      box-shadow: 0 12px 26px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.7); }
+    .ghost:hover:not(:disabled) { color: var(--text);
+      border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.06);
+      box-shadow: 0 10px 22px rgba(0,0,0,.22); }
+  }
+  .primary:active:not(:disabled), .ghost:active:not(:disabled) {
+    transform: translateY(0) scale(.985); filter: brightness(.98); }
+  .primary:disabled, .ghost:disabled { opacity: .5; cursor: default; }
+  .primary .sub { display: block; font-size: var(--fs-tiny); font-weight: 400;
+                  color: rgba(0,0,0,.62); letter-spacing: 0; }
 
-  .cta { margin-top: 30px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-  .btn { display: inline-flex; align-items: center; gap: 8px; padding: 12px 22px;
-         border-radius: 10px; border: 1px solid var(--line); cursor: pointer;
-         font-size: 15px; font-weight: 600; color: var(--text); background: var(--raise); }
-  .btn.primary { background: linear-gradient(180deg, #2a3f5c, #22344d);
-                 border-color: rgba(143,184,232,.55); }
-  .btn.primary:hover { filter: brightness(1.15); text-decoration: none; }
-  .btn .sub { display: block; font-size: 11px; font-weight: 400; color: var(--dim); }
-  #dl-meta { margin-top: 8px; font-size: 12px; color: var(--faint); }
+  /* ============================================================
+     THE APP FRAME — one viewport, exactly the new-session moment.
+     ============================================================ */
+  #app { height: 100vh; display: flex; flex-direction: column;
+         background: var(--bg); position: relative; overflow: hidden; }
 
-  section { padding: 44px 0; border-top: 1px solid var(--line); }
-  h2 { font-size: 22px; margin-bottom: 6px; }
-  .lead { color: var(--dim); margin-bottom: 22px; }
+  /* ---- LANDING (new-session backdrop) — geometry from styles.css ---- */
+  #landing { position: relative; flex: 1; min-height: 0;
+             display: flex; align-items: center; justify-content: center;
+             overflow: hidden; background: #030303; }
+  #landing.hidden { display: none !important; }
+  #landing-anim { position: absolute; inset: 0; overflow: hidden; }
+  #landing-video { position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; background: #030303; pointer-events: none; opacity: .92; }
+  #landing-veil { position: absolute; inset: 0; background:
+    radial-gradient(58% 48% at 50% 42%, rgba(0,0,0,0) 0%, rgba(0,0,0,.55) 68%, rgba(0,0,0,.86) 100%),
+    linear-gradient(180deg, rgba(3,3,3,.35) 0%, rgba(3,3,3,0) 30%, rgba(3,3,3,.75) 100%); }
+  #landing-content { position: relative; z-index: 2; text-align: center;
+                     padding: 30px; max-width: 560px; }
+  #landing-title { display: block; width: min(300px, 62%); height: auto; margin: 0 auto;
+                   filter: drop-shadow(0 3px 26px rgba(0,0,0,.95)); }
+  #landing-sub { margin-top: var(--sp-2); font-size: var(--fs-md);
+                 letter-spacing: var(--ls-wide); text-transform: uppercase; color: #9a9aa2; }
+  #landing-actions { display: flex; gap: var(--sp-2); justify-content: center;
+                     margin-top: var(--sp-5); flex-wrap: wrap; }
+  #landing-hint { margin-top: var(--sp-5); font-size: var(--fs-base);
+                  color: var(--text-faint); line-height: 1.5; }
+  #intro-sound { position: absolute; top: var(--sp-4); right: var(--sp-4); z-index: 3;
+    width: 34px; height: 34px; border-radius: var(--radius);
+    border: 1px solid rgba(255,255,255,.10); color: var(--text-dim);
+    background: rgba(5,5,5,.5); font-size: 15px; }
+  #intro-sound:hover { color: var(--text); border-color: rgba(255,255,255,.22); }
+  #scroll-cue { position: absolute; bottom: var(--sp-3); left: 50%;
+    transform: translateX(-50%); z-index: 3; color: var(--text-faint);
+    font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+    text-transform: uppercase; text-decoration: none; }
+  #scroll-cue:hover { color: var(--text-dim); }
 
-  /* ---- the lite chat ---- */
-  .lite { background: var(--raise); border: 1px solid var(--line); border-radius: var(--radius);
-          overflow: hidden; }
-  .lite-bar { display: flex; gap: 10px; align-items: center; padding: 10px 14px;
-              border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  .lite-bar select { background: var(--card); color: var(--text); border: 1px solid var(--line);
-                     border-radius: 8px; padding: 7px 10px; font-size: 13px; }
-  .lite-bar .status { font-size: 12px; color: var(--dim); flex: 1; min-width: 160px; }
-  .progress { height: 3px; background: transparent; }
-  .progress b { display: block; height: 3px; width: 0%; background: var(--accent);
-                transition: width .3s; }
-  .chat { height: 380px; overflow-y: auto; padding: 16px; display: flex;
-          flex-direction: column; gap: 10px; }
-  .msg { max-width: 82%; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap;
-         overflow-wrap: anywhere; }
-  .msg.you { align-self: flex-end; background: #26303f; }
-  .msg.bot { align-self: flex-start; background: var(--card); border: 1px solid var(--line); }
-  .msg.sys { align-self: center; color: var(--faint); font-size: 12px; background: none;
-             text-align: center; }
-  .composer { display: flex; gap: 10px; padding: 12px; border-top: 1px solid var(--line); }
-  .composer textarea { flex: 1; resize: none; height: 44px; background: var(--card);
-      color: var(--text); border: 1px solid var(--line); border-radius: 10px;
-      padding: 10px 12px; font: inherit; font-size: 14px; }
-  .composer button { min-width: 84px; }
-  .composer button:disabled, .lite-bar button:disabled { opacity: .5; cursor: default; }
-  .lite-note { padding: 10px 14px; font-size: 12px; color: var(--faint);
-               border-top: 1px solid var(--line); }
+  /* ---- CHAT (shown when "Just chat" is pressed — like the app) ---- */
+  #chat-pane { display: none; flex: 1; min-height: 0; flex-direction: column; }
+  #chat-pane.live { display: flex; }
+  #chat-scroll { flex: 1; overflow-y: auto; padding: var(--sp-5); }
+  #chat { display: flex; flex-direction: column; gap: var(--sp-3);
+          max-width: 860px; margin: 0 auto; }
+  .msg-user { align-self: flex-end; padding: var(--sp-3) var(--sp-4); max-width: 76%;
+    background: linear-gradient(180deg, #1e1e22, #131316); color: var(--text);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
+    white-space: pre-wrap; font-size: var(--fs-lg); overflow-wrap: anywhere; }
+  .msg-assistant { align-self: stretch; color: var(--text); font-size: var(--fs-lg);
+    line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere;
+    padding: var(--sp-1) 0; }
+  .msg-sys { align-self: center; color: var(--text-faint); font-size: var(--fs-base);
+             text-align: center; max-width: 70%; }
 
-  /* ---- features ---- */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; }
-  .card { background: var(--raise); border: 1px solid var(--line); border-radius: var(--radius);
-          padding: 18px; }
-  .card h3 { font-size: 15px; margin-bottom: 6px; }
-  .card p { font-size: 13.5px; color: var(--dim); }
+  #composer { flex: none; position: relative;
+    padding: var(--sp-3) var(--sp-5) var(--sp-4);
+    border-top: 1px solid var(--line);
+    background: linear-gradient(0deg, #0b0b0d 25%, rgba(5,5,5,0)); }
+  #composer-inner { max-width: 860px; margin: 0 auto; }
+  #input-row { display: flex; gap: var(--sp-2); align-items: flex-end; }
+  #box { flex: 1; resize: none; min-height: 44px; max-height: 160px;
+    background: var(--bg-raise-2); color: var(--text);
+    border: 1px solid var(--line-strong); border-radius: var(--radius);
+    padding: var(--sp-3) var(--sp-4); font-family: var(--font);
+    font-size: var(--fs-lg); line-height: 1.5; outline: none; }
+  #box:focus { border-color: var(--line-bright); }
+  /* the model row sits BELOW the field, like the app's button row */
+  #model-row { display: flex; gap: var(--sp-2); align-items: center;
+               margin-top: var(--sp-2); flex-wrap: wrap; }
+  #model-row select { background: var(--bg-raise-2); color: var(--text);
+    border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+    padding: 6px 10px; font-family: var(--font); font-size: var(--fs-base); }
+  #status { flex: 1; min-width: 160px; color: var(--text-faint);
+            font-size: var(--fs-tiny); letter-spacing: var(--ls-tight); }
+  #bar-track { height: 2px; margin-top: var(--sp-2); }
+  #bar { display: block; height: 2px; width: 0%; background: var(--accent);
+         opacity: .8; transition: width .3s; }
 
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); }
-  th { color: var(--dim); font-weight: 600; }
-  td.y { color: var(--good); } td.n { color: var(--faint); }
+  /* ============================================================
+     BELOW THE FOLD — same skin, quieter register.
+     ============================================================ */
+  section { padding: 52px 0; border-top: 1px solid var(--line); }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 20px; }
+  h2 { font-size: 17px; letter-spacing: var(--ls-tight); margin-bottom: 4px; }
+  .micro { font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+           text-transform: uppercase; color: var(--text-faint); margin-bottom: var(--sp-2); }
+  .lead { color: var(--text-dim); margin-bottom: var(--sp-5); font-size: var(--fs-md); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+  .card { background: var(--bg-raise); border: 1px solid var(--line);
+          border-radius: var(--radius); padding: var(--sp-4); }
+  .card h3 { font-size: var(--fs-md); margin-bottom: 4px; }
+  .card p { font-size: var(--fs-base); color: var(--text-dim); }
+  table { width: 100%; border-collapse: collapse; font-size: var(--fs-md); }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { color: var(--text-dim); font-weight: 600; font-size: var(--fs-base); }
+  td.y { color: var(--risk-green); } td.n { color: var(--text-faint); }
   .tablewrap { overflow-x: auto; }
-
+  #dl-meta { margin-top: var(--sp-2); font-size: var(--fs-tiny); color: var(--text-faint); }
   footer { padding: 36px 0 48px; border-top: 1px solid var(--line);
-           color: var(--faint); font-size: 13px; text-align: center; }
+           color: var(--text-faint); font-size: var(--fs-base); text-align: center; }
+  footer a { color: var(--text-dim); }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="wrap">
-    <img class="wordmark" src="app/assets/wordmark-trim.png" alt=".lcl">
-    <h1>.lcl</h1>
-    <div class="tagline">An AI workbench that runs on your machine, with the network switched off.</div>
-    <div class="subline">Local models, sixty-plus permissioned tools, a cited reference library,
-      and signed one-click patches — no account, no API key, no cloud. Try the lite version below,
-      right in this page.</div>
-    <div class="cta">
-      <a id="dl-btn" class="btn primary" href="https://github.com/FortiviewHoldings/lcl/releases/latest">
-        <span>&#11015; Download .lcl for Windows<span class="sub" id="dl-sub">latest signed release</span></span>
-      </a>
-      <a class="btn" href="https://github.com/FortiviewHoldings/lcl">View the source on GitHub</a>
+<!-- ============================================================
+     THE APP, OPENING. This is the real new-session screen: the same
+     1280x720 clip the app plays once per visit, the same veil, the
+     same wordmark and subtitle, the same two-button choice — with
+     "Link a workspace folder" become the download, because that is
+     this page's link to the real thing.
+     ============================================================ -->
+<div id="app">
+  <div id="landing">
+    <div id="landing-anim" aria-hidden="true">
+      <video id="landing-video" src="app/assets/landing.mp4"
+             playsinline preload="auto" disablepictureinpicture
+             disableremoteplayback tabindex="-1"></video>
+      <div id="landing-veil"></div>
     </div>
-    <div id="dl-meta"></div>
+    <button id="intro-sound" title="Mute the intro"><span id="intro-sound-icon">♪</span></button>
+    <div id="landing-content">
+      <img id="landing-title" src="app/assets/wordmark-trim.png" alt=".lcl">
+      <div id="landing-sub">AI on your own machine — nothing leaves it unless you say so</div>
+      <div id="landing-actions">
+        <a id="dl-btn" class="primary" href="https://github.com/FortiviewHoldings/lcl/releases/latest">
+          <span>Download .lcl for Windows<span class="sub" id="dl-sub">latest signed release</span></span>
+        </a>
+        <button id="landing-skip" class="ghost">Just chat — try the lite version</button>
+      </div>
+      <div id="landing-hint">
+        This is the app's own opening screen. Download it to keep everything —
+        or press Just chat to run a small model right here, in your browser.
+      </div>
+    </div>
+    <a id="scroll-cue" href="#more">↓ what the full app does</a>
   </div>
-</header>
 
-<section id="try">
-  <div class="wrap">
-    <h2>Try it here — a lite .lcl, fully in your browser</h2>
-    <p class="lead">Pick a model and press Load. The weights download once (from the model's own
-      public repository), cache in your browser, and every word of inference runs <b>on your
-      machine via WebGPU</b> — nothing you type leaves this page. No login, no key, no server.</p>
-    <div class="lite">
-      <div class="lite-bar">
-        <select id="model">
-          <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen2.5 0.5B — ~0.5 GB, quick</option>
-          <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC" selected>Qwen2.5 1.5B — ~1.2 GB, the full app's starter class</option>
-          <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1B — ~0.8 GB</option>
-        </select>
-        <button id="load" class="btn">Load</button>
-        <span class="status" id="status">not loaded — weights fetch on Load, then it is all local</span>
+  <div id="chat-pane">
+    <div id="chat-scroll">
+      <div id="chat">
+        <div class="msg-sys">The full app answers with the network unplugged. This lite page
+          needs it once, to fetch the model — after that, every word of inference runs on your
+          GPU via WebGPU, and nothing you type leaves this page.</div>
       </div>
-      <div class="progress"><b id="bar"></b></div>
-      <div class="chat" id="chat">
-        <div class="msg sys">The full app answers with the network unplugged. This lite page needs it
-          once, to fetch the model — then the conversation is entirely between you and your GPU.</div>
+    </div>
+    <div id="composer">
+      <div id="composer-inner">
+        <div id="input-row">
+          <textarea id="box" placeholder="Ask something…" disabled></textarea>
+          <button id="send" class="primary" disabled>Send</button>
+        </div>
+        <div id="model-row">
+          <select id="model">
+            <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen2.5 0.5B · ~0.5 GB · quick</option>
+            <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC" selected>Qwen2.5 1.5B · ~1.2 GB · the app's starter class</option>
+            <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1B · ~0.8 GB</option>
+          </select>
+          <button id="load" class="ghost">Load model</button>
+          <span id="status">not loaded — weights fetch once on Load, then it is all local</span>
+        </div>
+        <div id="bar-track"><b id="bar"></b></div>
       </div>
-      <div class="composer">
-        <textarea id="box" placeholder="Ask something&#8230;" disabled></textarea>
-        <button id="send" class="btn primary" disabled>Send</button>
-      </div>
-      <div class="lite-note">Needs WebGPU (Chrome or Edge on desktop). The lite version is one small
-        model and a chat box; the full app runs bigger models plus the tools, library, and patching
-        below — offline.</div>
     </div>
   </div>
-</section>
+</div>
 
-<section>
+<section id="more">
   <div class="wrap">
-    <h2>What the full app does</h2>
-    <p class="lead">Everything is deny-by-default — the list is a permission map, not a brag sheet.</p>
+    <div class="micro">the full app</div>
+    <h2>What you just saw, plus everything it exists for</h2>
+    <p class="lead">Everything is deny-by-default — this list is a permission map, not a brag sheet.</p>
     <div class="grid">
       <div class="card"><h3>Offline is the default state</h3>
         <p>Unplug the network and it keeps working: local llama.cpp inference, on-device OCR,
@@ -163,20 +260,22 @@
         <p>Updates come from this repository as Ed25519-signed releases: downloaded, verified
            against the baked public key, rollback-guarded, then installed on your click.</p></div>
     </div>
+    <div id="dl-meta"></div>
   </div>
 </section>
 
 <section>
   <div class="wrap">
+    <div class="micro">honest comparison</div>
     <h2>Lite vs full</h2>
     <div class="tablewrap"><table>
       <tr><th></th><th>This page (lite)</th><th>The full app</th></tr>
       <tr><td>Local inference</td><td class="y">yes — WebGPU, small models</td><td class="y">yes — llama.cpp, up to 9B on a laptop</td></tr>
       <tr><td>Works fully offline</td><td class="n">after the model caches</td><td class="y">yes, by default</td></tr>
-      <tr><td>Tools (files, scripts, SQL, PDF, OCR&#8230;)</td><td class="n">&mdash;</td><td class="y">60+, permission-gated</td></tr>
-      <tr><td>Reference library with citations</td><td class="n">&mdash;</td><td class="y">~64 volumes, offline index</td></tr>
-      <tr><td>Hardware (boards, serial, flashing)</td><td class="n">&mdash;</td><td class="y">yes, ask-first</td></tr>
-      <tr><td>Signed patches from this repo</td><td class="n">&mdash;</td><td class="y">one click</td></tr>
+      <tr><td>Tools (files, scripts, SQL, PDF, OCR…)</td><td class="n">—</td><td class="y">60+, permission-gated</td></tr>
+      <tr><td>Reference library with citations</td><td class="n">—</td><td class="y">~64 volumes, offline index</td></tr>
+      <tr><td>Hardware (boards, serial, flashing)</td><td class="n">—</td><td class="y">yes, ask-first</td></tr>
+      <tr><td>Signed patches from this repo</td><td class="n">—</td><td class="y">one click</td></tr>
       <tr><td>Account / API key</td><td class="y">none</td><td class="y">none</td></tr>
     </table></div>
   </div>
@@ -184,31 +283,59 @@
 
 <footer>
   <div class="wrap">
-    .lcl &mdash; MIT licensed &middot; &copy; PragOptics &middot;
+    .lcl — MIT licensed · © PragOptics ·
     <a href="https://github.com/FortiviewHoldings/lcl">github.com/FortiviewHoldings/lcl</a>
   </div>
 </footer>
 
 <script type="module">
+const $ = (id) => document.getElementById(id);
+
+/* ---- THE INTRO, exactly as the app runs it: played explicitly (never the
+   autoplay attribute), once per visit, WITH its audio when the policy
+   allows and muted when it does not, and the same ♪ / ✕ toggle. ---- */
+const video = $("landing-video");
+const soundBtn = $("intro-sound");
+const soundIcon = $("intro-sound-icon");
+video.currentTime = 0;
+video.play().catch(() => {           // autoplay policy blocked audio — the
+  video.muted = true;                // app's own fallback: run it muted
+  video.play().catch(() => {});
+});
+function paintSound() { soundIcon.textContent = video.muted ? "✕" : "♪"; }
+soundBtn.addEventListener("click", () => {
+  video.muted = !video.muted;        // the click is the gesture the policy wants
+  if (!video.muted && video.paused && !video.ended) video.play().catch(() => {});
+  paintSound();
+});
+video.addEventListener("play", paintSound);
+setTimeout(paintSound, 300);
+
 /* ---- the download button points at the LATEST release's installer ---- */
 (async () => {
   try {
     const r = await fetch("https://api.github.com/repos/FortiviewHoldings/lcl/releases/latest",
                           { headers: { "Accept": "application/vnd.github+json" } });
-    if (!r.ok) return;                       // fallback href already points at the releases page
+    if (!r.ok) return;               // the static releases-page href stands
     const rel = await r.json();
     const exe = (rel.assets || []).find(a => /Installer.*\.exe$/i.test(a.name));
     if (!exe) return;
-    const gb = (exe.size / 1e9).toFixed(1);
-    document.getElementById("dl-btn").href = exe.browser_download_url;
-    document.getElementById("dl-sub").textContent = rel.tag_name + " · " + gb + " GB · Windows";
-    document.getElementById("dl-meta").textContent =
-      "Ed25519-signed release — the app verifies the same file before every patch.";
-  } catch { /* the static releases-page link stands */ }
+    $("dl-btn").href = exe.browser_download_url;
+    $("dl-sub").textContent = rel.tag_name + " · " + (exe.size / 1e9).toFixed(1) + " GB · Windows";
+    $("dl-meta").textContent =
+      "The download is an Ed25519-signed release — the app verifies the same file before every patch.";
+  } catch { /* fallback stands */ }
 })();
 
+/* ---- "Just chat" — the app's own transition: landing hides, chat lives ---- */
+$("landing-skip").addEventListener("click", () => {
+  try { video.pause(); } catch {}
+  $("landing").classList.add("hidden");
+  $("chat-pane").classList.add("live");
+  $("box").focus();
+});
+
 /* ---- the lite chat: WebLLM, entirely client-side ---- */
-const $ = (id) => document.getElementById(id);
 const chat = $("chat"), box = $("box"), send = $("send"),
       loadBtn = $("load"), statusEl = $("status"), bar = $("bar"), modelSel = $("model");
 let engine = null, busy = false;
@@ -216,14 +343,14 @@ const history = [{ role: "system", content:
   "You are .lcl lite — a small local model running in the visitor's own browser as a demo of " +
   ".lcl, an offline-first AI workbench for Windows. Be concise and practical. If asked about " +
   "capabilities like file tools, hardware, or the reference library, say those live in the full " +
-  "app (the download button above) — you are the in-browser taste of it." }];
+  "app (the download on the landing screen) — you are the in-browser taste of it." }];
 
 function addMsg(cls, text) {
   const d = document.createElement("div");
-  d.className = "msg " + cls;
+  d.className = cls;
   d.textContent = text;
   chat.appendChild(d);
-  chat.scrollTop = chat.scrollHeight;
+  $("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
   return d;
 }
 
@@ -246,7 +373,7 @@ loadBtn.addEventListener("click", async () => {
     bar.style.width = "100%";
     statusEl.textContent = modelSel.value.replace(/-MLC$/, "") + " — loaded, all local from here";
     box.disabled = false; send.disabled = false; box.focus();
-    addMsg("sys", "Model loaded. From here on, inference runs on your GPU — try it.");
+    addMsg("msg-sys", "Model loaded. From here on, inference runs on your GPU — try it.");
   } catch (e) {
     statusEl.textContent = "could not load: " + String(e && e.message || e).slice(0, 120);
     loadBtn.disabled = false; modelSel.disabled = false;
@@ -258,9 +385,9 @@ async function ask() {
   const q = box.value.trim();
   if (!q || !engine || busy) return;
   busy = true; send.disabled = true; box.value = "";
-  addMsg("you", q);
+  addMsg("msg-user", q);
   history.push({ role: "user", content: q });
-  const out = addMsg("bot", "…");
+  const out = addMsg("msg-assistant", "…");
   try {
     const stream = await engine.chat.completions.create({
       messages: history, stream: true, temperature: 0.7, max_tokens: 512 });
@@ -268,7 +395,7 @@ async function ask() {
     for await (const chunk of stream) {
       text += (chunk.choices[0] && chunk.choices[0].delta.content) || "";
       out.textContent = text;
-      chat.scrollTop = chat.scrollHeight;
+      $("chat-scroll").scrollTop = $("chat-scroll").scrollHeight;
     }
     history.push({ role: "assistant", content: text });
   } catch (e) {
