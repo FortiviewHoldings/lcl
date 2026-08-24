@@ -135,6 +135,12 @@
   #sound-hint.on { display: block; }
   @keyframes hint-in { from { opacity: 0; transform: translateY(-4px); }
                        to { opacity: 1; transform: none; } }
+  /* the lite model warms during the intro — say so, quietly */
+  #warm-line { position: absolute; bottom: var(--sp-3); left: var(--sp-4);
+    z-index: 3; max-width: 46%; color: var(--text-faint);
+    font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+    text-transform: uppercase; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; }
   #scroll-cue { position: absolute; bottom: var(--sp-3); left: 50%;
     transform: translateX(-50%); z-index: 3; color: var(--text-faint);
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
@@ -404,6 +410,7 @@
         or press Just chat to run a small model right here, in your browser.
       </div>
     </div>
+    <div id="warm-line"></div>
     <a id="scroll-cue" href="#features">↓ what the full app does</a>
   </div>
 
@@ -1054,7 +1061,9 @@ document.addEventListener("click", (e) => {
 paintModelBtn();
 
 /* ---- the lite chat: WebLLM, entirely client-side ---- */
-let engine = null, loading = false;
+let engine = null, loading = false, reloadWanted = false;
+const warm = $("warm-line");
+function warmSay(text) { warm.textContent = text; }
 function workspaceContext() {
   const s = activeSession();
   if (!s.files.length) return "";
@@ -1072,35 +1081,49 @@ function systemMsg() {
     "of it." + workspaceContext() };
 }
 async function loadModel() {
-  if (generating || loading) return;
+  if (generating) return;
+  if (loading) { reloadWanted = true; return; }   // a switch mid-load queues a clean reload
   if (!navigator.gpu) {
     statusEl.textContent = "this browser has no WebGPU — use Chrome or Edge on desktop";
     return;
   }
-  loading = true; engine = null;
-  statusEl.textContent = "fetching WebLLM…";
-  setTask("loading " + chosen.name + "…");
-  logAct("loading " + chosen.name);
-  try {
-    const webllm = await import("https://esm.run/@mlc-ai/web-llm");
-    engine = await webllm.CreateMLCEngine(chosen.id, {
-      initProgressCallback: (p) => {
-        bar.style.width = Math.round((p.progress || 0) * 100) + "%";
-        statusEl.textContent = p.text || "loading…";
-        setTask("loading " + chosen.name + " — " + Math.round((p.progress || 0) * 100) + "%");
-      }
-    });
-    bar.style.width = "100%";
-    statusEl.textContent = "loaded — all local from here";
-    $("mk-engine").textContent = "webllm · " + chosen.name.toLowerCase();
-    paintModelBtn(true);
-    setTask("");
-    logAct(chosen.name + " loaded — inference is local now");
-    box.disabled = false; send.disabled = false; box.focus();
-  } catch (e) {
-    statusEl.textContent = "could not load: " + String(e && e.message || e).slice(0, 120);
-    setTask(""); logAct("model load failed");
-  }
+  loading = true;
+  do {
+    reloadWanted = false;
+    const target = chosen;
+    engine = null;
+    statusEl.textContent = "fetching WebLLM…";
+    warmSay("warming the lite model — " + target.name);
+    setTask("loading " + target.name + "…");
+    logAct("loading " + target.name);
+    try {
+      const webllm = await import("https://esm.run/@mlc-ai/web-llm");
+      const built = await webllm.CreateMLCEngine(target.id, {
+        initProgressCallback: (p) => {
+          const pct = Math.round((p.progress || 0) * 100);
+          bar.style.width = pct + "%";
+          statusEl.textContent = p.text || "loading…";
+          warmSay("warming " + target.name + " — " + pct + "% · caches in this browser");
+          setTask("loading " + target.name + " — " + pct + "%");
+        }
+      });
+      if (reloadWanted) continue;   // the visitor picked a different model mid-load
+      engine = built;
+      bar.style.width = "100%";
+      statusEl.textContent = "loaded — all local from here";
+      warmSay(target.name + " is ready — the demo answers the moment you enter");
+      $("mk-engine").textContent = "webllm · " + target.name.toLowerCase();
+      paintModelBtn(true);
+      setTask("");
+      logAct(target.name + " loaded — inference is local now");
+      box.disabled = false; send.disabled = false;
+      if ($("bench").classList.contains("live")) box.focus();
+    } catch (e) {
+      statusEl.textContent = "could not load: " + String(e && e.message || e).slice(0, 120);
+      warmSay("");
+      setTask(""); logAct("model load failed");
+    }
+  } while (reloadWanted);
   loading = false;
 }
 async function ask() {
@@ -1146,6 +1169,13 @@ send.addEventListener("click", ask);
 box.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
 });
+
+/* THE MODEL WARMS DURING THE INTRO — the load starts on the landing itself,
+   a beat after the clip begins so the video fetch is not starved. By the time
+   anyone clicks Just chat the weights are fetching or fetched (they cache in
+   this browser, so return visits warm instantly) and the demo answers instead
+   of asking the visitor to wait. */
+if (navigator.gpu) setTimeout(loadModel, 1000);
 </script>
 </body>
 </html>

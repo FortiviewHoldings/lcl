@@ -154,6 +154,30 @@ check("...with an ON-SCREEN caption saying what unlocks it — 'click anywhere "
     }
 }
 
+/* ---- THE MODEL WARMS DURING THE INTRO ----
+ * "i want the static site auto loading the default model so it is faster.
+ * i want this to happen on the landing page load, before the user actually
+ * clicks on the demo" — the load starts on the landing itself, a beat after
+ * the clip begins, with a quiet status line saying so; a model switched
+ * mid-load queues a clean reload instead of racing the one in flight. */
+check("the default model AUTO-LOADS on the landing, before Just chat is " +
+      "clicked — a beat after the clip starts so the video fetch is not starved",
+    s.includes("setTimeout(loadModel, 1000)")
+    && /WARMS DURING THE INTRO/.test(s), null);
+check("...the landing says so quietly — a warm line with live percent, noting " +
+      "the weights cache in this browser",
+    s.includes('id="warm-line"')
+    && s.includes("caches in this browser")
+    && /warmSay\(/.test(s), null);
+check("...and a model switched mid-load QUEUES a clean reload instead of " +
+      "racing the load in flight",
+    /reloadWanted/.test(s)
+    && s.includes("if (reloadWanted) continue;"), null);
+check("...ready is announced where the visitor is — the warm line flips to " +
+      "'answers the moment you enter' and the composer is already enabled",
+    s.includes("the demo answers the moment you enter")
+    && s.includes("box.disabled = false; send.disabled = false;"), null);
+
 /* ---- SESSIONS AND THE WORKSPACE ARE REAL, IN BROWSER STORAGE ----
  * "the sessions in lite are not functional, amongst other items like
  * workspaces etc. that should all be built to use local and session storage
