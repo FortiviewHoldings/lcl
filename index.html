@@ -110,7 +110,7 @@
     radial-gradient(58% 48% at 50% 42%, rgba(0,0,0,0) 0%, rgba(0,0,0,.55) 68%, rgba(0,0,0,.86) 100%),
     linear-gradient(180deg, rgba(3,3,3,.35) 0%, rgba(3,3,3,0) 30%, rgba(3,3,3,.75) 100%); }
   #landing-content { position: relative; z-index: 2; text-align: center;
-                     padding: 30px; max-width: 560px; }
+                     padding: 30px 30px 56px; max-width: 560px; }
   #landing-title { display: block; width: min(300px, 62%); height: auto; margin: 0 auto;
                    filter: drop-shadow(0 3px 26px rgba(0,0,0,.95)); }
   #landing-sub { margin-top: var(--sp-2); font-size: var(--fs-md);
@@ -139,17 +139,24 @@
   #sound-hint.on { display: block; }
   @keyframes hint-in { from { opacity: 0; transform: translateY(-4px); }
                        to { opacity: 1; transform: none; } }
-  /* the lite model warms during the intro — say so, quietly */
-  #warm-line { position: absolute; bottom: var(--sp-3); left: var(--sp-4);
-    z-index: 3; max-width: 46%; color: var(--text-faint);
-    font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
-    text-transform: uppercase; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; }
+  /* the lite model warms during the intro — and the landing SHOWS it:
+     a lit label and a real progress bar, front and center */
+  #warm { margin-top: var(--sp-4); min-height: 26px; }
+  #warm-line { font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+    text-transform: uppercase; color: #b9b9c0;
+    text-shadow: 0 0 10px rgba(255,255,255,.25); }
+  #warm-track { width: min(340px, 80%); height: 2px; margin: 7px auto 0;
+    background: rgba(255,255,255,.08); border-radius: 1px; visibility: hidden; }
+  #warm.live #warm-track { visibility: visible; }
+  #warm-bar { display: block; height: 2px; width: 0%; background: var(--accent);
+    box-shadow: 0 0 8px rgba(255,255,255,.55); border-radius: 1px;
+    transition: width .3s; }
   #scroll-cue { position: absolute; bottom: var(--sp-3); left: 50%;
-    transform: translateX(-50%); z-index: 3; color: var(--text-faint);
+    transform: translateX(-50%); z-index: 3; color: #b9b9c0;
+    text-shadow: 0 0 10px rgba(255,255,255,.25);
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
     text-transform: uppercase; text-decoration: none; }
-  #scroll-cue:hover { color: var(--text-dim); }
+  #scroll-cue:hover { color: var(--text); }
 
   /* ============================================================
      THE WORKBENCH — sidebar · chat · workspace, like the app.
@@ -260,13 +267,19 @@
             font-size: var(--fs-tiny); letter-spacing: var(--ls-tight);
             text-align: right; }
   #bar-track { height: 2px; margin-top: var(--sp-2); }
-  /* the chat lives on a page that CONTINUES — say so under the composer */
+  /* the chat lives on a page that CONTINUES — say so under the composer,
+     lit well enough to actually be read */
   #bench-more { flex: none; display: block; text-align: center;
-    padding: 5px 0 7px; font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
-    text-transform: uppercase; color: var(--text-faint); text-decoration: none;
-    border-top: 1px solid var(--line); background: var(--bg); }
-  #bench-more:hover { color: var(--text-dim); }
-  #bench-more .arr { display: inline-block; animation: bob 2.2s ease-in-out infinite; }
+    padding: 7px 0 9px; font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
+    text-transform: uppercase; color: #c9c9cf; text-decoration: none;
+    text-shadow: 0 0 12px rgba(255,255,255,.28);
+    border-top: 1px solid var(--line-strong);
+    background: linear-gradient(0deg, #0d0d10, var(--bg)); }
+  #bench-more:hover { color: var(--text);
+    text-shadow: 0 0 14px rgba(255,255,255,.45); }
+  #bench-more .arr { display: inline-block; color: var(--attn);
+    text-shadow: 0 0 10px rgba(224,201,143,.6);
+    animation: bob 2.2s ease-in-out infinite; }
   @keyframes bob { 0%,100% { transform: none; } 50% { transform: translateY(3px); } }
   #bar { display: block; height: 2px; width: 0%; background: var(--accent);
          opacity: .8; transition: width .3s; }
@@ -368,6 +381,15 @@
   tr.cat td { padding: 20px 12px 5px; color: var(--text-faint);
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
     text-transform: uppercase; border-bottom: 1px solid var(--line-strong); }
+  /* the FULL column is the lit column — it should read like the bigger life */
+  #compare td:nth-child(3), #compare th:nth-child(3) {
+    background: rgba(255,255,255,.03); color: var(--text);
+    border-left: 1px solid var(--line-strong); width: 46%; }
+  #compare th:nth-child(3) { text-shadow: 0 0 12px rgba(255,255,255,.25); }
+  #compare td.y:nth-child(3) { color: var(--risk-green); }
+  #compare td:nth-child(2) { color: var(--text-faint); width: 27%; }
+  #compare td.y:nth-child(2) { color: var(--text-dim); }
+  #compare tr.cta td { border-bottom: none; padding: 18px 12px 6px; }
   .tablewrap { overflow-x: auto; }
   /* concrete asks, spoken in the app's own bubble */
   .card.ask .q { background: linear-gradient(180deg, #1e1e22, #131316);
@@ -436,8 +458,11 @@
         This is the app's own opening screen. Download it to keep everything —
         or press Just chat to run a small model right here, in your browser.
       </div>
+      <div id="warm">
+        <div id="warm-line"></div>
+        <div id="warm-track"><b id="warm-bar"></b></div>
+      </div>
     </div>
-    <div id="warm-line"></div>
     <a id="scroll-cue" href="#features">↓ what the full app does</a>
   </div>
 
@@ -721,6 +746,12 @@
           <td class="y">yes — offline is the default state</td></tr>
       <tr><td>Multi-step work</td><td class="n">single answers</td>
           <td class="y">plans, runs tool chains, audits its own output, concludes</td></tr>
+      <tr><td>A model that fits</td><td>fixed small models</td>
+          <td class="y">the load planner checks your RAM first — a model that will not fit
+              is refused with the shortfall stated, never a frozen machine</td></tr>
+      <tr><td>Concurrency</td><td>one chat</td>
+          <td class="y">local chats queue honestly — RAM is finite; API and node
+              conversations run wide</td></tr>
 
       <tr class="cat"><td colspan="3">Workspace</td></tr>
       <tr><td>Sessions</td><td class="y">saved in this browser</td>
@@ -744,7 +775,7 @@
               annotations</td></tr>
       <tr><td>Vision &amp; images</td><td class="n">—</td>
           <td class="y">OCR on screenshots and scans · image generation on your own
-              silicon</td></tr>
+              silicon · diagrams rendered via Graphviz</td></tr>
       <tr><td>Speech</td><td class="n">—</td>
           <td class="y">local dictation — rolling transcription, audio never leaves the
               machine</td></tr>
@@ -755,6 +786,9 @@
               and page</td></tr>
       <tr><td>Your own documents</td><td class="n">—</td>
           <td class="y">add them; they join the same cited index</td></tr>
+      <tr><td>Filling the shelf</td><td class="n">—</td>
+          <td class="y">a missing volume downloads in one click — or the whole shelf at
+              once</td></tr>
 
       <tr class="cat"><td colspan="3">Hardware</td></tr>
       <tr><td>Real devices</td><td class="n">—</td>
@@ -773,8 +807,15 @@
       <tr><td>Logs</td><td class="n">—</td>
           <td class="y">every failure and refusal written to a local error log you can
               read</td></tr>
+      <tr><td>Audit trail</td><td class="n">—</td>
+          <td class="y">every tool call and refusal recorded in a local audit log you can
+              read</td></tr>
       <tr><td>Account / API key</td><td class="y">none</td><td class="y">none</td></tr>
       <tr><td>Telemetry</td><td class="y">none</td><td class="y">none</td></tr>
+      <tr class="cta"><td></td><td></td>
+          <td><a class="primary" id="tbl-dl"
+                 href="https://github.com/FortiviewHoldings/lcl/releases/latest">
+              <span>Get the full app<span class="sub">free · MIT · Windows</span></span></a></td></tr>
     </table></div>
   </div>
 </section>
@@ -904,7 +945,7 @@ setTimeout(paintSound, 300);
     const rel = await r.json();
     const exe = (rel.assets || []).find(a => /Installer.*\.exe$/i.test(a.name));
     if (!exe) return;
-    for (const id of ["dl-btn", "nav-dl", "foot-dl"]) $(id).href = exe.browser_download_url;
+    for (const id of ["dl-btn", "nav-dl", "foot-dl", "tbl-dl"]) $(id).href = exe.browser_download_url;
     $("dl-sub").textContent = rel.tag_name + " · " + (exe.size / 1e9).toFixed(1) + " GB · Windows";
     $("dl-meta").textContent =
       "The download is an Ed25519-signed release — the app verifies the same signature chain before every patch.";
@@ -1224,7 +1265,14 @@ paintModelBtn();
 /* ---- the lite chat: WebLLM, entirely client-side ---- */
 let engine = null, loading = false, reloadWanted = false;
 const warm = $("warm-line");
-function warmSay(text) { warm.textContent = text; }
+const warmBar = $("warm-bar");
+function warmSay(text, pct) {
+  warm.textContent = text;
+  if (typeof pct === "number") {
+    $("warm").classList.add("live");
+    warmBar.style.width = pct + "%";
+  }
+}
 function workspaceContext() {
   const s = activeSession();
   if (!s.files.length) return "";
@@ -1254,7 +1302,7 @@ async function loadModel() {
     const target = chosen;
     engine = null;
     statusEl.textContent = "fetching WebLLM…";
-    warmSay("warming the lite model — " + target.name);
+    warmSay("warming the lite model — " + target.name, 0);
     setTask("loading " + target.name + "…");
     logAct("loading " + target.name);
     try {
@@ -1264,7 +1312,7 @@ async function loadModel() {
           const pct = Math.round((p.progress || 0) * 100);
           bar.style.width = pct + "%";
           statusEl.textContent = p.text || "loading…";
-          warmSay("warming " + target.name + " — " + pct + "% · caches in this browser");
+          warmSay("warming " + target.name + " — " + pct + "% · caches in this browser", pct);
           setTask("loading " + target.name + " — " + pct + "%");
         }
       });
@@ -1272,7 +1320,7 @@ async function loadModel() {
       engine = built;
       bar.style.width = "100%";
       statusEl.textContent = "loaded — all local from here";
-      warmSay(target.name + " is ready — the demo answers the moment you enter");
+      warmSay(target.name + " is ready — the demo answers the moment you enter", 100);
       $("mk-engine").textContent = "webllm · " + target.name.toLowerCase();
       paintModelBtn(true);
       setTask("");

@@ -164,11 +164,14 @@ check("the default model AUTO-LOADS on the landing, before Just chat is " +
       "clicked — a beat after the clip starts so the video fetch is not starved",
     s.includes("setTimeout(loadModel, 1000)")
     && /WARMS DURING THE INTRO/.test(s), null);
-check("...the landing says so quietly — a warm line with live percent, noting " +
-      "the weights cache in this browser",
+check("...the landing SHOWS the warm-up, front and center — a lit label and a " +
+      "real progress bar inside the landing content, not a corner whisper " +
+      "(the preload ran from page load all along; it was merely invisible)",
     s.includes('id="warm-line"')
+    && s.includes('id="warm-track"') && s.includes('id="warm-bar"')
     && s.includes("caches in this browser")
-    && /warmSay\(/.test(s), null);
+    && /warmSay\([^)]*, pct\)/.test(s)
+    && s.includes('warmSay(target.name + " is ready — the demo answers the moment you enter", 100)'), null);
 check("...and a model switched mid-load QUEUES a clean reload instead of " +
       "racing the load in flight",
     /reloadWanted/.test(s)
@@ -305,6 +308,29 @@ check("...and a short viewport GROWS the frame instead of clipping the " +
     s.includes("min-height: 100vh")
     && !/#app \{[^}]*overflow: hidden/.test(s)
     && /#chat-scroll \{ flex: 1; min-height: 0;/.test(s), null);
+/* "make that bottom indicator ... more prominent, you have it as a grey font
+ * and it is hard to read. just accent it some, add some glow" */
+check("the read-below cues are LIT, not grey — glow on the bench strip and the " +
+      "landing scroll cue, the bench arrow in the accent amber",
+    /#bench-more \{[^}]*text-shadow/.test(s)
+    && /#bench-more \.arr \{[^}]*var\(--attn\)/.test(s)
+    && /#scroll-cue \{[^}]*text-shadow/.test(s), null);
+/* "full app vs lite still doesnt look full" — the full column is the lit
+ * column: brighter, wider, more rows, and it ends in the download. */
+check("the FULL column reads like the bigger life — lit background, bright " +
+      "text, the wider column",
+    /#compare td:nth-child\(3\), #compare th:nth-child\(3\)/.test(s)
+    && /width: 46%/.test(s), null);
+check("...carrying rows only the real app has earned — the load planner's " +
+      "refusal, honest concurrency, one-click shelf fill, a local audit trail",
+    s.includes("refused with the shortfall stated")
+    && s.includes("conversations run wide")
+    && s.includes("the whole shelf at")
+    && s.includes("recorded in a local audit log"), null);
+check("...and the table ENDS IN THE DOWNLOAD — a primary Get-the-full-app in " +
+      "the full column, wired to the latest release like every other button",
+    /tr class="cta"/.test(s) && /id="tbl-dl"/.test(s)
+    && s.includes('"dl-btn", "nav-dl", "foot-dl", "tbl-dl"'), null);
 check("the lite-vs-full table is GROUPED and specific — Thinking, Workspace, " +
       "Tools, Knowledge, Hardware, Trust",
     /class="cat"/.test(s)
