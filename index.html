@@ -105,6 +105,12 @@
     border: 1px solid rgba(255,255,255,.10); color: var(--text-dim);
     background: rgba(5,5,5,.5); font-size: 15px; }
   #intro-sound:hover { color: var(--text); border-color: rgba(255,255,255,.22); }
+  /* the autoplay policy forced the intro to mute — say so, quietly but
+     visibly, so the visitor knows the animation has a voice */
+  #intro-sound.cue { color: var(--attn); border-color: rgba(224,201,143,.45);
+    animation: sound-cue 1.6s ease-in-out 3; }
+  @keyframes sound-cue { 0%,100% { transform: none; }
+    50% { transform: scale(1.12); box-shadow: 0 0 14px rgba(224,201,143,.35); } }
   #scroll-cue { position: absolute; bottom: var(--sp-3); left: 50%;
     transform: translateX(-50%); z-index: 3; color: var(--text-faint);
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
@@ -498,17 +504,45 @@ const $ = (id) => document.getElementById(id);
 const video = $("landing-video");
 const soundBtn = $("intro-sound");
 const soundIcon = $("intro-sound-icon");
+let policyMuted = false;             // the BROWSER muted it, not the visitor
 video.currentTime = 0;
 video.play().catch(() => {           // autoplay policy blocked audio — the
   video.muted = true;                // app's own fallback: run it muted
+  policyMuted = true;
+  soundBtn.classList.add("cue");     // the intro HAS a voice — say so
+  soundBtn.title = "Click for sound";
   video.play().catch(() => {});
 });
 function paintSound() { soundIcon.textContent = video.muted ? "✕" : "♪"; }
+function unmuteIntro() {
+  // a click IS the gesture the policy wants. Mid-clip: sound comes in live.
+  // After the clip: rewind and play it again properly, with its audio — the
+  // visitor asked to hear the intro, so they get the intro.
+  soundBtn.classList.remove("cue");
+  soundBtn.title = "Mute the intro";
+  policyMuted = false;
+  video.muted = false;
+  if (video.ended || video.currentTime >= (video.duration || 5) - 0.1) {
+    video.currentTime = 0;
+  }
+  if (video.paused) video.play().catch(() => {});
+  paintSound();
+}
 soundBtn.addEventListener("click", () => {
-  video.muted = !video.muted;        // the click is the gesture the policy wants
-  if (!video.muted && video.paused && !video.ended) video.play().catch(() => {});
+  if (video.muted) { unmuteIntro(); return; }
+  video.muted = true;
   paintSound();
 });
+// THE FIRST GESTURE ANYWHERE un-mutes a policy-muted intro while it still
+// plays — the visitor should not have to find the ♪ to hear what the app
+// sounds like. One shot, never after the visitor chose mute themselves.
+const firstGesture = () => {
+  if (policyMuted && !video.ended && !video.paused) unmuteIntro();
+  document.removeEventListener("pointerdown", firstGesture);
+  document.removeEventListener("keydown", firstGesture);
+};
+document.addEventListener("pointerdown", firstGesture);
+document.addEventListener("keydown", firstGesture);
 video.addEventListener("play", paintSound);
 setTimeout(paintSound, 300);
 

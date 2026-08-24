@@ -99,6 +99,45 @@ check("THE SKIN IS THE APP'S SKIN — its ground (#050505), its font stack, and 
 check("...down to the app's bubble geometry for the lite chat",
     s.includes("linear-gradient(180deg, #1e1e22, #131316)"), null);
 
+/* ---- THE INTRO HAS A VOICE, AND THE VISITOR GETS TO HEAR IT ----
+ * "i still have no intro audio for that new session animation intro" — the
+ * browser's autoplay policy refuses unmuted playback on a first visit, so the
+ * page must EARN the audio: the first gesture anywhere un-mutes the intro
+ * while it still plays; the sound button replays it WITH audio once it has
+ * ended; and a policy-muted intro shows a visible cue so nobody has to guess
+ * that the animation has a voice. */
+check("a policy-muted intro un-mutes on the FIRST GESTURE anywhere, live, " +
+      "while the clip still plays",
+    /policyMuted/.test(s) && /firstGesture/.test(s)
+    && s.includes('document.addEventListener("pointerdown", firstGesture)'), null);
+check("...the sound button REPLAYS the intro with audio when it already ended — " +
+      "the visitor asked to hear the intro, so they get the intro",
+    /video.ended || video.currentTime/.test(s)
+    && s.includes("video.currentTime = 0;"), null);
+check("...and the forced mute is VISIBLE — the button cues and says 'Click for " +
+      "sound' instead of leaving the voice a secret",
+    s.includes('soundBtn.classList.add("cue")')
+    && s.includes("Click for sound"), null);
+{
+    // the clip itself must CARRY audio — a metadata strip once came one flag
+    // away from discarding the track. Guarded only where the local ffprobe
+    // exists (it is fetched, not tracked), so a fresh clone still passes.
+    const probe = path.join(ROOT, "tools", "ffmpeg", "win-x64", "ffprobe.exe");
+    if (fs.existsSync(probe)) {
+        let hasAudio = false;
+        try {
+            const out = execFileSync(probe, ["-v", "quiet", "-show_streams",
+                path.join(ROOT, "app", "assets", "landing.mp4")], { encoding: "utf8" });
+            hasAudio = /codec_type=audio/.test(out);
+        } catch { /* probe failed — fall through to the check */ }
+        check("landing.mp4 still carries its AUDIO TRACK — the intro's voice is " +
+              "part of the asset, not an accident a re-encode may drop",
+            hasAudio, null);
+    } else {
+        console.log("     (ffprobe not fetched on this machine — audio-track check skipped)");
+    }
+}
+
 /* ---- THE WORKBENCH CHROME, AS DEMO STUBS ----
  * "the lite chat should have a majority of the ui likeness, as demo stubs" —
  * the sidebar with session cards and status dots, the machine dock, the
