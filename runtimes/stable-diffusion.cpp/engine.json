@@ -1,0 +1,54 @@
+{
+  "id": "stable-diffusion.cpp",
+  "name": "stable-diffusion.cpp",
+  "kind": "image",
+  "license": "MIT",
+  "redistributable": true,
+  "protocol": "cli",
+
+  "//": "Same packaging rule as llama.cpp: one build per machine type, Vulkan plus the full CPU backend set in a single package, so it runs with or without a GPU. Invoked per-image via sd-cli — the model loads, generates, and exits, so it holds no memory between generations and can never linger next to the LLM.",
+
+  "builds": [
+    {
+      "id": "win-x64",
+      "platform": "win32",
+      "arch": "x64",
+      "accelerator": "vulkan",
+      "dir": "win-x64",
+      "binary": "sd-cli.exe",
+      "cpuFallback": true,
+      "present": true,
+      "notes": "master-796-2d0385b. Measured on Core Ultra 7 155H / Arc via Vulkan: SDXL-Turbo q8_0, 512x512, 4 steps = 24.3s end to end, ~4.0 GB peak."
+    },
+    {
+      "id": "mac-arm64",
+      "platform": "darwin",
+      "arch": "arm64",
+      "accelerator": "metal",
+      "dir": "mac-arm64",
+      "binary": "sd-cli",
+      "cpuFallback": true,
+      "present": false,
+      "notes": "Apple Silicon build. Not yet downloaded."
+    }
+  ],
+
+  "capabilities": {
+    "modalities": ["image"],
+    "formats": ["gguf", "safetensors"],
+    "streaming": false
+  },
+
+  "args": {
+    "model": "--model",
+    "prompt": "--prompt",
+    "negativePrompt": "--negative-prompt",
+    "width": "--width",
+    "height": "--height",
+    "steps": "--steps",
+    "cfgScale": "--cfg-scale",
+    "seed": "--seed",
+    "output": "--output",
+    "threads": "--threads"
+  }
+}

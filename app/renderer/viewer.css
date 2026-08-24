@@ -1,0 +1,84 @@
+/* The pop-out viewer window. styles.css supplies the tokens and the shared
+   pieces (ws-note, ghost buttons, code blocks); this file only lays out the
+   one-file page. Kept separate so index.html never pays for it. */
+
+#v-app {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--bg);
+}
+
+#v-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #0d0d0f 0%, #070708 100%);
+}
+
+#v-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--mono);
+}
+
+#v-size {
+    flex: none;
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+}
+
+#v-body {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    padding: 16px 18px 24px;
+    user-select: text;
+}
+
+#v-body pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+#v-body .viewer-image {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    border: 1px solid var(--line-strong);
+}
+
+/* rendered html/svg: the frame fills the window; pages are usually light, so
+   it gets a white ground rather than inheriting the app's near-black */
+.viewer-frame {
+    width: 100%;
+    height: calc(100vh - 110px);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: #fff;
+}
+.viewer-frame.hidden { display: none; }
+/* the popout is nothing but the document: the PDF frame takes the window */
+.kdoc-pdf {
+    display: block;
+    width: 100%;
+    height: calc(100vh - 64px);
+    border: none;
+}
+.viewer-modebar { margin-bottom: 10px; }
+.viewer-src.hidden { display: none; }

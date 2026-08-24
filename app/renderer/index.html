@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <!-- frame-src allows LOOPBACK so a served workspace site can render inside the
+         workspace panel ("Launch in Workspace"). The frame is cross-origin from
+         this file:// app, so it cannot reach window.lcl; only localhost is added. -->
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; media-src 'self'; frame-src 'self' http://127.0.0.1:* http://localhost:*;" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>.lcl</title>
+
+    <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+<div id="app">
+
+    <!-- =========================================================
+         TITLE BAR  (custom chrome — drag region + menu + controls)
+    ========================================================== -->
+    <div id="titlebar">
+        <div id="titlebar-brand">
+            <img src="../assets/mark-small.png" id="titlebar-mark" alt=".lcl" />
+        </div>
+
+        <!-- =====================================================
+             THE BAR IS SPLIT BY SCOPE, NOT BY TOPIC.
+
+             Reported: "what makes the ui confusing ... is you have global
+             settings intermingled with session settings. there should be a
+             Session drop down, and that is where these should all be.
+             anything that is specific to the session. then a Global, for
+             the things that affect all sessions."
+
+             So every item was audited by WHAT IT WRITES, not by what it is
+             about, and moved to the menu that matches:
+
+               SESSION  writes the session record (data/sessions/<id>.json)
+                        — rename, delete, the linked workspace folder, the
+                        knowledge linked to this conversation, and this
+                        conversation's own permissions. Plus Jump to latest,
+                        which acts on this conversation's transcript.
+               GLOBAL   writes settings.json or app state that every session
+                        then reads — the internet switch, endpoints, the
+                        preferred model, the fallback, window layout, the
+                        profile. Grouped under headings inside the one menu
+                        rather than scattered across four, because "which
+                        menu was that in" is the confusion being fixed.
+               FILE     the app itself: a new session, the data folder, exit.
+               PERMISSIONS  its own menu. It was under KNOWLEDGE, with
+                        http_fetch and web_search inside it, which is how
+                        you end up granting network capability from a
+                        dropdown about reference material.
+               PATCH    its own dropdown, next to it, as asked.
+
+             Nothing was dropped in the move; every data-action that existed
+             before still exists, and tests/renderer-wiring.js fails if a
+             handler loses its menu item or a menu item loses its handler.
+        ====================================================== -->
+        <nav id="menubar" aria-label="Main menu">
+            <div class="menu" data-menu="file">
+                <button class="menu-label">File</button>
+                <div class="menu-panel">
+                    <button data-action="new-session">New session<span class="key">Ctrl+N</span></button>
+                    <div class="menu-sep"></div>
+                    <button data-action="open-data">Open data folder</button>
+                    <div class="menu-sep"></div>
+                    <button data-action="quit">Exit</button>
+                </div>
+            </div>
+
+            <!-- SESSION — everything here writes THIS conversation and
+                 nothing else. Opening a different session changes what
+                 these do. -->
+            <div class="menu" data-menu="session">
+                <button class="menu-label">Session</button>
+                <div class="menu-panel">
+                    <div class="menu-note">This conversation only.</div>
+                    <button data-action="rename-session">Rename session<span class="key">F2</span></button>
+                    <button data-action="delete-session">Delete session</button>
+                    <div class="menu-sep"></div>
+                    <button data-action="link-repo">Link workspace folder…<span class="key">Ctrl+O</span></button>
+                    <button data-action="unlink-repo">Unlink workspace</button>
+                    <button data-action="link-knowledge">Link knowledge to this session…</button>
+                    <div class="menu-sep"></div>
+                    <!-- PERMISSIONS ARE SESSION-SCOPED, full stop. The
+                         global "What .lcl can do" menu is gone; this one panel
+                         holds the switches AND the tool-by-tool dials, all
+                         writing this conversation's own record. -->
+                    <button data-action="session-perms">Permissions…<span class="key">Ctrl+K</span></button>
+                    <div class="menu-sep"></div>
+                    <!-- API FALLBACK IS PER SESSION. Which model this
+                         conversation may fall back to, and whether it may pay,
+                         is a property of THIS conversation — it was wrongly in
+                         Global. Moving it here is the scope split said right. -->
+                    <button data-action="escalation">Model Orchestration…</button>
+                    <!-- Ancient Knowledge is a per-session agent, not a
+                         "You" preference — its settings belong to THIS
+                         conversation and live here with the rest of the
+                         session's model configuration. -->
+                    <button data-action="ancient-knowledge">Ancient Knowledge…</button>
+                    <button data-action="answer-like">Answer like…</button>
+                    <div class="menu-sep"></div>
+                    <button data-action="scroll-bottom">Jump to latest</button>
+                </div>
+            </div>
+
+            <!-- GLOBAL — one menu, headed sections. Everything in it is
+                 written once and read by every session. -->
+            <div class="menu" data-menu="global">
+                <button class="menu-label">Global</button>
+                <div class="menu-panel menu-panel-tall">
+                    <div class="menu-note">Applies to every session.</div>
+                    <div class="menu-head">Network and models</div>
+                    <!-- The global "Internet access" switch is gone:
+                         internet is a per-session decision, and linking an API
+                         turns the network on automatically. Network access for
+                         a testing engagement lives in its own item below and
+                         toggles only that mode. -->
+                    <button data-action="models">Local Models…</button>
+                    <button data-action="default-model">Preferred model…</button>
+                    <button data-action="connections">API's &amp; Connections…</button>
+                    <button data-action="security">Network access &amp; testing engagements…</button>
+                    <div class="menu-head">This machine</div>
+                    <button data-action="machine">Machine…<span class="key">Ctrl+M</span></button>
+                    <button data-action="spend">Spend…</button>
+                    <button data-action="focus-search">Search sessions<span class="key">Ctrl+F</span></button>
+                </div>
+            </div>
+
+            <!-- WINDOW — the panels of this window, its own dropdown rather than
+                 a heading buried inside Global. -->
+            <div class="menu" data-menu="window">
+                <button class="menu-label">Window</button>
+                <div class="menu-panel">
+                    <button data-action="toggle-sidebar">Sidebar<span class="menu-value">shown</span><span class="key">Ctrl+B</span></button>
+                    <button data-action="toggle-workspace">Workspace panel<span class="menu-value">hidden</span><span class="key">Ctrl+J</span></button>
+                    <button data-action="toggle-terminal">Terminal<span class="menu-value">hidden</span></button>
+                    <button data-action="toggle-motion">Background motion<span class="menu-value">auto</span></button>
+                </div>
+            </div>
+
+            <!-- TRAIN — everything about how .lcl learns: who it works with,
+                 what it has learned, and the training data going in and out. -->
+            <div class="menu" data-menu="train">
+                <button class="menu-label">Train</button>
+                <div class="menu-panel">
+                    <button data-action="profile">About you…</button>
+                    <button data-action="learned">Characterization…</button>
+                    <button data-action="import-training">Import Training Data…</button>
+                    <button data-action="export-training">Export Training Data…</button>
+                </div>
+            </div>
+
+            <div class="menu" data-menu="knowledge">
+                <button class="menu-label">Knowledge</button>
+                <div class="menu-panel">
+                    <!-- ONE knowledge item, opening ONE knowledge UI. There
+                         were two ("Read the knowledge…" and "Knowledge
+                         libraries…"), in the same dropdown, showing different
+                         halves of the same shelf. -->
+                    <button data-action="knowledge">Knowledge…</button>
+                    <!-- YOUR OWN CODE AS CONTEXT — the shape of it. Sits with
+                         the other reference material, because that is what it
+                         is: something the model draws on rather than edits. -->
+                    <button data-action="code-shape">Survey my code…</button>
+                </div>
+            </div>
+
+            <!-- The Permissions MENU is gone: permissions are session-
+                 scoped and live in Session › Permissions — switches and
+                 tool-by-tool dials together. Nothing global remains to point
+                 a menu at. -->
+
+            <!-- Patching .lcl with .lcl. Only works where there is a source
+                 repository and git; an installed build says so rather than
+                 failing obscurely. Its own dropdown, as asked. -->
+            <div class="menu" data-menu="patch">
+                <button class="menu-label">Patch</button>
+                <div class="menu-panel">
+                    <button data-action="patch-bay">Patch .lcl itself…</button>
+                </div>
+            </div>
+
+            <div class="menu" data-menu="help">
+                <button class="menu-label">Help</button>
+                <div class="menu-panel">
+                    <button data-action="about">About .lcl</button>
+                </div>
+            </div>
+        </nav>
+
+        <div id="titlebar-center"></div>
+
+        <!-- The one switch this whole application is about. It was a checkbox
+             three levels down inside a panel behind a menu called "Security",
+             which named the guard rather than the capability: "the drop down
+             doesnt imply anything about networking... this is for using the
+             internet and searching the web. that is the point of this." -->
+
+        <!-- Mirrors the sidebar readout. Only visible when the sidebar is
+             collapsed, so the state is never unreachable and never doubled. -->
+        <div id="titlebar-status">
+            <span id="status-dot"></span>
+            <span id="status-text">starting…</span>
+        </div>
+
+        <div id="window-controls">
+            <button id="win-min" title="Minimize" aria-label="Minimize">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="currentColor" stroke-width="1.2"/></svg>
+            </button>
+            <button id="win-max" title="Maximize" aria-label="Maximize">
+                <svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.6" y="0.6" width="8.8" height="8.8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+            </button>
+            <button id="win-close" class="danger" title="Close" aria-label="Close">
+                <svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1.2"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         BODY: sidebar | chat | workspace
+    ========================================================== -->
+    <div id="body">
+
+        <!-- ---------------- SIDEBAR ---------------- -->
+        <aside id="sidebar">
+            <!-- THE PANEL'S OWN HEADER, WITH THE TOGGLE IN ITS TOP RIGHT.
+                 "a proper SVG toggle button in the TOP RIGHT of the header,
+                  like the sidebar svg buttons that literally everyone uses."
+                 The glyph is the standard one: a panel outline with the left
+                 column filled, which is the thing being shown or hidden. When
+                 the panel is collapsed this button goes with it, which is what
+                 #btn-sidebar — the handle on the edge — exists to answer. -->
+            <!-- The toggle for this panel is in the header, not in here. Having
+                 it inside the panel put a "hide me" button in the very thing it
+                 hides — "its when they are open, you have a side bar button in
+                 them. i did not want that." The three window toggles live
+                 together in the header; the edge handle brings a collapsed
+                 panel back. -->
+            <div id="sidebar-head">
+                <span id="sidebar-head-label">Sessions</span>
+            </div>
+
+            <button id="new-session">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                New session
+            </button>
+
+            <div id="search-wrap">
+                <svg id="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <circle cx="11" cy="11" r="7"/><path d="M20 20l-4.3-4.3"/>
+                </svg>
+                <input id="session-search" type="text" placeholder="Search sessions" autocomplete="off" />
+            </div>
+
+            <nav id="session-list" aria-label="Sessions"></nav>
+
+            <!-- An "Update available" card with an Update button, a Later
+                 button and a progress bar lived here: nine elements and 58
+                 lines of CSS that no script ever referenced, in an app with no
+                 updater at all. It shipped permanently hidden and could never
+                 appear. Removed rather than left as furniture — and
+                 tests/renderer-wiring.js now fails the build on any id in this
+                 markup that the renderer never touches, so the next one cannot
+                 ship. Bring it back WITH its wiring when there is an updater. -->
+
+            <!-- Engine state sits directly above the memory bar because the two
+                 are one story: the reason the model stopped is almost always the
+                 number below it. It used to live in the far top-right corner —
+                 "why is it all the way across the screen on the polar opposite
+                 side" — with the cause and the effect a full screen apart. -->
+            <!-- The readouts. One heading over the whole group, because engine
+                 state and memory are one story: the reason the model stopped is
+                 almost always the number underneath it.
+
+                 The engine line USED TO SIT ABOVE THIS HEADING, immediately
+                 under the session list — a dot and a line of text directly
+                 below a stack of rows that are also a dot and a line of text.
+                 It read as one more session:
+
+                   "the spark white dot is there, meaningless. what is the
+                    purpose, it looks like a session there."
+
+                 Inside the group it is plainly a readout, and the heading is
+                 the break between the list and everything below it. -->
+            <!-- THE MACHINE DOCK — its own compartment, not list furniture.
+                 The machine RAM readouts should be their own part of the left
+                 sidebar, locked in place. Everything about the
+                 hardware lives in this one container: the memory bar, every
+                 node's readout, the model-load card, the engine line. It is
+                 pinned under the session list and never scrolls with it. -->
+            <div id="machine-dock">
+            <div class="sb-section">Memory</div>
+
+            <div id="resource-bar" title="Machine memory">
+                <div id="mem-track"><div id="mem-fill"></div></div>
+                <div id="mem-label">
+                    <span id="mem-text">memory —</span>
+                </div>
+            </div>
+
+            <!-- Every linked node gets the SAME live readout the laptop has,
+                 in the same place — unified memory, what model is resident.
+                 "just like we have ram monitoring on our local machine, when
+                 one of these bad boys is connected, we would need its monitor
+                 as well, in the ui." It was in the Machine panel behind
+                 Ctrl+M, which is where readouts go to not be seen. -->
+            <div id="node-section" class="hidden">
+                <!-- no heading of its own: it sits under "Memory" with the
+                     laptop, and every row carries the machine name. A second
+                     heading here cost a row the session list needed. -->
+                <div id="node-bars"></div>
+            </div>
+
+            <!-- WHERE THE MODEL LOAD ACTUALLY IS. A sibling ABOVE the footer,
+                 not inside it: the footer is a horizontal row, so a card placed
+                 in there became a flex item squeezed alongside the engine
+                 label, and four stacked lines rendered as a sliver. -->
+            <div id="load-progress" class="hidden">
+                <div id="load-phase"></div>
+                <div id="load-bar"><div id="load-bar-fill"></div></div>
+                <div id="load-elapsed"></div>
+                <div id="load-line"></div>
+            </div>
+
+            <div id="sidebar-footer">
+                <span id="engine-label">.lcl.engine · no model</span>
+                <span id="session-count"></span>
+            </div>
+            </div><!-- /machine-dock -->
+        </aside>
+
+        <!-- ---------------- CHAT ---------------- -->
+        <main id="main">
+            <header id="chat-header">
+                <!-- inner track, so the title lines up with the messages and
+                     the composer instead of sitting at the window edge -->
+                <div id="chat-header-inner">
+                    <div id="chat-title-wrap">
+                        <h1 id="session-title">.lcl</h1>
+                        <div id="chat-subtitle">no workspace linked</div>
+                    </div>
+
+                    <!-- WINDOW ACTIONS. These act on the WINDOW, not on the
+                         session, so they are icons rather than words. The
+                         terminal lives here because it is a panel of this
+                         window like the other two. -->
+                    <div id="chat-header-actions">
+                        <!-- CONTEXT DONUT — a small SVG ring showing how full
+                             the context window is. Click to compact. Sits to the
+                             LEFT of the terminal button in the header. -->
+                        <!-- THE PLAN DONUT. A second ring, beside the context
+                             one, for a session whose provider meters a WINDOW
+                             rather than tokens — OpenCode GO's $12 per five
+                             hours. Dynamic on purpose: it appears only when the
+                             endpoint answering this session actually has such a
+                             ceiling, and is absent for Zen, DeepInfra, a node
+                             and the local engine, which have none. -->
+                        <div id="plan-ring-wrap" class="hidden" title="Plan window">
+                            <svg id="plan-ring" width="20" height="20" viewBox="0 0 36 36">
+                                <circle cx="18" cy="18" r="15" fill="none" stroke="#2a2a2e" stroke-width="3"/>
+                                <circle id="plan-ring-fill" cx="18" cy="18" r="15" fill="none"
+                                        stroke="#8fd8ff" stroke-width="3" stroke-linecap="round"
+                                        stroke-dasharray="0 100" transform="rotate(-90 18 18)"/>
+                            </svg>
+                            <span id="plan-ring-pct"></span>
+                        </div>
+                        <div id="context-ring-wrap" class="hidden" title="Context usage — click to compact">
+                            <svg id="context-ring" width="20" height="20" viewBox="0 0 36 36">
+                                <circle cx="18" cy="18" r="15" fill="none" stroke="#2a2a2e" stroke-width="3"/>
+                                <circle id="context-ring-fill" cx="18" cy="18" r="15" fill="none"
+                                        stroke="#e0c98f" stroke-width="3" stroke-linecap="round"
+                                        stroke-dasharray="0 100" transform="rotate(-90 18 18)"/>
+                            </svg>
+                            <span id="context-ring-pct"></span>
+                            <!-- WHAT is filling the window, not only how much.
+                                 Hangs under the ring on hover: one bar of
+                                 shares (instructions / your messages / replies
+                                 / tool output / other) against the tokens the
+                                 engine actually reported for the last request.
+                                 "why did hello cost 20,000 tokens" is answered
+                                 here instead of in the source. -->
+                            <div id="context-breakdown" class="hidden"></div>
+                        </div>
+                        <!-- ORDER IS TERMINAL, LEFT SIDEBAR, RIGHT SIDEBAR, in
+                             those words: "Terminal button, right sidebar
+                             button, left sidebar button" and again "the header
+                             button order was supposed to be TERMINAL / LEFT
+                             SIDEBAR / RIGHT SIDEBAR". It shipped as sidebar,
+                             terminal, workspace. Left-to-right here is exactly
+                             that list. -->
+                        <button id="terminal-toggle" class="panel-toggle"
+                                title="Open a terminal — your own shell, unsandboxed"
+                                aria-label="Open a terminal" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="1.7"
+                                 stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+                                <path d="M7.4 9.2l2.6 2.8-2.6 2.8"/>
+                                <path d="M12.6 15.2h4"/>
+                            </svg>
+                        </button>
+                        <button id="sidebar-toggle" class="panel-toggle"
+                                title="Hide the session list (Ctrl+B)"
+                                aria-label="Hide the session list" aria-expanded="true">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+                                <path d="M9 4v16" />
+                                <path d="M5.6 8.2h1.4M5.6 11.4h1.4M5.6 14.6h1.4"
+                                      stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                        <button id="workspace-toggle" class="panel-toggle"
+                                title="Show the workspace panel (Ctrl+J)"
+                                aria-label="Show the workspace panel" aria-expanded="false">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                                 stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+                                <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+                                <path d="M15 4v16"/>
+                                <path d="M17 8.2h1.4M17 11.4h1.4M17 14.6h1.4"
+                                      stroke-linecap="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <!-- RENAME IS NOT A HEADER ACTION. It was a text button
+                         sitting beside the panel toggle, as if renaming and
+                         opening a side panel were the same kind of thing —
+                         and it is one of several things you do to a session:
+                         each session needs a triple-dot menu next to it for
+                         options like rename and delete — more than just those
+                         two. That menu now lives on
+                         the session row itself, where the session is.
+
+                         What remains here acts on the WINDOW, so it is an
+                         icon that shows what it does: a panel opening on the
+                         right-hand edge. -->
+
+                </div>
+            </header>
+
+            <!-- landing page for a fresh session: animated brand backdrop -->
+            <!-- starts hidden: this is the NEW SESSION page, not a splash.
+                 Without the class it was visible during boot and applyMotion()
+                 started the clip before any session logic ran. -->
+            <div id="landing" class="hidden">
+                <div id="landing-anim" aria-hidden="true">
+                    <!-- H.264 1280x720 24fps. A video is ONE composited texture
+                         per frame with hardware decode, so unlike the layered CSS
+                         drift it can cover the pane cheaply. Muted is mandatory:
+                         the file carries an audio track and autoplay requires it. -->
+                    <!-- plays ONCE per visit to this page, never loops, and never
+                         runs inside a session. autoplay is not set: app.js starts
+                         it explicitly so it can rewind to 0 on every visit and
+                         fall back to muted if the autoplay policy blocks audio. -->
+                    <video id="landing-video"
+                           src="../assets/landing.mp4"
+                           playsinline
+                           preload="auto"
+                           disablepictureinpicture
+                           disableremoteplayback
+                           tabindex="-1"></video>
+                    <div id="landing-veil"></div>
+                </div>
+                <button id="intro-sound" title="Mute the intro">
+                    <span id="intro-sound-icon">♪</span>
+                </button>
+                <div id="landing-content">
+                    <img id="landing-title" src="../assets/wordmark-trim.png" alt=".lcl" />
+                    <!-- the first sentence anyone reads. "compute layer" is
+                         invented vocabulary, and "fully offline" is not true of
+                         an app with an internet switch and linked API models. -->
+                    <div id="landing-sub">AI on your own machine — nothing leaves it unless you say so</div>
+                    <div id="landing-actions">
+                        <button id="landing-link" class="primary">Link a workspace folder</button>
+                        <button id="landing-skip" class="ghost">Just chat</button>
+                    </div>
+                    <div id="landing-hint">
+                        Link a folder to read and edit files in it, or just start typing.
+                    </div>
+                </div>
+            </div>
+
+            <div id="chat-scroll">
+                <div id="chat"></div>
+            </div>
+
+            <button id="jump-latest" class="hidden" title="Jump to latest">↓ latest</button>
+
+
+            <div id="composer">
+                <!-- WHERE AN ASK APPEARS. A leave-machine prompt floats here,
+                     directly above the input, instead of being appended to the
+                     transcript: "it should be a pop up, that appears near the
+                     chat input, and goes away when clicked". One at a time; the
+                     rest queue. Empty until something asks. -->
+                <div id="perm-popup-layer"></div>
+
+                <!-- WHAT YOU TYPED WHILE IT WAS THINKING. With Ancient
+                     Knowledge on, an afterthought joins the request being
+                     answered right now. With it off there was nothing to
+                     carry the message and the field simply locked — "i
+                     still can not add questions while a model is thinking".
+                     So it queues instead, visibly, and each one can be
+                     taken back before its turn comes. Empty until then. -->
+                <div id="queued-strip" class="hidden"></div>
+
+                <!-- FILES RIDING THE NEXT MESSAGE — one removable chip per
+                     staged attachment. Empty until something is attached. -->
+                <div id="attach-strip" class="hidden"></div>
+
+                <!-- THE INPUT HOLDS THE INPUT.
+                     "all teh buttons in the message input field. should not be
+                      in that container. it takes up space in the container, and
+                      it unwanted. float them below the message input field. as a
+                      row. keeping their posistion."
+                     Four buttons and the model picker used to sit INSIDE the
+                     rounded field, eating the width the text was supposed to
+                     have. They are now #composer-tools, directly beneath, in the
+                     order they were in. Send stays: it is the field's own
+                     action, and it is the one control that becomes Stop. -->
+                <div id="composer-inner">
+                    <textarea id="composer-input" rows="1" placeholder="Message .lcl…   (Ctrl+Enter to send)"
+                              autocomplete="off" spellcheck="true"></textarea>
+
+                    <!-- one control: send, then stop while generating, then send again -->
+                    <button id="send" title="Send (Enter)">
+                        <svg id="send-icon" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                             stroke-linejoin="round">
+                            <path d="M5 12h13M12 5l7 7-7 7"/>
+                        </svg>
+                        <!-- outlined square, not filled — reads as "stop". Sized so the
+                             square itself fills the glyph box; the previous 13/24 rect
+                             read as a dot on the red button. -->
+                        <svg id="stop-icon" class="hidden" width="20" height="20" viewBox="0 0 24 24"
+                             fill="none" stroke="currentColor" stroke-width="2.4"
+                             stroke-linejoin="round">
+                            <rect x="4" y="4" width="16" height="16" rx="2"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div id="composer-tools">
+                    <button id="link-repo" title="Link a workspace folder — read + write (Ctrl+O)">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        </svg>
+                    </button>
+                    <!-- knowledge is linked per session like a workspace, but READ-ONLY -->
+                    <button id="link-knowledge" title="Link knowledge to this session — read-only">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                        </svg>
+                    </button>
+                    <!-- WHAT THIS CONVERSATION IS ALLOWED TO DO.
+                         A button beside the other per-session controls, ALWAYS
+                         present. It was first built as a chip that appeared
+                         only once a permission had been granted — which meant
+                         the control for granting one was invisible until you
+                         had already granted one. Reported: it should be a
+                         selectable dropdown from the chat input field, like
+                         the workspace and knowledge-base buttons. -->
+                    <button id="session-perms-btn" title="What this conversation is allowed to do">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 3l7 3v6c0 4.4-3 8.3-7 9-4-0.7-7-4.6-7-9V6z"/>
+                            <path d="M12 11v3"/><circle cx="12" cy="9" r="0.6" fill="currentColor"/>
+                        </svg>
+                    </button>
+                    <!-- files for the NEXT message — picked here, or staged
+                         from the workspace explorer (Alt+click / Add to chat) -->
+                    <button id="attach-btn" title="Attach files to your next message">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                        </svg>
+                    </button>
+                    <!-- dictation: local whisper, works in every session incl. remote -->
+                    <button id="mic-btn" title="Dictate — transcribed locally, audio never leaves this machine">
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="9" y="2" width="6" height="12" rx="3"/>
+                            <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4"/>
+                        </svg>
+                    </button>
+
+                    <!-- WHICH MODEL ANSWERS — in the row with the rest of the
+                         per-session controls, as asked, and a TREE rather than
+                         one flat multicoloured list: "when you click on it, it
+                         opens and shows the 4 modes. Local, Local Nodes. API and
+                         $ GPU. that way you can declutter it. and categorize.
+                         then it doesnt need to be multicolored." -->
+                    <div id="model-pick-wrap">
+                        <!-- REASONING EFFORT SLIDER — always visible, to the LEFT
+                             of the brain. Controls reasoning_effort sent to the API.
+                             5 Kardashev-scale levels. Independent of the brain. -->
+                        <input type="range" id="brain-slider" min="0" max="4" value="0" step="1"
+                               title="Reasoning effort">
+                        <span id="brain-level-label">Terrestrial</span>
+
+                        <!-- ANCIENT KNOWLEDGE — the brain. An ON/OFF toggle, independent
+                             of the slider. When ON, it lights up with the color matching
+                             the current slider level. When ON, after each model response,
+                             it audits: did the model actually complete what was asked?
+                             The brain color reflects the slider level, but only when ON. -->
+                        <button id="brain-btn" title="Ancient Knowledge — deep reasoning & self-audit overseer. Audits input against output, analyses gaps, and feeds repairs to the model before responding.">
+                            <svg width="18" height="18" viewBox="0 0 512 512" fill="currentColor"
+                                 xmlns="http://www.w3.org/2000/svg">
+                                <g>
+                                    <path d="M345.934,233.32c-3.329-1.882-7.555-0.71-9.438,2.619c-1.882,3.329-0.71,7.565,2.624,9.447c5.114,2.912,8.235,6.161,10.298,9.518c-8.54,3-16.11,4.234-22.799,4.234c-9.789-0.009-17.796-2.593-24.548-6.552c-6.734-3.968-12.18-9.393-16.309-15.022c-6.806-9.278-15.661-17.542-26.098-23.571c-10.422-6.011-22.479-9.767-35.419-9.767c-11.347-0.008-23.305,2.913-35.153,9.42c-4.844,2.655-9.043,5.762-12.7,9.153c-14.414,5.549-26.834,7.546-37.341,7.546c-14.969,0-26.151-4.022-33.627-7.973c-3.733-1.971-6.525-3.933-8.332-5.353c-0.906-0.719-1.566-1.288-1.976-1.66l-0.426-0.409l-0.067-0.062H94.62c-2.655-2.726-7.023-2.796-9.771-0.151c-2.752,2.654-2.832,7.04-0.177,9.792c0.386,0.391,5.149,5.265,14.267,10.095c3.991,2.113,8.883,4.19,14.534,5.886c-1.501,2.113-3.551,5.202-5.784,9.135c-4.293,7.573-9.225,18.201-11.738,30.737c-0.75,3.746,1.683,7.396,5.434,8.15c3.751,0.745,7.404-1.688,8.15-5.442c2.108-10.556,6.414-19.94,10.205-26.608c1.891-3.338,3.645-5.993,4.906-7.778c0.63-0.896,1.136-1.58,1.474-2.024c0.168-0.214,0.297-0.382,0.373-0.48l0.08-0.098l0.009-0.009l0.004-0.009c0.639-0.781,1.066-1.66,1.309-2.583c3.525,0.434,7.227,0.701,11.156,0.692c7.284,0.009,15.261-0.852,23.851-2.805c-4.258,9.18-6.01,18.76-6.015,27.54c0.017,8.843,1.7,16.869,4.701,23.261c1.637,3.463,5.77,4.936,9.228,3.303c3.458-1.634,4.936-5.771,3.298-9.224v-0.009c-1.926-4.013-3.392-10.334-3.369-17.331c-0.005-7.546,1.624-15.856,5.531-23.438c3.928-7.582,10.028-14.498,19.479-19.701c9.974-5.46,19.496-7.698,28.49-7.706c10.24,0,19.887,2.957,28.498,7.91c8.603,4.963,16.119,11.95,21.844,19.762c5.038,6.872,11.778,13.655,20.452,18.769c8.656,5.114,19.284,8.478,31.58,8.469c8.136,0,16.975-1.474,26.466-4.706l0.022,0.497c0,3.392-0.528,6.481-1.056,8.665c-0.262,1.092-0.524,1.954-0.706,2.513c-0.093,0.275-0.164,0.479-0.208,0.594l-0.04,0.107l-0.004,0.017h0.004c-1.403,3.543,0.324,7.556,3.866,8.976c3.551,1.421,7.586-0.311,9.007-3.862c0.177-0.497,2.966-7.413,2.992-17.011c0-5.505-0.964-11.968-4.164-18.35C359.62,244.054,354.133,237.928,345.934,233.32z"/>
+                                    <path d="M361.382,187.056c-19.043,0-34.336-7.014-44.914-16.194c-5.278-4.581-9.336-9.704-12.003-14.604c-2.681-4.91-3.911-9.58-3.893-13.078c0-3.827-3.103-6.925-6.929-6.925c-3.826,0-6.926,3.098-6.926,6.925c0.018,6.516,2.055,13.193,5.58,19.692c3.689,6.766,9.078,13.335,15.928,19.123c-1.381,1.918-3.286,4.387-5.718,7.032c-5.278,5.762-12.886,12.145-21.969,15.368c-3.604,1.287-5.482,5.256-4.194,8.851c1.287,3.605,5.252,5.488,8.852,4.199c12.327-4.43,21.555-12.508,27.815-19.381c2.788-3.072,4.958-5.877,6.561-8.123c11.462,6.614,25.618,10.982,41.812,10.973c3.822,0,6.93-3.098,6.93-6.925C368.311,190.164,365.204,187.056,361.382,187.056z"/>
+                                    <path d="M315.197,322.537c-12.961,0-23.26-2.504-31.535-6.33c-12.385-5.753-20.42-14.595-25.476-23.412c-2.521-4.395-4.261-8.771-5.358-12.616c-1.101-3.826-1.532-7.182-1.523-9.215c0-3.826-3.098-6.926-6.925-6.926c-3.831,0-6.929,3.099-6.929,6.926c0,2.495,0.297,5.256,0.906,8.292c1.056,5.291,3.067,11.409,6.326,17.712c4.888,9.447,12.647,19.354,24.242,26.884c2.903,1.899,6.046,3.622,9.428,5.166c0.528,2.273,1.261,6.321,1.256,11.204c0,3.552-0.382,7.511-1.456,11.569c-1.074,4.057-2.823,8.195-5.602,12.216c-2.179,3.152-1.394,7.466,1.754,9.642c3.148,2.175,7.462,1.394,9.638-1.749c3.782-5.469,6.178-11.151,7.608-16.567c1.434-5.424,1.913-10.582,1.913-15.111c0-2.264-0.124-4.359-0.311-6.276c6.677,1.554,13.992,2.459,22.044,2.45c3.823,0,6.926-3.107,6.926-6.934C322.123,325.644,319.02,322.537,315.197,322.537z"/>
+                                    <path d="M409.302,218.468c-3.431-2.956-7.133-5.38-11.04-7.103c-3.902-1.722-8.026-2.752-12.248-2.752c-3.826,0-6.929,3.098-6.929,6.925c0,3.836,3.103,6.934,6.929,6.934c2.548-0.009,5.771,0.879,9.158,2.841c5.078,2.912,10.357,8.141,14.196,14.693c3.862,6.543,6.308,14.33,6.304,22.373c-0.031,8.852-2.819,18.085-10.365,27.266c-2.437,2.956-2.02,7.315,0.932,9.756c2.948,2.433,7.316,2.016,9.753-0.932c9.508-11.472,13.565-24.194,13.534-36.09c0-7.227-1.447-14.142-3.879-20.446C421.988,232.485,416.16,224.398,409.302,218.468z"/>
+                                    <path d="M168.073,181.534v-0.009c4.759-5.638,11.538-10.059,19.266-13.033c7.715-2.983,16.327-4.475,24.384-4.466c7.848-0.018,15.155,1.429,20.514,3.924c3.476,1.598,7.59,0.089,9.198-3.391c1.602-3.472,0.084-7.582-3.387-9.19c-7.741-3.56-16.837-5.194-26.324-5.202c-9.739,0-19.901,1.758-29.365,5.388c-9.441,3.64-18.235,9.199-24.862,17.02c-2.473,2.921-2.109,7.297,0.812,9.766C161.228,184.819,165.601,184.446,168.073,181.534z"/>
+                                    <path d="M492.215,208.417c-1.225-1.243-2.539-2.424-3.87-3.586c0.696-3.88,1.1-7.831,1.1-11.844c0.004-10.636-2.53-21.467-7.808-31.464c-6.033-11.462-14.969-20.554-25.401-26.715c-7.297-4.315-15.323-7.191-23.642-8.532c-2.019-7.182-5.185-14.019-9.438-20.224c-7.08-10.334-17.148-18.892-29.467-24.193c-8.811-3.791-18.058-5.611-27.14-5.611c0,0-0.28-0.009-0.79,0.036c-11.533,0.134-22.759,3.161-32.69,8.692c-3.884-4.679-8.376-8.843-13.375-12.35c-10.956-7.697-24.353-12.261-38.687-12.403c-0.165-0.009-0.364-0.017-0.608-0.026c-0.031,0-0.062,0-0.097,0h-0.009h-0.009h-0.004c-0.022,0-0.044,0-0.066,0c-0.133,0-0.293,0.009-0.497,0.017c-12.482,0.098-24.277,3.543-34.354,9.508c-4.368,2.575-8.354,5.673-12.012,9.118c-10.44-6.508-22.777-10.308-35.917-10.37l-0.048-0.008h-0.311c-0.009,0-0.014,0-0.022,0c-0.018,0-0.036,0-0.057,0c-0.16,0-0.36,0.008-0.613,0.026c-13.979,0.133-27.088,4.466-37.896,11.817c-6.264,4.253-11.746,9.518-16.279,15.545c-5.735-1.553-11.723-2.396-17.841-2.396c-5.091,0-10.254,0.577-15.394,1.749c-15.138,3.471-28.068,11.772-37.334,22.861h0.005c-6.503,7.768-11.195,16.93-13.77,26.812c-9.873,3.348-19.177,8.959-26.959,16.886c-0.004,0.009-0.013,0.018-0.022,0.027c-13.051,13.308-19.621,30.718-19.616,48.004v0.026v0.036c0,0,0,0.017,0,0.035v0.186h0.004c0.017,6.01,0.83,12.003,2.415,17.827C4.799,239.81,0.005,254.272,0,269.073c-0.004,10.955,2.638,22.097,8.128,32.369c6.17,11.533,15.244,20.668,25.8,26.856c7.404,4.341,15.532,7.21,23.952,8.559c4.484,12.048,12.172,22.444,22.009,30.141c11.701,9.172,26.462,14.596,42.278,14.596c1.643,0,3.281-0.052,4.918-0.177h0.04h0.022h0.005h0.004c6.982-0.506,13.672-2.077,19.904-4.501c4.142,6.64,9.348,12.508,15.395,17.348c11.697,9.366,26.572,14.96,42.517,15.031c0.058,0.009,0.106,0.009,0.156,0.009c0.054,0,0.106,0,0.156,0h0.009c0.005,0,0.005,0,0.005,0h0.013h0.071c0.023,0,0.032,0,0.054,0l0.173-0.009h0.049c1.274-0.009,2.553-0.062,3.826-0.142h0.018l0.75-0.018c5.708-0.418,11.222-1.528,16.447-3.249c6.583,9.775,15.75,18.022,27.092,23.492h-0.005c9.57,4.616,19.78,6.827,29.8,6.827c9.756,0,19.3-2.121,28.054-6.046c12.722,13.512,30.661,21.627,49.957,21.646c4.231,0,8.51-0.391,12.79-1.199c16.438-3.089,30.523-11.888,40.378-23.9h-0.004c6.436-7.821,11.067-17.054,13.544-27.016c11.368-1.118,22.648-5.078,32.618-12.092c9.487-6.659,16.838-15.36,21.765-25.072c4.928-9.704,7.467-20.412,7.467-31.216c0-7.2-1.172-14.428-3.476-21.397c5.917-4.82,11.15-10.698,15.323-17.578c6.748-11.098,9.997-23.474,9.997-35.638C511.996,238.914,505.102,221.468,492.215,208.417z M481.277,279.744c-6.965,11.47-18.192,18.609-30.457,20.731c-3.773,0.648-6.303,4.235-5.656,7.998c0.648,3.774,4.231,6.304,8,5.656c2.819-0.479,5.594-1.181,8.315-2.068c2.964,6.126,4.426,12.696,4.426,19.248c0.004,7.005-1.651,13.965-4.838,20.242c-3.192,6.278-7.898,11.861-14.077,16.212c-7.781,5.451-16.615,8.053-25.418,8.061c-0.688,0-1.376-0.053-2.064-0.088c-0.146-1.154-0.289-2.299-0.502-3.445v-0.009c-1.518-8.035-4.643-15.386-8.936-21.769l-0.524-0.782l-0.71-0.613c-5.252-4.492-12.217-11.879-17.593-19.407c-2.694-3.756-4.998-7.556-6.547-10.938c-1.568-3.383-2.286-6.34-2.26-8.088c0-0.781,0.116-1.305,0.245-1.66c0.137-0.346,0.266-0.551,0.537-0.834c2.703-2.699,2.703-7.094,0-9.793c-2.708-2.707-7.094-2.707-9.798,0v-0.008c-1.686,1.686-2.96,3.719-3.742,5.85c-0.781,2.131-1.096,4.324-1.096,6.446c0.026,4.803,1.478,9.348,3.52,13.858c3.095,6.73,7.711,13.415,12.696,19.514c4.692,5.736,9.686,10.876,14.156,14.818c3.076,4.741,5.323,10.086,6.433,15.972c0.466,2.477,0.723,4.936,0.759,7.306l0.004,0.036c0.005,0.32,0.009,0.631,0.009,0.95c0,10.477-3.725,20.375-10.13,28.179c-6.415,7.796-15.44,13.442-26.124,15.457c-2.796,0.525-5.571,0.782-8.301,0.782c-14.693,0.009-28.286-7.36-36.453-19.115c4.395-4.457,8.141-9.695,11.008-15.625c3.556-7.351,5.42-15.129,5.762-22.817c0.169-3.836-2.796-7.067-6.614-7.236c-3.826-0.168-7.063,2.796-7.232,6.615c-0.262,5.886-1.673,11.781-4.394,17.4l-0.004,0.018c-2.904,6.019-6.97,11.053-11.804,15.04l-0.026,0.017c-7.941,6.517-17.992,10.104-28.259,10.104c-6.472,0-13.029-1.421-19.266-4.422c-11.551-5.576-19.572-15.43-23.119-26.758l-0.005-0.009c-1.354-4.298-2.055-8.799-2.055-13.335c0-6.472,1.421-13.024,4.434-19.292c1.665-3.445,0.214-7.582-3.232-9.242c-3.444-1.66-7.586-0.213-9.246,3.232c-3.934,8.15-5.811,16.806-5.811,25.303c0,4.119,0.471,8.195,1.323,12.19c-5.411,2.956-11.515,4.838-18.112,5.328h-0.013c-1.074,0.071-2.14,0.106-3.187,0.106c-10.401,0-20.038-3.605-27.7-9.73c-6.668-5.328-11.777-12.545-14.507-20.9c4.878-4.812,8.918-10.44,11.87-16.682c1.633-3.454,0.155-7.591-3.303-9.225c-3.458-1.634-7.591-0.16-9.225,3.303c-2.743,5.806-6.72,10.956-11.617,15.084c-6.934,5.85-15.692,9.624-25.444,10.325h-0.014c-1.07,0.071-2.135,0.115-3.187,0.115c-22,0.009-40.777-16.22-43.947-37.971l-0.008-0.054l-0.009-0.054c-0.169-1.029-0.289-2.113-0.369-3.231c-0.075-1.084-0.114-2.149-0.114-3.214c0-2.806,0.262-5.549,0.758-8.221c0.693-3.765-1.793-7.378-5.557-8.08c-3.76-0.693-7.373,1.794-8.07,5.558c-0.644,3.48-0.986,7.076-0.986,10.743l0.014,0.399c-6.228-0.693-12.274-2.672-17.69-5.85c-6.832-4.005-12.66-9.855-16.682-17.366c-3.578-6.694-5.26-13.85-5.265-20.926c0-9.127,2.833-18.093,8.075-25.586c2.006,2.841,4.293,5.54,6.854,8.052c5.838,5.736,12.611,9.989,19.79,12.758c3.565,1.386,7.578-0.39,8.958-3.959c1.381-3.569-0.394-7.582-3.959-8.959c-5.478-2.122-10.618-5.344-15.08-9.73l-0.009-0.008c-3.924-3.845-6.974-8.23-9.172-12.927c-2.783-5.948-4.181-12.403-4.181-18.866c0.004-11.249,4.208-22.426,12.691-31.1c7.213-7.342,16.292-11.64,25.728-12.927h0.009h0.009l0.026-0.009c1.994-0.266,4-0.408,6.015-0.399c11.245,0.009,22.444,4.218,31.114,12.696c2.734,2.672,7.12,2.628,9.797-0.106c2.677-2.734,2.628-7.12-0.106-9.793c-11.032-10.805-25.338-16.327-39.668-16.602c1.634-6.632,4.75-12.793,9.1-17.987c6.019-7.191,14.299-12.518,24.157-14.791c3.348-0.764,6.686-1.136,9.97-1.136c5.806,0,11.449,1.154,16.664,3.267c-1.483,5.158-2.299,10.601-2.299,16.22c0,3.826,3.103,6.925,6.929,6.925c3.826,0,6.925-3.098,6.925-6.925c0-6.064,1.221-11.852,3.401-17.108c3.346-8.026,9.002-14.88,16.118-19.719c7.13-4.838,15.684-7.644,24.961-7.653c13.348,0.009,25.272,5.851,33.444,15.164l0.014,0.009c6.871,7.821,11.013,18.049,11.018,29.306c0,3.826,3.098,6.925,6.929,6.925c3.827,0,6.925-3.098,6.925-6.925c0.005-12.793-4.133-24.672-11.142-34.288c3.587-4.971,8.159-9.18,13.45-12.305c6.623-3.915,14.312-6.152,22.586-6.152c9.504,0,18.249,2.965,25.472,8.035c7.222,5.06,12.878,12.225,16.069,20.579l-0.004-0.008c1.883,4.945,2.917,10.263,2.921,15.874c0,3.826,3.099,6.926,6.926,6.926c3.826,0,6.929-3.099,6.929-6.926c0-5.718-0.857-11.24-2.393-16.46c8.203-7.644,19.092-11.968,30.328-11.968c5.868,0,11.817,1.172,17.57,3.64c8.022,3.454,14.463,8.949,19.057,15.643c4.59,6.685,7.298,14.56,7.756,22.692c0.044,0.835,0.071,1.678,0.071,2.521c-0.005,5.868-1.164,11.809-3.631,17.562c-1.51,3.516,0.111,7.59,3.626,9.099c3.516,1.518,7.59-0.115,9.1-3.631c2.57-5.966,4.048-12.154,4.549-18.315c6.792,0.453,13.407,2.512,19.266,5.975c6.689,3.96,12.38,9.73,16.282,17.135v0.008c3.414,6.464,5.012,13.353,5.016,20.163c0,3.125-0.36,6.214-1.021,9.242c-4.182-1.616-8.475-2.726-12.803-3.338c-3.787-0.533-7.288,2.105-7.821,5.904c-0.533,3.783,2.104,7.289,5.895,7.822c4.346,0.613,8.63,1.865,12.74,3.8c0.728,1.181,1.802,2.166,3.174,2.752c0.857,0.364,1.745,0.542,2.624,0.55c2.556,1.705,4.883,3.614,6.96,5.727l-0.093-0.097l0.111,0.115c8.296,8.381,12.788,19.701,12.784,31.233C487.749,264.571,485.672,272.518,481.277,279.744z"/>
+                                </g>
+                            </svg>
+                        </button>
+
+                        <button id="model-pick" title="Choose model"
+                                aria-haspopup="true" aria-expanded="false">
+                            <span id="model-pick-label">—</span>
+                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="3" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <!-- persistent spark-switch progress, visible with the
+                             picker closed; hidden except during a switch -->
+                        <span id="spark-switch-pill" class="hidden"></span>
+                        <div id="model-menu" class="hidden"></div>
+                    </div>
+                </div>
+                <div id="composer-hint">
+                    <!-- The keyboard hint used to live here permanently. Enter
+                         sends: that is learned in the first minute and then it
+                         is furniture forever, on the surface stared at all day.
+                         This row now carries STATE ONLY — cost, workspace,
+                         knowledge, spend — and each span is empty until it has
+                         something true to say. -->
+                    <!-- Live token + cost meter. Empty and invisible unless a
+                         REMOTE model is selected: a local model costs nothing per
+                         token and a meter reading $0 forever is just noise. -->
+                    <span id="composer-cost" class="hidden"></span>
+                    <span id="composer-workspace"></span>
+                    <span id="composer-knowledge"></span>
+                    <!-- The READOUT of what this session has been allowed,
+                         beside the workspace and knowledge readouts and
+                         behaving like them: empty until there is something
+                         true to say. The CONTROL is the shield button above.
+                         A granted permission you cannot see is one you forget
+                         you granted. -->
+                    <span id="composer-perms"></span>
+                    <!-- this conversation's spend so far, from the ledger -->
+                    <span id="session-cost" class="hidden"></span>
+                </div>
+            </div>
+
+            <!-- SLASH COMMAND POPOVER — appears when the user types / at the
+                 start of the composer. Lists available commands, filtered by
+                 what they typed. -->
+            <div id="slash-menu" class="hidden"></div>
+        </main>
+
+        <!-- ---------------- WORKSPACE PANEL ---------------- -->
+        <aside id="workspace" class="collapsed">
+            <!-- drag to widen; the panel was fixed at 320px with no way to see a
+                 long path or a wide file — the workspace sidebar could not be expanded -->
+            <div id="ws-resize" title="Drag to resize"></div>
+            <!-- The panel is a first-class section: it collapses from its OWN
+                 chrome, not only from the header toggle across the window.
+                 a true hero section that is collapsible. The edge handle
+                 returns it when collapsed; Ctrl+J still works everywhere. -->
+            <div id="workspace-head">
+                <span>Workspace</span>
+                <div id="ws-head-acts">
+                    <!-- Triple-dot: choose which sections SHOW in the dock. Hiding
+                         a section removes only its VIEW here — its function keeps
+                         running; re-add it from this same list. -->
+                    <button id="sb-view-menu-btn" title="Show or hide sections"
+                            aria-label="Show or hide sections">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"
+                             aria-hidden="true">
+                            <circle cx="12" cy="5" r="1.6"/>
+                            <circle cx="12" cy="12" r="1.6"/>
+                            <circle cx="12" cy="19" r="1.6"/>
+                        </svg>
+                    </button>
+                    <button id="ws-collapse" title="Collapse this panel (Ctrl+J)"
+                            aria-label="Collapse the workspace panel">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"
+                             stroke="currentColor" stroke-width="1.7"
+                             stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5.5 3l5 5-5 5"/>
+                        </svg>
+                    </button>
+                </div>
+                <div id="sb-view-menu" class="hidden"></div>
+            </div>
+
+            <div id="workspace-empty">
+                <p>No folder linked.</p>
+                <p class="dim">Link a folder to let .lcl read and edit files in it.</p>
+                <button id="workspace-link" class="primary">Link folder…</button>
+            </div>
+
+            <!-- ================================================= THE MODULES
+                 "compartmentalizing each function as its own container, that
+                 is fully resizeable and pick and place ... all the contents
+                 bound by the workspace sidebar."
+
+                 Every function of this panel is one .sb-mod: a grip strip you
+                 DRAG TO REORDER, over the section itself. Between adjacent
+                 visible modules the manager (app.js) lays a full-width
+                 divider — grab the BOUNDARY between two sections and drag it,
+                 the way every splitter works; drag down, the section above
+                 grows. Sizes and order persist. A module whose inner block is
+                 hidden takes its divider with it. -->
+            <div id="sb-mods">
+
+                <div class="sb-mod" data-mod="tasks">
+                    <div class="sb-mod-grip" title="Drag to move this section">⠿</div>
+                    <div id="task-panel" class="sb-mod-inner hidden">
+                        <div id="task-panel-head">
+                            <span id="task-panel-title">Tasks</span>
+                            <button id="task-panel-clear" class="ghost small" title="Clear finished">Clear</button>
+                        </div>
+                        <div id="task-list"></div>
+                    </div>
+                </div>
+
+                <!-- every tool call this session, kept — not lost with the bubble -->
+                <div class="sb-mod" data-mod="activity">
+                    <div class="sb-mod-grip" title="Drag to move this section">⠿</div>
+                    <div id="activity-panel" class="sb-mod-inner hidden">
+                        <div id="task-panel-head">
+                            <span>Activity</span>
+                            <button id="activity-clear" class="ghost small" title="Clear this session's activity">Clear</button>
+                        </div>
+                        <div id="activity-list"></div>
+                    </div>
+                </div>
+
+                <div class="sb-mod" data-mod="wscard">
+                    <div class="sb-mod-grip" title="Drag to move this section">⠿</div>
+                    <div id="workspace-body" class="sb-mod-inner hidden">
+                        <div id="ws-card">
+                            <div id="ws-name"></div>
+                            <div id="ws-path" title="Full path"></div>
+                            <div id="ws-meta"></div>
+                            <div id="ws-actions">
+                                <button id="ws-open" class="ghost small" aria-haspopup="menu"
+                                        aria-expanded="false" title="Open the workspace folder in an app">Open In&#8202;<span class="caret">▾</span></button>
+                                <button id="ws-change" class="ghost small">Change…</button>
+                                <button id="ws-unlink" class="ghost small danger-text">Unlink</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sb-mod" data-mod="files">
+                    <div class="sb-mod-grip" title="Drag to move this section">⠿</div>
+                    <div id="ws-files-wrap" class="sb-mod-inner hidden">
+                        <div id="ws-files-head">
+                            <span>Files</span>
+                            <!-- "there should be a search function in this as
+                                 well, to search through all the files by name".
+                                 Searches EVERY entry, not the folder you happen
+                                 to be standing in. -->
+                            <input id="ws-search" type="search" spellcheck="false"
+                                   autocomplete="off" placeholder="Find a file…"
+                                   aria-label="Search files by name">
+                            <button id="ws-clear-marks" class="ghost small hidden"
+                                    title="Stop marking these files as changed. The changes themselves stay revertable from the chat.">
+                                Clear marks
+                            </button>
+                            <button id="ws-refresh" class="ghost small">Refresh</button>
+                        </div>
+                        <div id="ws-files"></div>
+                    </div>
+                </div>
+
+                <!-- click a file in Files and it renders here: markdown
+                     formatted, code highlighted, images inline. Read-only. -->
+                <div class="sb-mod" data-mod="preview">
+                    <div class="sb-mod-grip" title="Drag to move this section">⠿</div>
+                    <div id="ws-viewer" class="sb-mod-inner hidden">
+                        <div id="ws-viewer-head">
+                            <span id="ws-viewer-name" title=""></span>
+                            <span id="ws-viewer-size"></span>
+                            <button id="ws-viewer-close" title="Close preview" aria-label="Close preview">✕</button>
+                        </div>
+                        <div id="ws-viewer-body"></div>
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+        <!-- THE SESSION-LIST HANDLE. The mirror of the workspace one, on the
+             edge the session list slides from. Without it, collapsing the list
+             took its own toggle button with it and the only way back was a
+             keystroke or a menu. Visible only while the list is collapsed. -->
+        <button id="btn-sidebar" class="edge-handle"
+                title="Show the session list (Ctrl+B)" aria-label="Show the session list">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"
+                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                 stroke-linejoin="round">
+                <path d="M4.4 1.6l4 4.4-4 4.4"/>
+            </svg>
+        </button>
+
+        <!-- THE WORKSPACE HANDLE. Attached to the edge the panel slides from,
+             shaped like the thing it does — a tab you pull to open the panel:
+             "the workspace button that fires the right sidebar ... it should
+             be a button svg, that is styled to make sense of popping out a
+             sidebar", then "attached to the right sidebar as a handle."
+             Visible only while the panel is closed; the panel's own ✕ closes
+             it, so there are never two controls fighting over one job. -->
+        <button id="btn-workspace" class="edge-handle"
+                title="Open the workspace panel (Ctrl+J)"
+                aria-label="Open the workspace panel">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none"
+                 stroke="currentColor" stroke-width="1.7" stroke-linecap="round"
+                 stroke-linejoin="round">
+                <path d="M7.6 1.6l-4 4.4 4 4.4"/>
+            </svg>
+        </button>
+
+    </div>
+
+    <!-- =========================================================
+         TERMINAL  (CONTRACT K5)
+         A real shell the operator owns. Rises from the bottom of the
+         window, spans it, and pushes everything above it up — it is a
+         row of #app, not an overlay, so it never covers the composer.
+         The model has no path to it: there is no tool, no IPC channel
+         and nothing in the agent that can write a byte into this pane.
+    ========================================================== -->
+    <div id="terminal" class="hidden">
+        <div id="terminal-head">
+            <span id="terminal-title">Terminal</span>
+            <!-- SAID ONCE, QUIETLY, AND NEVER AGAIN: this is not a sandbox. -->
+            <span id="terminal-notice">your own shell, unsandboxed — commands run as you, with
+                no approval step. .lcl's model cannot type here.</span>
+            <button id="terminal-new" class="ghost small" title="Open another shell">New</button>
+            <button id="terminal-close" class="panel-toggle"
+                    title="Hide the terminal" aria-label="Hide the terminal" aria-expanded="true">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="1.7" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+                    <path d="M3 15h18"/>
+                </svg>
+            </button>
+        </div>
+        <div id="terminal-tabs"></div>
+        <div id="terminal-view" tabindex="0" role="log" aria-label="Terminal output"></div>
+        <div id="terminal-status"></div>
+    </div>
+
+    <!-- =========================================================
+         MACHINE VIEW  (read-only)
+    ========================================================== -->
+    <div id="machine-scrim" class="hidden">
+        <div id="machine">
+            <div id="machine-head">
+                <img src="../assets/mark-small.png" class="modal-mark" alt="" />
+                <span id="machine-title">Machine</span>
+                <button id="machine-refresh" title="Refresh">Refresh</button>
+                <button id="machine-close" title="Close">✕</button>
+            </div>
+
+            <div id="machine-body">
+                <div class="machine-gauges">
+                    <div class="gauge">
+                        <div class="gauge-head">
+                            <span class="gauge-name">Available RAM
+                                <span class="gauge-hint">governs paging</span>
+                            </span>
+                            <span class="gauge-val" id="g-phys-val">—</span>
+                        </div>
+                        <div class="gauge-track"><div class="gauge-fill" id="g-phys"></div></div>
+                    </div>
+
+                    <div class="gauge">
+                        <div class="gauge-head">
+                            <span class="gauge-name">Committed
+                                <span class="gauge-hint">vs limit — allocation headroom</span>
+                            </span>
+                            <span class="gauge-val" id="g-commit-val">—</span>
+                        </div>
+                        <div class="gauge-track"><div class="gauge-fill" id="g-commit"></div></div>
+                    </div>
+                </div>
+
+                <div id="machine-verdict"></div>
+
+                <div class="machine-section">Compute available to .lcl</div>
+                <div id="compute-panel"></div>
+
+                <div id="machine-engine">
+                    <span id="engine-state">—</span>
+                    <button id="engine-unload">Unload model</button>
+                </div>
+
+                <!-- node memory lives in the sidebar bar and the node
+                     dashboard — not in a third copy here -->
+
+                <div class="machine-section">Free up memory</div>
+                <div id="optimize-panel">
+                    <div id="optimize-intro">
+                        Suggests apps worth closing. Windows and security processes are never included.
+                    </div>
+                    <div id="optimize-actions">
+                        <button id="optimize-scan">Analyse memory</button>
+                        <button id="open-taskmgr" class="ghost small"
+                                title="Opens Windows Task Manager. It reopens on whichever tab you last used — Windows gives no way to choose one.">
+                            Task Manager
+                        </button>
+                        <button id="open-resmon" class="ghost small"
+                                title="Opens Resource Monitor — the per-process CPU, memory, disk and network view.">
+                            Resource Monitor
+                        </button>
+                    </div>
+                    <div id="optimize-results"></div>
+                </div>
+
+                <div class="machine-section">
+                    Top processes by committed memory
+                    <span class="machine-section-hint">click a row to end it</span>
+                </div>
+                <div id="machine-procs"></div>
+                <div id="machine-note">
+                    Ending a process closes that application.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         BRANDED MODAL  (replaces unbranded OS dialogs)
+    ========================================================== -->
+    <div id="security-scrim" class="hidden">
+        <div id="security-panel" role="dialog" aria-modal="true" aria-label="Security and network">
+            <div class="panel-head">
+                <span>Security &amp; network</span>
+                <button id="security-close" class="icon-btn" aria-label="Close">✕</button>
+            </div>
+            <div class="panel-body">
+                <section class="sec-block">
+                    <div class="sec-row">
+                        <div>
+                            <div class="sec-title">Network access</div>
+                            <!-- only this panel's unique guarantee — what the
+                                 switch does is explained in Models & API,
+                                 beside the endpoints that need it -->
+                            <div class="sec-sub">Internal and loopback addresses stay
+                                blocked even when this is on.</div>
+                        </div>
+                        <label class="sec-toggle">
+                            <input type="checkbox" id="net-toggle" />
+                            <span class="sec-slider"></span>
+                        </label>
+                    </div>
+                </section>
+
+                <section class="sec-block">
+                    <div class="sec-title">Authorized testing engagements</div>
+                    <div class="sec-sub">Offensive tools (<code>port_scan</code>,
+                        <code>fuzz_target</code>, <code>exploit_validate</code>) will only ever
+                        touch a host named in a live engagement below. One host each, time-boxed,
+                        and every action still asks you to approve it.</div>
+
+                    <div id="engagement-list" class="eng-list"></div>
+
+                    <form id="engagement-form" class="eng-form">
+                        <input type="text" id="eng-target" placeholder="target host (e.g. scanme.example.com)" autocomplete="off" />
+                        <div class="eng-form-row">
+                            <input type="number" id="eng-hours" value="8" min="1" max="168" title="hours until this engagement expires" />
+                            <span class="eng-hours-label">hours</span>
+                            <input type="text" id="eng-note" placeholder="note (optional)" autocomplete="off" />
+                        </div>
+                        <label class="eng-affirm">
+                            <input type="checkbox" id="eng-authorized" />
+                            <span>I am authorized to security-test this target.</span>
+                        </label>
+                        <button type="submit" id="eng-create" class="primary" disabled>Create engagement</button>
+                        <div id="eng-error" class="eng-error hidden"></div>
+                    </form>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <div id="cap-scrim" class="hidden">
+        <div id="cap-panel" role="dialog" aria-modal="true" aria-label="What .lcl can do">
+            <div class="panel-head">
+                <span>What .lcl can do</span>
+                <button id="cap-close" class="icon-btn" aria-label="Close">✕</button>
+            </div>
+            <div class="panel-body" id="cap-body">
+                <div id="cap-machine" class="cap-machine"></div>
+                <section class="sec-block">
+                    <div class="sec-title">System requirements</div>
+                    <div class="sec-sub">Memory needed to run each tier of model.</div>
+                    <div id="cap-reqs" class="cap-table-wrap"></div>
+                    <div id="cap-formula" class="cap-formula"></div>
+                </section>
+                <section class="sec-block">
+                    <div class="sec-title">Behavior</div>
+                    <div id="cap-behaviors" class="cap-behaviors"></div>
+                </section>
+                <section class="sec-block">
+                    <div class="sec-title">Models</div>
+                    <div class="sec-sub">What will load with the memory free right now.</div>
+                    <div id="cap-models" class="cap-table-wrap"></div>
+                </section>
+                <section class="sec-block">
+                    <div class="sec-title">Tools</div>
+                    <div class="sec-sub">Scripts and offensive tools always ask, whatever you set here.</div>
+                    <div id="cap-tools" class="cap-tools"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <!-- =========================================================
+         ONE KNOWLEDGE UI  —  CONTRACT K6
+
+         There were two, in the same dropdown, disagreeing: a shelf that
+         listed the shipped libraries and whose View said "not on disk",
+         and a library manager that listed only what the user had
+         added. The requirement: one knowledge UI, not two — showing the
+         knowledge that ships with .lcl with real PDF views, while the
+         extracted text stays hidden and is used only for searching.
+
+         So: ONE list, holding the shipped corpus and anything added, side
+         by side and labelled; documents open as THEMSELVES in the reading
+         pane (a PDF in Chromium's own PDF viewer); a source that was never
+         downloaded says exactly that and offers the download, instead of
+         the dead end "not on disk"; and extracted text is never offered as
+         a document — knowledgeLibraries() does not list it and
+         openKnowledgeDoc() refuses it by name.
+    ========================================================== -->
+    <!-- ============================================================ CONTEXT
+         What is in the window, in the user's own numbers.
+
+         The ring says HOW FULL. This says with WHAT, on which model, at what
+         cost, and offers the one action that changes it. Clicking the ring used
+         to compact IMMEDIATELY — a permanent rewrite of the conversation on a
+         single mis-click, with no preview and no confirmation. It opens this
+         instead, and compaction is a button here with its consequence written
+         beside it. -->
+    <div id="context-scrim" class="hidden">
+        <div id="context-panel" role="dialog" aria-modal="true" aria-label="Context">
+            <div class="panel-head">
+                <span>Context</span>
+                <button id="context-close" class="icon-btn" aria-label="Close">✕</button>
+            </div>
+            <div class="panel-body">
+                <div id="ctx-usage-head">
+                    <div id="ctx-usage-bignum">
+                        <span id="ctx-usage-pct">—</span>
+                        <span id="ctx-usage-of">of the window</span>
+                    </div>
+                    <div id="ctx-usage-sub">
+                        <span id="ctx-usage-tokens">—</span>
+                        <span id="ctx-usage-cost"></span>
+                    </div>
+                </div>
+
+                <!-- THE GO WINDOW. The subscription meters in five-hour
+                     windows; this strip is those three numbers — spent this
+                     window, when it resets, how close to the plan's ceiling.
+                     The ceiling is the user's own field: until they enter
+                     their plan's number the strip shows spend without a
+                     percentage, because a gauge against an invented budget
+                     is a lie. -->
+                <div id="ctx-plan">
+                    <span id="ctx-plan-name">GO</span>
+                    <span id="ctx-plan-tiers"></span>
+                    <span id="ctx-plan-reset"></span>
+                    <span id="ctx-plan-budget-wrap">
+                        <label>5h $<input id="ctx-plan-b-h5" type="number" min="0" step="1" /></label>
+                        <label>wk $<input id="ctx-plan-b-week" type="number" min="0" step="1" /></label>
+                        <label>mo $<input id="ctx-plan-b-month" type="number" min="0" step="1" /></label>
+                    </span>
+                </div>
+
+                <div id="ctx-bar-wrap">
+                    <div id="ctx-bar" role="img" aria-label="What is filling the context window"></div>
+                    <div id="ctx-legend"></div>
+                    <p class="ctx-note">
+                        The bars are measured from this conversation and scaled to the
+                        token count the model actually reported, so they add up to
+                        what was really sent.
+                    </p>
+                </div>
+
+                <div id="ctx-stats"></div>
+
+                <!-- THE INSTRUCTIONS, VERBATIM. The breakdown bar says the
+                     system contract took N tokens; this is the contract
+                     itself, so that number can be checked rather than
+                     believed. A clickable title, closed by default. -->
+                <details id="ctx-system" class="ctx-section">
+                    <summary>The instructions <span id="ctx-system-size"></span></summary>
+                    <pre id="ctx-system-body"></pre>
+                </details>
+
+                <!-- THE AUDIT TRAIL: exactly what the next request carries,
+                     computed by the same functions the turn uses. Every
+                     message is a clickable title that expands to its raw
+                     content — opencode's raw-messages accordion, in .lcl's
+                     own numbers. -->
+                <div id="ctx-audit" class="ctx-section-block">
+                    <div id="ctx-audit-head">
+                        <span id="ctx-audit-title">In the window right now</span>
+                        <button id="ctx-export" class="ghost small">Export conversation</button>
+                    </div>
+                    <p id="ctx-audit-note" class="ctx-note"></p>
+                    <div id="ctx-audit-list"></div>
+                </div>
+
+                <div id="ctx-actions">
+                    <button id="ctx-compact" class="primary">Compact this conversation</button>
+                    <p class="ctx-note">
+                        Summarises the older part of this conversation into one message
+                        and keeps the recent turns word for word. It rewrites what the
+                        model is sent from here on — the point is that the next request
+                        is smaller. Nothing is deleted from disk.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="knowledge-scrim" class="hidden">
+        <div id="knowledge-panel" role="dialog" aria-modal="true" aria-label="Knowledge">
+            <div class="panel-head">
+                <span>Knowledge</span>
+                <button id="knowledge-close" class="icon-btn" aria-label="Close">✕</button>
+            </div>
+            <div class="panel-body">
+                <div id="kb-split">
+                    <div id="kb-side">
+                        <input id="kb-filter" type="text" class="kb-filter"
+                               placeholder="Filter documents"
+                               aria-label="Filter knowledge documents" />
+                        <div id="kb-list" class="kb-tree"></div>
+                        <div id="kb-error" class="eng-error hidden"></div>
+                        <div id="kb-side-actions">
+                            <button id="kb-add" class="ghost small">Add a folder…</button>
+                        </div>
+                        <section class="sec-block" id="kb-research-block">
+                            <div class="sec-title">Researched folders</div>
+                            <div class="sec-sub">Sources the agent found and saved. Add one to search it.</div>
+                            <div id="kb-research" class="eng-list"></div>
+                        </section>
+                    </div>
+                    <div id="kb-view" class="kb-view">
+                        <div class="kb-empty">Pick a document to read it.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-scrim" class="hidden">
+        <div id="modal" role="dialog" aria-modal="true">
+            <div id="modal-head">
+                <img src="../assets/mark-small.png" id="modal-mark" alt="" />
+                <span id="modal-title">Confirm</span>
+                <!-- Every other panel in the app (Machine, Security, Knowledge,
+                     Capabilities) closes with a ✕ in its header. The eight
+                     dialogs built on this frame had no close control at all —
+                     only Esc or a click on the backdrop, neither of which is
+                     visible. Same affordance everywhere now. -->
+                <!-- ONE CLICK TAKES THE WHOLE PANEL.
+                     Reported: "none of this is copyable ... you have this
+                     bastard issue across the entire ui", about text split
+                     across a dozen elements that had to be selected one at a
+                     time. Every panel in this app is built on this frame, so
+                     the affordance belongs here rather than being added to
+                     each one. Takes the title and everything in the body. -->
+                <button id="modal-copy" title="Copy everything in this panel"
+                        aria-label="Copy everything in this panel">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none"
+                         stroke="currentColor" stroke-width="1.4">
+                        <rect x="5.2" y="5.2" width="8.6" height="8.6" rx="1.6"/>
+                        <path d="M10.8 5.2V3.8a1.6 1.6 0 0 0-1.6-1.6H3.8a1.6 1.6 0 0 0-1.6 1.6v5.4a1.6 1.6 0 0 0 1.6 1.6h1.4"/>
+                    </svg>
+                </button>
+                <button id="modal-close" title="Close" aria-label="Close">
+                    <svg width="11" height="11" viewBox="0 0 10 10">
+                        <path d="M0 0l10 10M10 0L0 10" stroke="currentColor" stroke-width="1.3"/>
+                    </svg>
+                </button>
+            </div>
+            <div id="modal-body">
+                <div id="modal-message"></div>
+                <!-- optional rich content: settings panels build their own DOM
+                     rather than being squeezed into a message string -->
+                <div id="modal-node" class="hidden"></div>
+                <div id="modal-detail"></div>
+                <div id="modal-path" class="hidden"></div>
+                <ul id="modal-scope" class="hidden">
+                    <li>Read files in this folder</li>
+                    <li>Create and overwrite files in this folder</li>
+                    <li>No access anywhere else on this machine</li>
+                </ul>
+            </div>
+            <div id="modal-actions">
+                <button id="modal-cancel" class="ghost">Cancel</button>
+                <button id="modal-confirm" class="primary">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="syntax.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
