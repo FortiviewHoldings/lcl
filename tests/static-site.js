@@ -316,10 +316,15 @@ check("...and a short viewport GROWS the frame instead of clipping the " +
     && /#chat-scroll \{ flex: 1; min-height: 0;/.test(s), null);
 /* "make that bottom indicator ... more prominent, you have it as a grey font
  * and it is hard to read. just accent it some, add some glow" */
-check("the read-below cues are LIT, not grey — glow on the bench strip and the " +
-      "landing scroll cue, the bench arrow in the accent amber",
+check("the read-below cues are LIT, not grey — glow on the band and the " +
+      "landing scroll cue; the band's type bold with widened tracking, and a " +
+      "thick-stroke white chevron UNDER the text",
     /#bench-more \{[^}]*text-shadow/.test(s)
-    && /#bench-more \.arr \{[^}]*var\(--attn\)/.test(s)
+    && /#bench-more \{[^}]*font-weight: 600/.test(s)
+    && /#bench-more \{[^}]*letter-spacing: 1\.6px/.test(s)
+    && /#bench-more \.arr \{[^}]*display: block/.test(s)
+    && /svg class="arr"[^>]*stroke-width="3\.2"/.test(s)
+    && s.indexOf('class="txt"') < s.indexOf('svg class="arr"')
     && /#scroll-cue \{[^}]*text-shadow/.test(s), null);
 /* "full app vs lite still doesnt look full" — the full column is the lit
  * column: brighter, wider, more rows, and it ends in the download. */

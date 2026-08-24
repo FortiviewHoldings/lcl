@@ -270,8 +270,8 @@
   /* the chat lives on a page that CONTINUES — a screen-width PAGE BREAK
      closing the app frame, standing apart from the chat's own chrome */
   #bench-more { display: none; flex: none; text-align: center;
-    padding: 11px 16px 13px; font-size: var(--fs-tiny);
-    letter-spacing: var(--ls-wide);
+    padding: 11px 16px 10px; font-size: var(--fs-tiny); font-weight: 600;
+    letter-spacing: 1.6px;
     text-transform: uppercase; color: #c9c9cf; text-decoration: none;
     text-shadow: 0 0 12px rgba(255,255,255,.28);
     border-top: 1px solid var(--line-bright);
@@ -279,8 +279,9 @@
   #bench.live + #bench-more { display: block; }
   #bench-more:hover { color: var(--text);
     text-shadow: 0 0 14px rgba(255,255,255,.45); }
-  #bench-more .arr { display: inline-block; color: var(--attn);
-    text-shadow: 0 0 10px rgba(224,201,143,.6);
+  #bench-more .arr { display: block; width: 16px; height: 16px;
+    margin: 4px auto 0; color: var(--text);
+    filter: drop-shadow(0 0 6px rgba(255,255,255,.45));
     animation: bob 2.2s ease-in-out infinite; }
   @keyframes bob { 0%,100% { transform: none; } 50% { transform: translateY(3px); } }
   #bar { display: block; height: 2px; width: 0%; background: var(--accent);
@@ -578,8 +579,11 @@
   </div>
   <!-- the page break: a screen-width band closing the app frame and opening
        the sections below — its own element, not part of the chat's chrome -->
-  <a id="bench-more" href="#features"><span class="arr">↓</span>
-    this chat sits on a full workbench — see what it does</a>
+  <a id="bench-more" href="#features">
+    <span class="txt">this chat sits on a full workbench — see what it does</span>
+    <svg class="arr" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"
+         aria-hidden="true"><polyline points="5 9 12 16 19 9"/></svg></a>
 </div>
 
 <!-- the lite file editor -->
