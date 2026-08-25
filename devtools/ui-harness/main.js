@@ -2328,7 +2328,7 @@ const SCENES = {
             active.repoPath = "D:/work/repo";
             // wide enough for two READABLE columns — under 360px the dock
             // deliberately stacks one column instead of cropping text
-            document.getElementById("body").style.setProperty("--ws-w", "560px");
+            document.getElementById("body").style.setProperty("--ws-w", "720px");
             toggleWorkspace(true);
             renderWorkspace();
             await new Promise(r => setTimeout(r, 250));
@@ -3396,8 +3396,9 @@ const SCENES = {
         /* ---- the right panel: THE QUADRANT DOCK, driven for real ---- */
         const ws = await js(`(async () => {
             active.repoPath = "C:/fake-workspace";
-            // wide enough for two readable columns — the quadrant under test
-            document.getElementById("body").style.setProperty("--ws-w", "560px");
+            // wide enough for the quadrant PLUS two own-columns — the fold
+            // logic under test needs room for four readable tracks
+            document.getElementById("body").style.setProperty("--ws-w", "900px");
             window.__harness.FIXTURES.listFiles = () => ({ ok: true, truncated: false,
                 entries: Array.from({length: 40}, (_, i) => "file-" + i + ".md (100 bytes)") });
             window.__harness.FIXTURES.viewFile = (_id, rel) => ({
@@ -3437,11 +3438,12 @@ const SCENES = {
                 && p0.left >= Math.max(wscard.getBoundingClientRect().right,
                                        files.getBoundingClientRect().right) - 4;
 
-            // ITS SIDE HANDLE SETS THE COLUMN'S WIDTH — drag the left edge
-            // LEFT and the column widens toward the quadrant (dragging right
-            // runs into the 140px reading floor at this panel width)
+            // ITS SIDE HANDLE SETS THE COLUMN'S WIDTH — an unset column opens
+            // as wide as the quadrant's floors allow, so the drag under test
+            // NARROWS it: grab the left edge, drag right, the column gives
+            // back what the pointer took
             drag(preview.querySelector(".sb-h-side"),
-                p0.left - 80, p0.top + 40, 7);
+                p0.left + 100, p0.top + 40, 7);
             await new Promise(r => setTimeout(r, 150));
             const p1 = preview.getBoundingClientRect();
 
@@ -3465,7 +3467,7 @@ const SCENES = {
             const out = {
                 bornColumn,
                 panelH: Math.round(hr.height),
-                colWidenedBy: Math.round(p1.width - p0.width),
+                colNarrowedBy: Math.round(p0.width - p1.width),
                 rowGrewTo: Math.round(t1.height),
                 rowWas: Math.round(t0.height),
                 neighborHeld: Math.abs(Math.round(n1.height) - Math.round(n0.height)) <= 2,
@@ -3529,8 +3531,9 @@ const SCENES = {
             "document opens",
             ws.bornColumn, ws);
         check("workspace", "GRAB A COLUMN'S SIDE EDGE and THAT column's width " +
-            "follows — the drag writes the grid's geometry, not a card's box",
-            ws.colWidenedBy > 40 && ws.colWidenedBy < 200, ws);
+            "follows the pointer — the drag writes the grid's geometry, not " +
+            "a card's box",
+            ws.colNarrowedBy > 60 && ws.colNarrowedBy < 160, ws);
         check("workspace", "A CARD'S BOTTOM EDGE SIZES THAT CARD — drag it " +
             "toward the panel's floor and the card grows to match the " +
             "pointer, AND ITS ROW NEIGHBOR HOLDS STILL: 'one container " +

@@ -5927,6 +5927,7 @@ function renderWsFiles() {
         const nm = document.createElement("span");
         nm.className = "nm";
         nm.innerText = dir;
+        nm.title = dir;
         const sz = document.createElement("span");
         sz.className = "sz";
         sz.innerText = `${count} file${count === 1 ? "" : "s"}`;
@@ -6121,6 +6122,9 @@ const SB_ORDER_KEY = "lcl-sb-order";
 // era; the grid persists its geometry as splits under lcl-sb-grid instead.
 // Old keys are simply ignored — stale values must never shape the quadrant.
 const SB_MIN_W = 140;
+// no card column may be narrower than this — below it, file names and task
+// rows become vertical noodles of single characters (measured, reported)
+const SB_CARD_MIN_W = 200;
 
 const sbModEls = () => [...$("sb-mods").querySelectorAll(":scope > .sb-mod")];
 const sbVisibleMods = () =>
@@ -6237,19 +6241,37 @@ function sbLayout(gOverride) {
     const g = gOverride || sbGrid();
     const minim = vis.filter(m => m.classList.contains("sb-minimized"));
     const live = vis.filter(m => !m.classList.contains("sb-minimized"));
-    // a panel under 360px cannot hold two readable columns — stack ONE, and
-    // treat column cards as ordinary members while it lasts
-    const narrow = host.clientWidth < 360;
-    const cols = narrow ? [] : live.filter(m => m.classList.contains("sb-col"));
-    const quad = narrow ? live : live.filter(m => !m.classList.contains("sb-col"));
-    const twoCol = !narrow && quad.length > 1;
+
+    /* EVERY COLUMN EARNS ITS WIDTH OR IT DOES NOT EXIST. The measured
+     * failure: three tracks in a 470px panel squished file names into
+     * vertical single-character noodles. No card may be narrower than
+     * SB_CARD_MIN_W: own-column cards FOLD back into the flow (least
+     * valuable first, Preview last) until what remains fits, and a panel
+     * that cannot afford two readable quadrant columns stacks ONE. */
+    const pad = 12, gap = 6;
+    const fitW = (tracksN) => tracksN < 1 ? Infinity
+        : (host.clientWidth - pad - gap * (tracksN - 1)) / tracksN;
+    let cols = live.filter(m => m.classList.contains("sb-col"));
+    let quad = live.filter(m => !m.classList.contains("sb-col"));
+    // fold order: Preview keeps its column the longest — it is position 5
+    cols.sort((a, b) => (sbKey(a) === "preview" ? -1 : 0) - (sbKey(b) === "preview" ? -1 : 0));
+    const quadColsFor = () => quad.length > 1 ? 2 : (quad.length ? 1 : 0);
+    while (cols.length && fitW(quadColsFor() + cols.length) < SB_CARD_MIN_W) {
+        quad.push(cols.pop());
+    }
+    const twoCol = quad.length > 1 && fitW(2 + cols.length) >= SB_CARD_MIN_W;
     const R = twoCol ? Math.ceil(quad.length / 2) : quad.length;
+    const quadCols = quad.length ? (twoCol ? 2 : 1) : 0;
 
     const tracks = [];
     if (quad.length) {
         if (twoCol) {
+            // a REAL 200px base, not minmax(0,…): fr distribution against
+            // px-capped column tracks squeezed the quadrant under its
+            // legibility floor even when the fitting test passed
             const a = Math.max(15, Math.min(85, g.colSplit));
-            tracks.push("minmax(0, " + a + "fr)", "minmax(0, " + (100 - a) + "fr)");
+            tracks.push("minmax(" + SB_CARD_MIN_W + "px, " + a + "fr)",
+                        "minmax(" + SB_CARD_MIN_W + "px, " + (100 - a) + "fr)");
         } else tracks.push("minmax(0, 1fr)");
     }
     for (const m of cols) {
@@ -6259,12 +6281,14 @@ function sbLayout(gOverride) {
         if (!quad.length) { tracks.push("minmax(0, 1fr)"); continue; }
         const w = Number(g.colW[sbKey(m)]);
         if (Number.isFinite(w) && w >= SB_MIN_W) {
-            // clamped against the LIVE panel, not the panel the width was
-            // saved against — a wide monitor's record must never crush the
-            // quadrant's tracks to zero on a narrow one
-            const wc = Math.min(Math.round(w), Math.round(host.clientWidth * 0.75));
-            tracks.push("minmax(" + SB_MIN_W + "px, " + wc + "px)");
-        } else tracks.push("minmax(0, 100fr)");
+            // clamped so the QUADRANT keeps its readable columns AND every
+            // sibling column keeps its own floor, whatever width this one
+            // saved on some wider panel
+            const maxW = Math.max(SB_MIN_W,
+                host.clientWidth - pad - gap * (quadCols + cols.length - 1)
+                - quadCols * SB_CARD_MIN_W - (cols.length - 1) * SB_MIN_W);
+            tracks.push("minmax(" + SB_MIN_W + "px, " + Math.min(Math.round(w), maxW) + "px)");
+        } else tracks.push("minmax(" + SB_MIN_W + "px, 100fr)");
     }
     host.style.gridTemplateColumns = tracks.join(" ");
 
@@ -6276,7 +6300,6 @@ function sbLayout(gOverride) {
     for (const _ of minim) rows.push("auto");
     host.style.gridTemplateRows = rows.join(" ");
 
-    const quadCols = quad.length ? (twoCol ? 2 : 1) : 0;
     const capPx = Math.round(host.clientHeight * 0.48);
     quad.forEach((m, i) => {
         m.style.gridColumn = twoCol ? String((i % 2) + 1) : "1";
@@ -6344,7 +6367,11 @@ function sbAttachHandles(mod) {
         sbSaveGrid(g);
         sbFillSlack();
     };
-    const startDrag = (e, handle, wantW, wantH) => {
+    // wSign: which horizontal edge was grabbed — +1 right, -1 left, 0 none.
+    // A column card's width follows the grabbed edge outward; a quadrant
+    // card's horizontal drag moves the column boundary by the pointer's
+    // delta from EITHER edge.
+    const startDrag = (e, handle, wSign, wantH) => {
         e.preventDefault();
         e.stopPropagation();
         try { handle.setPointerCapture(e.pointerId); } catch { }
@@ -6381,13 +6408,15 @@ function sbAttachHandles(mod) {
                     Math.min(Math.round(hr.height * 0.9),
                              Math.round(g0.cardH + (ev.clientY - y0))));
             }
-            if (wantW) {
+            if (wSign) {
                 if (mod.classList.contains("sb-col")) {
-                    // the handle is the card's left edge: dragging LEFT
-                    // widens the column — a delta on its starting width
+                    // dragging the grabbed edge OUTWARD widens the column —
+                    // a delta on its starting width, from either side; soft
+                    // ceiling so the record cannot outgrow the panel and
+                    // rubber-band the next drag (layout clamps harder still)
                     gLive.colW[sbKey(mod)] = Math.max(SB_MIN_W,
-                        Math.min(Math.round(hr.width * 0.75),
-                                 Math.round(g0.colW - (ev.clientX - x0))));
+                        Math.min(Math.round(hr.width) - 24,
+                                 Math.round(g0.colW + wSign * (ev.clientX - x0))));
                 } else if (quadSpan && quadSpan.w > 40) {
                     gLive.colSplit = Math.max(15, Math.min(85,
                         g0.colSplit + ((ev.clientX - x0) / quadSpan.w) * 100));
@@ -6406,17 +6435,21 @@ function sbAttachHandles(mod) {
         handle.addEventListener("pointermove", move);
         handle.addEventListener("pointerup", up);
     };
+    // "i want to be able to fully drag any corner" — every edge and both
+    // bottom corners are live, on every resizable card
+    const wire = (cls, title, wSign, wantH) => {
+        const h = mk(cls, title + " · double-click to reset");
+        h.addEventListener("pointerdown", (e) => startDrag(e, h, wSign, wantH));
+        h.addEventListener("dblclick", () => reset(!!wSign, wantH));
+        return h;
+    };
     if (!spec.fixed) {
-        const b = mk("sb-h-bottom", "Drag this card's height · double-click to reset");
-        b.addEventListener("pointerdown", (e) => startDrag(e, b, false, true));
-        b.addEventListener("dblclick", () => reset(false, true));
-        const c = mk("sb-h-corner", "Drag this card's height and the column boundary · double-click to reset");
-        c.addEventListener("pointerdown", (e) => startDrag(e, c, true, true));
-        c.addEventListener("dblclick", () => reset(true, true));
+        wire("sb-h-bottom", "Drag this card's height", 0, true);
+        wire("sb-h-corner", "Drag this card's corner", -1, true);
+        wire("sb-h-corner-r", "Drag this card's corner", +1, true);
     }
-    const sde = mk("sb-h-side", "Drag the column boundary · double-click to reset");
-    sde.addEventListener("pointerdown", (e) => startDrag(e, sde, true, false));
-    sde.addEventListener("dblclick", () => reset(true, false));
+    wire("sb-h-side", "Drag this card's left edge", -1, false);
+    wire("sb-h-right", "Drag this card's right edge", +1, false);
 }
 
 function sbGripDrag(e, mod) {
@@ -6766,6 +6799,23 @@ function sbToggleViewMenu() {
 
 (function sbInit() {
     if (!document.getElementById("sb-mods")) return;
+    // ONE clean start for the reworked dock. The v1 quadrant's saved state —
+    // column modes toggled while fighting a broken layout, splits from the
+    // shared-band era — survived the patch and wrecked the default 1|2/3|4
+    // ("you do not have a quadrant layout that matches the positioning i
+    // gave"). Stale records from a rejected design are not operator intent:
+    // clear them once, stamp the version, never again.
+    try {
+        if (localStorage.getItem("lcl-sb-v") !== "2") {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+                const k = localStorage.key(i);
+                if (k && /^lcl-sb-(grid|order|hidden|col-|min-|pop-|h-|w-)/.test(k)) {
+                    localStorage.removeItem(k);
+                }
+            }
+            localStorage.setItem("lcl-sb-v", "2");
+        }
+    } catch { /* private mode: defaults apply anyway */ }
     sbApplyOrder();
     sbApplySizes();
     for (const m of sbModEls()) {

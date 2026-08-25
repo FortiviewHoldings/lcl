@@ -1947,11 +1947,22 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
         && js.includes("gLive.cardH[sbKey(mod)] = Math.max(58,")
         && js.includes("g0.cardH + (ev.clientY - y0)")
         && js.includes("g0.colSplit + ((ev.clientX - x0) / quadSpan.w) * 100")
-        && js.includes("g0.colW - (ev.clientX - x0)")
+        && js.includes("g0.colW + wSign * (ev.clientX - x0)")
         && !js.includes("g.rowSplit") && !js.includes("gLive.rowSplit")
         && js.includes('addEventListener("dblclick", () => reset(')
         && js.includes("sbLayout(gLive);")
         && js.includes("sbSaveGrid(gLive);"), null);
+    check("...EVERY EDGE AND BOTH BOTTOM CORNERS ARE LIVE — 'i want to be " +
+          "able to fully drag any corner': left, right, bottom, and the two " +
+          "corners all wired, in the code and in the CSS",
+        ["sb-h-side", "sb-h-right", "sb-h-bottom", "sb-h-corner", "sb-h-corner-r"]
+            .every(c => js.includes('"' + c + '"') && css.includes("." + c + " {")), null);
+    check("...and the REJECTED DESIGN'S SAVED STATE DIES ONCE — a version " +
+          "stamp clears v1's column modes, splits and order at first boot, so " +
+          "stale records from a layout the operator refused cannot wreck the " +
+          "default quadrant he specified",
+        js.includes('localStorage.getItem("lcl-sb-v") !== "2"')
+        && js.includes('localStorage.setItem("lcl-sb-v", "2");'), null);
     check("...MINIMIZED IS A CLASS AND A KEY, MOVED TOGETHER — column mode " +
           "and pop-out expand through sbSetMin, so a reload can never " +
           "resurrect a tray bar the operator left expanded",
@@ -1965,7 +1976,7 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
           "so a wide monitor's record cannot crush the quadrant to zero",
         js.includes('} else tracks.push("minmax(0, 1fr)");')
         && js.includes('if (!quad.length) { tracks.push("minmax(0, 1fr)"); continue; }')
-        && js.includes("Math.round(host.clientWidth * 0.75)"), null);
+        && js.includes("Math.min(Math.round(w), maxW)"), null);
     check("a task row in a narrow cell keeps its COUNT and ETA — words wrap " +
           "whole (never mid-word, never an ellipsis eating the live numbers) " +
           "and the tooltip carries the full line",
@@ -2036,14 +2047,26 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
     check("CARDS OWN THEIR SIZE — content rows are auto over a filler that " +
           "absorbs the slack, NOTHING stretches to fill (align-items: start), " +
           "an unsized card caps near half the panel with its inner block " +
-          "scrolling, a dragged card floors at 58px legibility, and a panel " +
-          "too narrow for two readable columns stacks ONE",
+          "scrolling, and a dragged card floors at 58px legibility",
         js.includes('rows.push("minmax(0, 1fr)");')
         && js.includes("host.clientHeight * 0.48")
         && (() => { const i = css.indexOf("#sb-mods {");
                     return css.slice(i, i + 900).includes("align-items: start"); })()
-        && /\.sb-mod-inner \{[^}]*overflow: auto;/.test(css)
-        && js.includes("host.clientWidth < 360"), null);
+        && /\.sb-mod-inner \{[^}]*overflow: auto;/.test(css), null);
+    check("EVERY COLUMN EARNS ITS WIDTH OR IT DOES NOT EXIST — no card column " +
+          "below SB_CARD_MIN_W (the 470px panel squished file names into " +
+          "single-character noodles, measured): own-column cards FOLD back " +
+          "into the flow (Preview last), a panel that cannot afford two " +
+          "readable columns stacks one, and a saved column width is clamped " +
+          "so the quadrant keeps its minimum",
+        js.includes("const SB_CARD_MIN_W = 200;")
+        && js.includes("fitW(quadColsFor() + cols.length) < SB_CARD_MIN_W")
+        && js.includes("quad.push(cols.pop());")
+        && js.includes("quadCols * SB_CARD_MIN_W"), null);
+    check("...and a FILE NAME NEVER WRAPS into a vertical noodle — one line, " +
+          "ellipsis, full name on the tooltip",
+        /\.ws-file \.nm \{[^}]*text-overflow: ellipsis;/.test(css)
+        && /\.ws-file \.nm \{[^}]*white-space: nowrap;/.test(css), null);
     check("SESSION ROWS DO NOT COMPRESS. When the list became a bounded flex " +
           "scroll region its children could still shrink, so instead of a " +
           "scrollbar the ROWS were squeezed — titles crushed, nothing " +

@@ -3090,7 +3090,10 @@ code.inline-code {
 
 .ws-file:hover { background: #101013; color: var(--text); }
 .ws-file .sz { flex: none; color: var(--text-faint); font-size: var(--fs-tiny); }
-.ws-file .nm { overflow-wrap: anywhere; }
+/* a FILE NAME NEVER WRAPS — anywhere-wrap turned "Chapter1.extract" into a
+   vertical column of single characters in a narrow card. One line, ellipsis,
+   and the row's title attribute carries the full name. */
+.ws-file .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ws-note {
     padding: var(--sp-2) var(--sp-2);
@@ -7746,18 +7749,28 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
 /* THE CONTAINER'S OWN EDGES ARE THE HANDLES — "grab the bottom, or any
    edge, and drag that containers height and width". Bottom edge: height.
    Inner (left) edge: width. Corner: both. Thin visuals, fat hit areas. */
+/* EVERY EDGE AND BOTH BOTTOM CORNERS — "i want to be able to fully drag any
+   corner", not hunt for the one live border */
 .sb-handle { position: absolute; z-index: 3; }
 .sb-h-bottom {
-    left: 0; right: 14px; bottom: -3px; height: 7px;
+    left: 14px; right: 14px; bottom: -3px; height: 7px;
     cursor: ns-resize;
 }
 .sb-h-side {
     top: 13px; bottom: 14px; left: -3px; width: 7px;
     cursor: ew-resize;
 }
+.sb-h-right {
+    top: 13px; bottom: 14px; right: -3px; width: 7px;
+    cursor: ew-resize;
+}
 .sb-h-corner {
     left: -3px; bottom: -3px; width: 14px; height: 14px;
     cursor: nesw-resize;
+}
+.sb-h-corner-r {
+    right: -3px; bottom: -3px; width: 14px; height: 14px;
+    cursor: nwse-resize;
 }
 .sb-h-bottom::after {
     content: ""; position: absolute; left: 0; right: 0; top: 3px;
