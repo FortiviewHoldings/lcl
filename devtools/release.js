@@ -126,6 +126,16 @@ function buildFingerprint() {
     let gitHash = "nogit";
     try { gitHash = execSync("git rev-parse --short HEAD", { cwd: ROOT, encoding: "utf8" }).trim() || "nogit"; }
     catch { /* not a git checkout */ }
+    // THE BUILD KNOWS ITS OWN REPO. Stamped from the checkout's origin at
+    // build time, so the INSTALLED app can answer "which repository am I
+    // from" by reading its own baked identity — never a hand-set setting.
+    let repo = null;
+    try {
+        const url = execSync("git remote get-url origin",
+            { cwd: ROOT, encoding: "utf8" }).trim();
+        const m = url.match(/github\.com[:/]([^/]+)\/([^/.\s]+)/);
+        if (m) repo = { owner: m[1], repo: m[2] };
+    } catch { /* a checkout with no remote builds fine; identity stays null */ }
     const now = new Date();
     const official = officialBase();
     const isRelease = process.argv.includes("--release");
@@ -140,6 +150,7 @@ function buildFingerprint() {
         official,                              // the shared, repo-sourced base (null in dev)
         base: { official, commit: gitHash },   // the official build THIS copy sits on
         local,                                 // per-machine divergence above the base
+        repo,                                  // the origin this build came from
         channel: isRelease ? "release" : "dev"
     };
 }

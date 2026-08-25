@@ -87,11 +87,41 @@ check("THE VERSION AND TAG ARE READ, NEVER HARDCODED — app/package.json is " +
     && sec.includes("`v${version}`")
     && sec.includes("missing artifact"), null);
 
-check("THE LANES BUMP IN-RUN when asked — RELEASE.json official +1 and both " +
-      "package.json patch versions, the step the by-hand ritual kept " +
-      "forgetting",
-    sec.includes("rel.official = Number(rel.official) + 1")
-    && (sec.match(/bumpPkg\(path\.join\(repo,/g) || []).length === 2, null);
+check("THE BUMP IS A FACT, NOT A CHECKBOX — 'im shipping, would i not always " +
+      "want to make sure there is no conflict there? so why even ask': the " +
+      "run itself asks gh whether v{version} is already a published tag and " +
+      "bumps exactly when it is; the renderer's opinion is never consulted " +
+      "(no opts.bump anywhere), and the panel just STATES the decision",
+    sec.includes("releases/tags/v${version}")
+    && sec.includes("mustBump = tt.ok")
+    && sec.includes("if (mustBump) {")
+    && !sec.includes("o.bump")
+    && sec.includes("rel.official = Number(rel.official) + 1")
+    && (sec.match(/bumpPkg\(path\.join\(repo,/g) || []).length === 2
+    && sec.includes("is unpublished — this ship releases it as-is")
+    && js.includes('$("ship-bump-note").innerText = plan.bumpNote')
+    && !js.includes('$("ship-bump").checked')
+    && !html.includes('id="ship-bump"'), null);
+
+check("THE APP FINDS ITS OWN CHECKOUT — and its repo identity comes from THE " +
+      "INSTALLATION ITSELF: the release stamps the checkout's origin into the " +
+      "baked build-info, the installed app reads its own stamp (the channel " +
+      "setting stands in only for pre-stamp builds), and the operator's " +
+      "session folders are scanned for a checkout whose origin MATCHES; the " +
+      "picker survives only as the fallback when no session folder qualifies",
+    sec.includes("function contribDiscoverRepo")
+    && sec.includes("const baked = runningBuild()")
+    && sec.includes("baked.repo.owner")
+    && sec.indexOf("runningBuild()") < sec.indexOf("paths.readSettings().patchChannel")
+    && sec.includes("sessions.list()")
+    && sec.includes('how: "discovered"')
+    && (sec.match(/contribDiscoverRepo\(\)/g) || []).length >= 4
+    && js.includes("checkout found from your sessions")
+    && (() => {
+        const rel = fs.readFileSync(path.join(ROOT, "devtools", "release.js"), "utf8");
+        return rel.includes("git remote get-url origin")
+            && rel.includes("repo,                                  // the origin this build came from");
+    })(), null);
 
 check("THE DRAFT IS AGENTIC — a local model reads the real diff (stat, " +
       "names, sample) and answers a commit line and release notes; a model " +
@@ -144,14 +174,22 @@ check("the Patch menu carries the entry and the action opens the panel",
     html.includes('data-action="ship-release"')
     && js.includes('"ship-release": () => openShipPanel()'), null);
 
-check("the panel shows the six steps with dots and per-step consoles, the " +
-      "drafted fields stay EDITABLE, and the version/bump line comes from " +
-      "the plan — not from anything typed",
+check("the panel shows the six steps with dots and per-step consoles, and " +
+      "the drafted fields stay EDITABLE",
     js.includes("const SHIP_STEPS = [")
     && ["bump", "add", "commit", "push", "gate", "publish"]
         .every(sid => js.includes(`["${sid}",`))
-    && js.includes('$("ship-commit-msg").value = d.commitMessage')
-    && js.includes("bump the lanes to v"), null);
+    && js.includes('$("ship-commit-msg").value = d.commitMessage'), null);
+
+check("the clear-marks control is an ERASER — a glyph that says what it does " +
+      "at a glance, not a check with a line through it",
+    (() => {
+        const i = html.indexOf('id="ws-clear-marks"');
+        if (i < 0) return false;
+        const b = html.slice(Math.max(0, i - 200), html.indexOf("</button>", i));
+        return /ERASER/.test(b) && b.includes("<svg")
+            && !b.includes("M20 6L9 17l-5-5");
+    })(), null);
 
 check("a NON-contributor gets the honest list of what is missing plus the " +
       "one affordance the app can supply — choosing the checkout",

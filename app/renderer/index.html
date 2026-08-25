@@ -793,10 +793,12 @@
                             <input id="ws-search" type="search" spellcheck="false"
                                    autocomplete="off" placeholder="Find a file…"
                                    aria-label="Search files by name">
+                            <!-- an ERASER — the one glyph that says "clear
+                                 the marks" at a glance -->
                             <button id="ws-clear-marks" class="ghost small icon-act icon-only hidden"
                                     title="Stop marking these files as changed. The changes themselves stay revertable from the chat."
                                     aria-label="Clear changed-file marks">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/><path d="M4 6l16 12" opacity="0.55"/></svg>
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H8.5l-4.9-4.9a1.6 1.6 0 0 1 0-2.3l8.6-8.6a1.6 1.6 0 0 1 2.3 0l5.2 5.2a1.6 1.6 0 0 1 0 2.3L13.5 17.9"/><line x1="9.2" y1="7.2" x2="16.8" y2="14.8"/></svg>
                             </button>
                             <button id="ws-refresh" class="ghost small icon-act icon-only"
                                     title="Refresh the file list" aria-label="Refresh the file list">
@@ -1207,8 +1209,10 @@
                 <div id="ship-gate-note" class="ship-note hidden"></div>
                 <div id="ship-form">
                     <div id="ship-versions" class="ship-versions"></div>
-                    <label class="ship-bump-row"><input type="checkbox" id="ship-bump">
-                        <span id="ship-bump-label">bump the version lanes</span></label>
+                    <!-- the bump is DECIDED, not asked — a published version
+                         must bump past itself, an unpublished one must not
+                         skip a number; the line states what will happen -->
+                    <div id="ship-bump-note" class="ship-note"></div>
                     <div class="ship-field">
                         <div class="ship-field-head">
                             <span>Commit message</span>

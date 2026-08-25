@@ -5503,10 +5503,8 @@ async function openShipPanel() {
             `tree v${plan.version} · official #${plan.official}`
             + (plan.latestTag ? ` — published ${plan.latestTag}` : "")
             + ` — ${plan.dirtyCount} file${plan.dirtyCount === 1 ? "" : "s"} pending`;
-        $("ship-bump").checked = !!plan.bumpSuggested;
-        $("ship-bump-label").innerText = plan.nextVersion
-            ? `bump the lanes to v${plan.nextVersion} · official #${plan.nextOfficial}`
-            : "bump the version lanes";
+        // the bump is main's DECISION — the panel just says it out loud
+        $("ship-bump-note").innerText = plan.bumpNote || "";
         $("ship-run").disabled = false;
         $("ship-run").dataset.identityName = st.identity.name || "";
         $("ship-run").dataset.identityEmail = st.identity.email || "";
@@ -5517,8 +5515,11 @@ async function openShipPanel() {
         if (lastFailNote) {
             $("ship-state").innerText = lastFailNote;
         } else {
+            // an auto-found checkout says so once — nothing was asked for
             $("ship-state").innerText = plan.dirtyCount
-                ? "" : "nothing is pending — the tree is clean";
+                ? (st.repoHow === "discovered"
+                    ? `checkout found from your sessions: ${st.repo}` : "")
+                : "nothing is pending — the tree is clean";
             // draft immediately: by the time the fields are read, they are full
             shipDraft();
         }
@@ -5564,7 +5565,6 @@ $("ship-run").addEventListener("click", async () => {
     $("ship-cancel").classList.remove("hidden");
     $("ship-state").innerText = "running — one step at a time";
     const res = await window.lcl.contribRun({
-        bump: $("ship-bump").checked,
         commitMessage: msg,
         releaseNotes: $("ship-notes").value.trim(),
         name: $("ship-run").dataset.identityName,

@@ -3825,8 +3825,7 @@ details.msg-tool.failed summary { color: #e9a2a2; }
 .ship-note.bad { color: #f0a1a1; }
 .ship-versions { font-family: var(--mono); font-size: var(--fs-base);
     color: var(--text-dim); }
-.ship-bump-row { display: flex; align-items: center; gap: var(--sp-2);
-    font-size: var(--fs-base); color: var(--text-dim); cursor: pointer; }
+#ship-bump-note { font-size: var(--fs-base); color: var(--text-dim); }
 .ship-field { display: flex; flex-direction: column; gap: 4px; }
 .ship-field-head { display: flex; align-items: center; justify-content: space-between;
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);

@@ -11502,10 +11502,64 @@ function contribRemote(repo) {
     return m ? { owner: m[1], repo: m[2], url: r.out } : null;
 }
 
+/**
+ * THE APP FINDS ITS OWN CHECKOUT. "why are we giving the option to use
+ * another location" — because the installed app is not a git checkout; but
+ * asking was lazy: the patch channel already names the repo this app patches
+ * FROM, and the operator's own sessions say where they work. Any session
+ * folder that is a git checkout whose origin matches the channel IS the
+ * checkout. Found once, saved, said out loud. The picker survives only as
+ * the fallback for a contributor whose checkout has never been a session.
+ */
+function contribDiscoverRepo() {
+    const set = contribRepoRoot();
+    if (set) return { repo: set, how: "linked" };
+    // WHICH REPO AM I FROM — answered by the INSTALLATION ITSELF first: the
+    // build stamps its checkout's origin into the baked build-info at release
+    // time, so the installed app reads its own identity. The patch-channel
+    // setting stands in only for builds cut before the stamp existed.
+    let ident = null;
+    const baked = runningBuild();
+    if (baked && baked.repo && baked.repo.owner && baked.repo.repo) {
+        ident = baked.repo;
+    } else {
+        let chan = null;
+        try { chan = paths.readSettings().patchChannel; } catch { }
+        if (chan && chan.kind === "github" && chan.owner && chan.repo) {
+            ident = { owner: chan.owner, repo: chan.repo };
+        }
+    }
+    if (!ident) return { repo: null };
+    const want = (ident.owner + "/" + ident.repo).toLowerCase();
+    const seen = new Set();
+    let sums = [];
+    try { sums = sessions.list() || []; } catch { }
+    for (const s0 of sums) {
+        const rp = s0 && s0.repoPath;
+        if (!rp || seen.has(rp)) continue;
+        seen.add(rp);
+        try {
+            if (!fs.existsSync(path.join(rp, ".git"))) continue;
+            if (!fs.existsSync(path.join(rp, "devtools", "release.js"))) continue;
+            const r = contribExec("git", ["remote", "get-url", "origin"], rp, 8000);
+            if (!r.ok) continue;
+            const m = r.out.match(/github\.com[:/]([^/]+)\/([^/.\s]+)/);
+            if (m && (m[1] + "/" + m[2]).toLowerCase() === want) {
+                paths.writeSettings({ contribRepoPath: rp });
+                return { repo: rp, how: "discovered" };
+            }
+        } catch { /* the next candidate */ }
+    }
+    return { repo: null, channel: ident.owner + "/" + ident.repo };
+}
+
 ipcMain.handle("lcl:contribStatus", guard(async () => {
-    const repo = contribRepoRoot();
+    const found = contribDiscoverRepo();
+    const repo = found.repo;
     const missing = [];
-    if (!repo) missing.push("a linked .lcl checkout (Choose checkout…)");
+    if (!repo) missing.push(
+        `a checkout of ${found.channel || "the app's repo"} — none of your session `
+        + "folders is one, so point at it once (Choose checkout…)");
     const git = contribExec("git", ["--version"], repo || undefined);
     if (!git.ok) missing.push("the git CLI on PATH");
     const gh = contribExec("gh", ["--version"], repo || undefined);
@@ -11545,6 +11599,7 @@ ipcMain.handle("lcl:contribStatus", guard(async () => {
         if (id.ok && /^\d+$/.test(id.out)) email = `${id.out}+${login}@users.noreply.github.com`;
     }
     return { ok: missing.length === 0, repo, missing, remote,
+             repoHow: found.how || null,
              identity: { name, email, login },
              running: !!contribRunState };
 }));
@@ -11567,8 +11622,8 @@ ipcMain.handle("lcl:contribPickRepo", guard(async () => {
 
 /** What is pending: dirty files, the version lanes, the last published tag. */
 ipcMain.handle("lcl:contribPlan", guard(async () => {
-    const repo = contribRepoRoot();
-    if (!repo) return { error: "no checkout linked" };
+    const repo = contribDiscoverRepo().repo;
+    if (!repo) return { error: "no checkout found — open the Ship panel to link one" };
     const st = contribExec("git", ["status", "--porcelain"], repo);
     const files = st.ok ? st.out.split(/\r?\n/).filter(Boolean) : [];
     let official = null, version = null;
@@ -11576,23 +11631,37 @@ ipcMain.handle("lcl:contribPlan", guard(async () => {
         path.join(repo, "devtools", "RELEASE.json"), "utf8")).official; } catch { }
     try { version = JSON.parse(fs.readFileSync(
         path.join(repo, "app", "package.json"), "utf8")).version; } catch { }
-    let latestTag = null;
+    let latestTag = null, tagTaken = false;
     const remote = contribRemote(repo);
     if (remote) {
         const t = contribExec("gh",
             ["api", `repos/${remote.owner}/${remote.repo}/releases/latest`,
              "--jq", ".tag_name"], repo);
         if (t.ok) latestTag = t.out;
+        // THE BUMP IS A FACT, NOT A CHECKBOX. "im shipping, would i not
+        // always want to make sure there is no conflict there? so why even
+        // ask" — if the tree's version is already a published tag, shipping
+        // it again can only collide; if it is unpublished, bumping past it
+        // would skip a number. Decided here, stated to the operator, done.
+        if (version) {
+            const tt = contribExec("gh",
+                ["api", `repos/${remote.owner}/${remote.repo}/releases/tags/v${version}`,
+                 "--jq", ".tag_name"], repo);
+            tagTaken = tt.ok && tt.out === `v${version}`;
+        }
     }
-    // the lanes need a bump when the tree still carries the version that is
-    // already published — suggest the next patch step on both lanes
-    const bumpSuggested = !!(version && latestTag && ("v" + version) === latestTag);
     const nextVersion = version
         ? version.replace(/(\d+)$/, (n) => String(Number(n) + 1)) : null;
     const nextOfficial = Number.isInteger(official) ? official + 1 : null;
+    const willBump = tagTaken;
+    const bumpNote = !version ? "could not read the tree's version"
+        : tagTaken
+            ? `v${version} is already published — this ship bumps to v${nextVersion} · official #${nextOfficial}`
+            : `v${version} is unpublished — this ship releases it as-is`;
     const branch = contribExec("git", ["rev-parse", "--abbrev-ref", "HEAD"], repo);
     return { repo, files: files.slice(0, 200), dirtyCount: files.length,
-             official, version, latestTag, bumpSuggested, nextVersion, nextOfficial,
+             official, version, latestTag, willBump, bumpNote,
+             nextVersion, nextOfficial,
              branch: branch.ok ? branch.out : null };
 }));
 
@@ -11603,8 +11672,8 @@ ipcMain.handle("lcl:contribPlan", guard(async () => {
  * and says so.
  */
 ipcMain.handle("lcl:contribDraft", guard(async () => {
-    const repo = contribRepoRoot();
-    if (!repo) return { error: "no checkout linked" };
+    const repo = contribDiscoverRepo().repo;
+    if (!repo) return { error: "no checkout found — open the Ship panel to link one" };
     const stat = contribExec("git", ["diff", "--stat", "HEAD"], repo, 30000);
     const names = contribExec("git", ["diff", "--name-status", "HEAD"], repo, 30000);
     const sample = contribExec("git", ["diff", "HEAD"], repo, 30000);
@@ -11689,8 +11758,8 @@ function contribStep(step, bin, args, cwd) {
 
 ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
     if (contribRunState) return { error: "a ship run is already in progress" };
-    const repo = contribRepoRoot();
-    if (!repo) return { error: "no checkout linked" };
+    const repo = contribDiscoverRepo().repo;
+    if (!repo) return { error: "no checkout found — open the Ship panel to link one" };
     const o = opts || {};
     const msg = String(o.commitMessage || "").trim();
     const notes = String(o.releaseNotes || "").trim();
@@ -11727,12 +11796,24 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
         return { ok: false, failedStep: step, error: why };
     };
     try {
-        // 0 — the lanes, bumped in the tree when asked (the step the ritual
-        //     always forgot): RELEASE.json official +1, both package.json
+        // 0 — the lanes. NOT A CHOICE: the run re-derives the same fact the
+        //     plan showed — a tree version that is already a published tag
+        //     MUST bump past it; an unpublished one MUST NOT skip a number.
+        //     Computed here independently, never trusted from the renderer.
         let version = null;
         try { version = JSON.parse(fs.readFileSync(
             path.join(repo, "app", "package.json"), "utf8")).version; } catch { }
-        if (o.bump) {
+        let mustBump = false;
+        {
+            const remote = contribRemote(repo);
+            if (remote && version) {
+                const tt = contribExec("gh",
+                    ["api", `repos/${remote.owner}/${remote.repo}/releases/tags/v${version}`,
+                     "--jq", ".tag_name"], repo);
+                mustBump = tt.ok && tt.out === `v${version}`;
+            }
+        }
+        if (mustBump) {
             emit("bump", "running");
             try {
                 const rj = path.join(repo, "devtools", "RELEASE.json");
@@ -11751,7 +11832,8 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
             } catch (e) {
                 return fail("bump", "lane bump failed: " + String((e && e.message) || e));
             }
-        } else emit("bump", "skipped");
+        } else emit("bump", "skipped",
+            `v${version} is unpublished — no bump needed`);
         if (!version) return fail("bump", "could not read app/package.json version");
 
         // 1+2 — stage and commit. A RETRY AFTER A MID-CHAIN FAILURE finds the

@@ -4331,7 +4331,8 @@ const SCENES = {
                 running: false });
             window.__harness.FIXTURES.contribPlan = () => ({ repo: "C:/checkout",
                 files: ["M app/main.js"], dirtyCount: 12, official: 11,
-                version: "1.0.9", latestTag: "v1.0.9", bumpSuggested: true,
+                version: "1.0.9", latestTag: "v1.0.9", willBump: true,
+                bumpNote: "v1.0.9 is already published — this ship bumps to v1.0.10 · official #12",
                 nextVersion: "1.0.10", nextOfficial: 12, branch: "public" });
             window.__harness.FIXTURES.contribDraft = () => ({
                 commitMessage: "Fix the dock overlap",
@@ -4345,8 +4346,7 @@ const SCENES = {
             const out = {
                 identity: document.getElementById("ship-identity").innerText,
                 versions: document.getElementById("ship-versions").innerText,
-                bumpChecked: document.getElementById("ship-bump").checked,
-                bumpLabel: document.getElementById("ship-bump-label").innerText,
+                bumpNote: document.getElementById("ship-bump-note").innerText,
                 msg: document.getElementById("ship-commit-msg").value,
                 notes: document.getElementById("ship-notes").value,
                 steps: document.querySelectorAll("#ship-steps .ship-step").length,
@@ -4404,14 +4404,14 @@ const SCENES = {
             document.getElementById("ship-close").click();
             return out;
         } catch (e) { return { threw: String(e.stack).slice(0, 300) }; } })()`);
-        check("ship", "THE PANEL KNOWS WHO AND WHAT WITHOUT TYPING — identity from " +
-            "gh/git config, the tree's lanes and the published tag from the plan, " +
-            "the bump pre-checked with the exact next numbers named",
+        check("ship", "THE PANEL KNOWS WHO AND WHAT WITHOUT TYPING OR ASKING — " +
+            "identity from gh/git config, the lanes and published tag from the " +
+            "plan, and the bump is a STATED DECISION, not a checkbox: 'why even " +
+            "ask' — the line names exactly what will happen and why",
             !r.threw && /as Contributor <1\+c@users\.noreply\.github\.com>/.test(r.identity || "")
             && /tree v1\.0\.9 · official #11/.test(r.versions || "")
             && /published v1\.0\.9/.test(r.versions || "")
-            && r.bumpChecked === true
-            && /v1\.0\.10 · official #12/.test(r.bumpLabel || ""), r);
+            && /already published — this ship bumps to v1\.0\.10 · official #12/.test(r.bumpNote || ""), r);
         check("ship", "...the local model's draft fills both fields, editable, and all " +
             "six steps stand ready with the run enabled",
             r.msg === "Fix the dock overlap"
@@ -4425,7 +4425,7 @@ const SCENES = {
             "and the finish is announced by version",
             r.confirmShown === true && r.cancelVisibleWhileRunning === true
             && r.ranWith && r.ranWith.msg === "Fix the dock overlap for real"
-            && r.ranWith.bump === true
+            && r.ranWith.bump === undefined   /* the bump is main's decision now */
             && r.ranWith.name === "Contributor"
             && /v1\.0\.10 is live/.test(r.liveState || ""), r);
         check("ship", "THE LAST RUN'S EVIDENCE REPLAYS ON REOPEN — the failed step " +
