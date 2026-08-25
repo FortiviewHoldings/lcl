@@ -1031,6 +1031,97 @@ const ATT_PREFIX = "@attachments/";
 const ATT_READ_TOOLS = new Set(["read_file", "read_image", "read_image_text", "read_pdf",
                                 "extract_pdf", "media_transform", "transcribe_audio"]);
 
+/* -------------------------------------------------------- no duplicate work
+ * IN-FLIGHT COALESCING. Orchestrated waves run several step-turns at once and
+ * every one of them funnels through runTool in this process. Watched live:
+ * three steps launched the SAME extract_pdf on the SAME file concurrently —
+ * 237 seconds of triplicate OCR, and the interleaved writes scrambled the
+ * output all three were about to read. An identical read-class call that is
+ * already running is JOINED, not repeated: the second caller awaits the first
+ * caller's promise and shares its result. Only the tools in ATT_READ_TOOLS
+ * coalesce (reads and derive-in-place converters — same args, same outcome);
+ * write tools never do, because "identical" write calls are a model error
+ * this loop should surface, not silently halve. In-flight only, never a
+ * cache: once a call settles, the next identical call runs fresh.
+ */
+const inflightReads = new Map();   // key -> the first caller's entry.run promise
+// THE KEY CARRIES THE SESSION. The measured failure was parallel step-turns
+// of ONE goal (shared session, shared cancelToken, shared selection) — those
+// coalesce safely. Two SESSIONS on the same folder must not: the join runs
+// under the first caller's ctx, so session A's Stop would kill session B's
+// call, A's model selection would decide B's read_image routing, and B would
+// see no progress notes. Scoping the key by session keeps the whole fix and
+// removes every cross-session interleaving.
+function coalesceKey(ctx, name, root, args) {
+    const keys = Object.keys(args || {}).sort();
+    return ((ctx && ctx.sessionId) || "") + "\0" + name + "\0" + root + "\0"
+        + JSON.stringify(args, keys);
+}
+
+/* WHAT THIS SESSION ALREADY READ. A builder read the same first 16KB of its
+ * source seven times and never paged deeper — 86% of an extraction it paid
+ * for never entered its context. Every read_file range lands here; an exact
+ * repeat gets a nudge appended to the result: the range it already holds, the
+ * file's real extent, and the literal next call that advances. Keys carry the
+ * file's current extent so a file the model rewrites reads fresh, and any
+ * write through runTool clears its path's history outright. */
+const readRanges = new Map();      // session\0root\0path -> Map(rangeKey -> count)
+const READ_RANGES_CAP = 4000;      // process-lifetime bound; oldest evicted
+const WRITE_TOOLS_CLEAR = new Set(["write_file", "edit_file", "move_file", "delete_file"]);
+// models spell the same file three ways ("src/app.js", "./src/app.js",
+// "src\\app.js") — one spelling per key or the write-clear misses
+function normReadPath(p) {
+    return String(p || "").replace(/\\/g, "/").replace(/^\.\//, "");
+}
+// A WRITE IS A WRITE, WHOEVER DECIDED IT. Exported so the approval path
+// (main.js's second dispatch site, which runs entry.run directly) clears the
+// same history the agent loop does — a human-approved rewrite must read
+// fresh exactly like a model-decided one.
+function clearReadHistory(sessionId, root, paths) {
+    if (!sessionId) return;
+    for (const p of paths || []) {
+        if (typeof p === "string" && p) {
+            readRanges.delete(sessionId + "\0" + root + "\0" + normReadPath(p));
+        }
+    }
+}
+function noteReadRange(ctx, root, args, result) {
+    if (!ctx || !ctx.sessionId || !result || typeof result !== "object") return null;
+    const fileKey = ctx.sessionId + "\0" + root + "\0" + normReadPath(args.path);
+    const lineMode = result.fromLine !== undefined && result.fromLine !== null;
+    // byte mode resumes at the byte count fsTools ACTUALLY consumed
+    // (bytesRead) — measuring the decoded string instead overshoots by up to
+    // 3 bytes when the cap splits a multi-byte character (U+FFFD is 3 bytes)
+    const consumed = typeof result.bytesRead === "number"
+        ? result.bytesRead : Buffer.byteLength(String(result.content || ""), "utf8");
+    const rangeKey = lineMode
+        ? `L${result.fromLine}-${result.toLine}/${result.totalLines}`
+        : `B${result.offset}+${consumed}/${result.size}`;
+    let ranges = readRanges.get(fileKey);
+    if (!ranges) {
+        if (readRanges.size >= READ_RANGES_CAP) {
+            readRanges.delete(readRanges.keys().next().value);
+        }
+        ranges = new Map(); readRanges.set(fileKey, ranges);
+    }
+    const seen = ranges.get(rangeKey) || 0;
+    ranges.set(rangeKey, seen + 1);
+    if (!seen) return null;
+    // "THIS SESSION", not "you" — a parallel step-turn's context may be
+    // seeing the slice for the first time even though the session has not,
+    // and the note must stay true in both readings.
+    if (!result.truncated) {
+        return `NOTE: this session has now read this WHOLE file ${seen + 1} times — everything above is already in hand.`;
+    }
+    const next = lineMode
+        ? `{"path": ${JSON.stringify(args.path)}, "fromLine": ${result.toLine + 1}, "lines": 400}`
+        : `{"path": ${JSON.stringify(args.path)}, "offset": ${(result.offset || 0) + consumed}}`;
+    const extent = lineMode
+        ? `the file has ${result.totalLines} lines and this covers only up to line ${result.toLine}`
+        : `the file is ${result.size} B and this covers only up to byte ${(result.offset || 0) + consumed}`;
+    return `NOTE: this session has already read exactly this slice ${seen} time(s) — ${extent}. Re-reading it gains nothing; page FORWARD with ${next}.`;
+}
+
 function attachmentAppendix(atts, tools, hasWorkspace) {
     const fs = require("fs");
     let out = `\n\n--- FILES THE OPERATOR ATTACHED TO THIS MESSAGE (${atts.length}) ---`;
@@ -1112,7 +1203,42 @@ async function runTool(tools, root, name, args, ctx) {
         }
         // file tools are sync and ignore ctx; generate_image is async and uses
         // it for cancellation and progress notes
-        const result = await entry.run(root, args, ctx);
+        let result;
+        if (ATT_READ_TOOLS.has(name)) {
+            // join an identical in-flight read FROM THE SAME SESSION instead
+            // of repeating it (the key carries the session — see coalesceKey)
+            const key = coalesceKey(ctx, name, root, args);
+            let p = inflightReads.get(key);
+            const joined = !!p;
+            if (!p) {
+                p = Promise.resolve().then(() => entry.run(root, args, ctx));
+                inflightReads.set(key, p);
+                p.then(() => inflightReads.delete(key), () => inflightReads.delete(key));
+            }
+            result = await p;
+            if (joined && result && typeof result === "object") {
+                // a shallow copy carries THIS caller's provenance marker;
+                // the shared result object is never mutated per-caller
+                result = { ...result, coalesced: true };
+            }
+        } else {
+            result = await entry.run(root, args, ctx);
+        }
+        // a rewritten file reads fresh: drop its remembered ranges —
+        // move_file carries {from, to}, not {path}, so all three are cleared
+        if (WRITE_TOOLS_CLEAR.has(name) && args && ctx && ctx.sessionId) {
+            clearReadHistory(ctx.sessionId, root, [args.path, args.from, args.to]);
+        }
+        // the joiner shared the leader's run — its "read" was free and must
+        // not advance the repeat counter or draw a nudge of its own
+        if (name === "read_file" && result && typeof result === "object"
+            && result.coalesced !== true) {
+            const nudge = noteReadRange(ctx, root, args, result);
+            if (nudge) {
+                result = { ...result,
+                           note: (result.note ? String(result.note) + " " : "") + nudge };
+            }
+        }
         /* THE RESULT MUST TEACH THE PATH THE MODEL MAY REUSE. A re-rooted
          * attachment call runs on the BARE name, so the tool's own result
          * echoed that bare name back ("file":"amt1…-Chapter 1.pdf", note:
@@ -4319,7 +4445,11 @@ const STEP_KEEP = new Set([
     "planning", "plan-confirm", "tool", "tool-done", "tool-progress",
     "correcting", "clarify", "grounding", "denied", "needs-approval",
     "script-proposed", "script-refused", "spin-warned", "spin-stopped",
-    "step-limit", "fabricated-tool-result", "audit-done"
+    "step-limit", "fabricated-tool-result", "audit-done",
+    // the per-step critic's verdict. It ran on every orchestrated step and
+    // recorded NOTHING — a forensic read of a bad build could not tell "the
+    // critic passed this" from "the critic never ran". Now it is a record.
+    "verify"
 ]);
 // hard cap per persisted record — sessions.js pretty-prints the session file,
 // so an unbounded list would write tens of KB per long turn
@@ -4384,5 +4514,8 @@ module.exports = {
     // the step-transcript recorder — exported so orchestrator.runGoal's
     // goal-level record and the regression suite use the REAL keep-set
     // instead of copies that can drift
-    recordStep, STEP_KEEP
+    recordStep, STEP_KEEP,
+    // exported so the approval path clears the SAME read history the agent
+    // loop does — core floor across every dispatch site, not one of them
+    clearReadHistory
 };

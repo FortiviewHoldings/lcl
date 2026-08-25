@@ -51,7 +51,10 @@ function recoverArgs(m) {
 /* -------------------------------------------------------- session folding */
 
 const isAudit = (m) => !!(m.meta && (m.meta.audit || m.meta.clarifyAnswer
-    || m.meta.model === "ancient-knowledge"));
+    || m.meta.model === "ancient-knowledge"
+    // the post-check note is runtime-authored — a node model trained on the
+    // export must never learn to speak in the gate's voice
+    || m.meta.model === "post-check" || m.meta.postCheck));
 const isSynthetic = (m) => !!(m.meta && (m.meta.compaction || m.meta.compacted
     || m.meta.failed || m.meta.emptyReply || m.meta.fabricated
     || m.meta.stoppedAtLimit || m.meta.guard || m.meta.planConfirm

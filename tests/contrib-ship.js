@@ -249,7 +249,7 @@ check("the stream paints into the talking step, capped against a runaway " +
     js.includes("onContribProgress")
     && js.includes("out.textContent += p.line")
     && js.includes("lines.slice(-400)")
-    && js.includes("Ship this release?"), null);
+    && js.includes("Release this patch?"), null);
 
 check("closing the panel hides the VIEW only — a live run keeps running in " +
       "main (the same ownership rule the knowledge batch earned)",
@@ -259,6 +259,59 @@ check("closing the panel hides the VIEW only — a live run keeps running in " +
 check("the panel is styled — scrim, step dots, mono consoles",
     ["#ship-scrim {", "#ship-panel {", ".ship-step-dot {", ".ship-step-out {"]
         .every(c => css.includes(c)), null);
+
+/* ---- THE SECOND REPORT'S LESSONS (25 Aug: "it holds the last patch
+ * shipped ... this is causing the ui to be stale"; "i told you i wanted to
+ * see the waiting for the software to populate the ui"; "you have the mouse
+ * cursor as the animation. i dont like that") ---- */
+check("A SHIPPED RUN IS HISTORY — only a FAILED run's evidence replays on " +
+      "open; a successful last patch never dresses a fresh panel in stale " +
+      "consoles while a new patch sits ready in the tree",
+    js.includes("if (last && last.at && !last.ok && !shipRunning)")
+    && js.includes("A run that SHIPPED is"), null);
+
+check("THE PANEL POPULATES IN FRONT OF YOU — a fresh blank face, then the " +
+      "patch line, then the identity, then the streaming draft, each stage " +
+      "named on the state line in sequence",
+    js.includes("STAGE 1 — the relevant patch")
+    && js.includes("STAGE 2 — who is cutting it")
+    && js.includes("STAGE 3 — the draft streams into the fields")
+    && (() => {
+        const o = js.indexOf("async function openShipPanel");
+        const seg = js.slice(o, o + 6000);
+        return seg.indexOf("contribPlan()") > 0
+            && seg.indexOf("contribPlan()") < seg.indexOf("contribStatus()");
+    })(), null);
+
+check("...with a VISIBLE waiting treatment: shimmering placeholders on the " +
+      "unfilled fields, a pulsing dot on the working state line, an animated " +
+      "sweep on the drafting fields — and NO cursor-as-status anywhere",
+    js.includes('classList.add("ship-wait")')
+    && js.includes("function shipState(")
+    && css.includes(".ship-wait {")
+    && css.includes(".ship-note.working::before")
+    && css.includes("@keyframes ship-sweep")
+    && (() => {
+        const i = css.indexOf("textarea.drafting");
+        return i > 0 && !css.slice(i, i + 500).includes("cursor: progress");
+    })(), null);
+
+check("READY-TO-CUT WEARS A BADGE — the Knowledge-badge shape on the Patch " +
+      "menu label AND on the Release Patch line item, painted at boot and on " +
+      "menu open, fed by a git-only handler that never spawns gh",
+    html.includes('id="patch-badge"')
+    && html.includes('id="ship-badge"')
+    && js.includes("function shipPaintBadge(")
+    && js.includes("shipBadgeFromBoot()")
+    && pre.includes('contribReady: () => ipcRenderer.invoke("lcl:contribReady")')
+    && (() => {
+        const i = sec.indexOf('ipcMain.handle("lcl:contribReady"');
+        if (i < 0) return false;
+        const h = sec.slice(i, sec.indexOf("ipcMain.handle", i + 10));
+        return h.includes('["status", "--porcelain"]')
+            && h.includes('"origin/main..HEAD"')
+            && !h.includes('"gh"');
+    })(), null);
 
 console.log(`\n${pass}/${pass + fail} contrib-ship checks passed`);
 process.exit(fail ? 1 : 0);

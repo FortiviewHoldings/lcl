@@ -22,6 +22,8 @@ const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
 const { pathToFileURL } = require("url");
+// temp-then-rename for every sidecar file a reader might catch half-written
+const { atomicWriteSync } = require("./fsTools");
 
 /* pdfjs is ESM-only; resolved once from the engine's own module graph. The
  * legacy build runs in bare node as well as the Electron main process. */
@@ -36,6 +38,24 @@ function pdfjs() {
 function available() {
     try { require.resolve("pdfjs-dist/legacy/build/pdf.mjs"); return true; }
     catch { return false; }
+}
+
+/* ------------------------------------------------------------- one at a time
+ * Watched in a real session: an orchestrated plan ran extract_pdf THREE times
+ * concurrently on the same PDF (parallel step-turns, same tool), and the
+ * interleaved appends left full.txt with 61 page markers for a 26-page
+ * document, pages shuffled mid-sentence — and the builder pasted that
+ * scrambled text into the product. Extraction into a given sidecar is
+ * serialized here, at the writer, so EVERY caller is covered: identical
+ * calls, different page windows, even two sessions on the same folder. */
+const sidecarLocks = new Map();   // outDir -> tail of the promise chain (never-rejecting)
+function withSidecarLock(key, fn) {
+    const tail = sidecarLocks.get(key) || Promise.resolve();
+    const run = tail.then(fn);
+    const settled = run.then(() => {}, () => {});   // a failed run must not wedge the lock
+    sidecarLocks.set(key, settled);
+    settled.then(() => { if (sidecarLocks.get(key) === settled) sidecarLocks.delete(key); });
+    return run;
 }
 
 /* ---------------------------------------------------------------- PNG, no deps
@@ -249,12 +269,23 @@ const pad = (n) => String(n).padStart(3, "0");
  * Returns a manifest describing exactly what was and was not captured.
  */
 async function extract(pdfPath, opts = {}) {
+    if (!opts.outDir) throw new Error("extract: outDir is required");
+    // serialize per sidecar — see withSidecarLock above. The key is
+    // case-folded on Windows: NTFS treats "Report.extract" and
+    // "report.extract" as ONE directory, so the lock must too. (The lock is
+    // per-process — the app's single main process, which every session's
+    // tool call runs through; a separate headless engine run is not covered.)
+    let key = path.resolve(opts.outDir);
+    if (process.platform === "win32") key = key.toLowerCase();
+    return withSidecarLock(key, () => extractInner(pdfPath, opts));
+}
+
+async function extractInner(pdfPath, opts = {}) {
     const {
         pageStart = 1, pageEnd, outDir,
         render = null, ocr = null, onNote = () => {},
         pageCap = 30, ocrFloorChars = 10,
     } = opts;
-    if (!outDir) throw new Error("extract: outDir is required");
     const lib = await pdfjs();
     const data = new Uint8Array(fs.readFileSync(pdfPath));
     const doc = await lib.getDocument({
@@ -275,7 +306,11 @@ async function extract(pdfPath, opts = {}) {
     const firstCall = pageStart <= 1 || !fs.existsSync(dirs.root);
     for (const d of Object.values(dirs)) fs.mkdirSync(d, { recursive: true });
     const fullTxt = path.join(dirs.text, "full.txt");
-    if (firstCall) fs.writeFileSync(fullTxt, "");
+    // THIS WINDOW'S TEXT ACCUMULATES IN MEMORY (30-page cap = bounded) and
+    // lands in full.txt as ONE atomic write after the page loop. The old
+    // truncate-then-append-per-page left a half-written file on screen for the
+    // whole run and interleaved when two extractions overlapped.
+    const textBlocks = [];
 
     const manifest = {
         file: path.basename(pdfPath), pages: doc.numPages,
@@ -390,12 +425,20 @@ async function extract(pdfPath, opts = {}) {
             }
         }
 
-        fs.appendFileSync(fullTxt, `--- page ${p}${rec.ocr ? " (OCR)" : ""} ---\n${text}\n\n`);
+        textBlocks.push(`--- page ${p}${rec.ocr ? " (OCR)" : ""} ---\n${text}\n\n`);
         manifest.perPage.push(rec);
         page.cleanup();
     }
     manifest.pageStart = start; manifest.pageEnd = end;
     manifest.more = end < total;
+
+    // full.txt: prior windows' text survives a continuation call; a re-run
+    // from page 1 replaces the file whole. One rename either way.
+    let priorText = "";
+    if (!firstCall) {
+        try { priorText = fs.readFileSync(fullTxt, "utf8"); } catch { /* none yet */ }
+    }
+    atomicWriteSync(fullTxt, priorText + textBlocks.join(""));
 
     // MERGE with any prior extraction window so the sidecar (meta.json + index.md)
     // describes the WHOLE document, not only this call's page range. full.txt
@@ -429,7 +472,7 @@ async function extract(pdfPath, opts = {}) {
     }
 
     // meta.json + a human, viewer-renderable index.md assembled from the parts
-    fs.writeFileSync(path.join(dirs.root, "meta.json"), JSON.stringify(manifest, null, 2));
+    atomicWriteSync(path.join(dirs.root, "meta.json"), JSON.stringify(manifest, null, 2));
     writeIndex(dirs.root, manifest);
 
     try { await doc.destroy(); } catch { /* released */ }
@@ -479,7 +522,7 @@ function writeIndex(root, m) {
         // duplicating a whole book inline
         L.push(`_Text on this page is in [text/full.txt](text/full.txt)._`, "");
     }
-    fs.writeFileSync(path.join(root, "index.md"), L.join("\n"));
+    atomicWriteSync(path.join(root, "index.md"), L.join("\n"));
 }
 
 module.exports = { available, extract, encodePng, imageToRgba, orientRgba, pageImages, pageTextFromItems, shapeAnnotations, pdfjs };

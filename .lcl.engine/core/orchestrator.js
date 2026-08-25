@@ -571,6 +571,14 @@ async function runGoal(session, goal, opts = {}) {
                      status: "running", detail: "verifying…" });
             critique = await critiqueStep(session, step, [...changeByPath.values()],
                                           cancelToken, driveSel);
+            // the verdict becomes part of the durable record (meta.steps), so
+            // a later read can tell "accepted" from "the critic never looked"
+            onProgress({ phase: "verify", detail: {
+                summary: step.title,
+                failed: !critique.pass,
+                reason: critique.pass
+                    ? (critique.skipped ? `passed unexamined: ${critique.skipped}` : "passed")
+                    : critique.problem } });
             if (critique.pass) break;
         }
 
@@ -718,6 +726,13 @@ async function runGoal(session, goal, opts = {}) {
         role: "assistant",
         content: summary,
         meta: { model: "orchestrator", planSteps: steps.length, files: built.length,
+                // THE PLAN ITSELF, PERSISTED. A 922-second build was forensically
+                // unreadable because all that survived of its plan was the count
+                // "6" — what the model decided to do had no durable home. Titles
+                // and actions are capped so the pretty-printed session file
+                // never balloons.
+                plan: steps.map(st => ({ n: st.n, title: String(st.title).slice(0, 80),
+                                         action: String(st.action).slice(0, 240) })),
                 // the goal-level step transcript, attached BY REFERENCE — the
                 // audit and AK phases recorded after this message is built
                 // still land in the same array before anything serializes it.

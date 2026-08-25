@@ -3836,10 +3836,37 @@ details.msg-tool.failed summary { color: #e9a2a2; }
     padding: var(--sp-2) var(--sp-3); font-family: var(--font);
     font-size: var(--fs-base); line-height: 1.5; outline: none; }
 .ship-field textarea:focus { border-color: var(--line-bright); }
-/* the model is writing — the field says so and takes no keystrokes */
+/* the model is writing — the FIELD says so, visibly: a slow amber sweep
+   across the surface while it takes no keystrokes. Never the mouse cursor —
+   "its not clear what is happening, you just have to assume". */
 .ship-field textarea.drafting { color: var(--text-dim);
     border-color: color-mix(in srgb, var(--attn) 35%, var(--line-strong));
-    cursor: progress; }
+    background-image: linear-gradient(100deg,
+        transparent 30%,
+        color-mix(in srgb, var(--attn) 7%, transparent) 50%,
+        transparent 70%);
+    background-size: 220% 100%;
+    animation: ship-sweep 1.4s linear infinite; }
+/* a field whose value has not arrived yet — the waiting shimmer the panel
+   wears while it populates stage by stage */
+.ship-wait { display: inline-block; min-width: 190px; min-height: 14px;
+    border-radius: 4px;
+    background-image: linear-gradient(100deg,
+        rgba(255, 255, 255, 0.045) 30%,
+        rgba(255, 255, 255, 0.11) 50%,
+        rgba(255, 255, 255, 0.045) 70%);
+    background-size: 220% 100%;
+    animation: ship-sweep 1.4s linear infinite; }
+@keyframes ship-sweep {
+    from { background-position: 120% 0; }
+    to { background-position: -100% 0; }
+}
+/* the state line is WORKING — a pulsing dot in front of the words, the same
+   pulse the step dots use, so "doing something" is visible at a glance */
+.ship-note.working::before { content: ""; display: inline-block;
+    width: 8px; height: 8px; border-radius: 50%; margin-right: 6px;
+    vertical-align: 0; background: var(--attn);
+    animation: taskpulse 0.9s ease-in-out infinite; }
 #ship-steps { display: flex; flex-direction: column; gap: 4px; }
 .ship-step { border: 1px solid var(--line); border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, 0.015); }
@@ -7356,6 +7383,35 @@ button.small.icon-only {
 .msg-ancient-body { color: var(--text); }
 .msg-ancient-body .msg-para:last-child,
 .msg-ancient-body > :last-child { margin-bottom: 0; }
+
+/* POST-CHECK — the deterministic no-fiction gate's caveat. The APP speaking
+   about the model's work, so it sits assistant-side with the caution stripe
+   on its outer (left) edge — the mirror of Ancient Knowledge's user-side
+   geometry, and never mistakable for one more assistant opinion. */
+.msg-postcheck {
+    align-self: flex-start;
+    padding: var(--sp-3) var(--sp-4);
+    background: linear-gradient(180deg, #1e1b14, #16130e);
+    border: 1px solid var(--line-strong);
+    border-left: 2px solid var(--attn);
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-xs);
+    color: var(--text-dim);
+    font-size: var(--fs-lg);
+    line-height: 1.55;
+}
+.msg-postcheck-head {
+    margin-bottom: var(--sp-2);
+    padding-bottom: var(--sp-2);
+    border-bottom: 1px solid var(--line);
+    font-size: var(--fs-micro);
+    font-weight: 700;
+    letter-spacing: var(--ls-label);
+    text-transform: uppercase;
+    color: var(--attn);
+}
+.msg-postcheck-body { color: var(--text); }
+.msg-postcheck-body .msg-para:last-child,
+.msg-postcheck-body > :last-child { margin-bottom: 0; }
 
 /* ================================================================= CONTEXT
    The window, in the user's own numbers.

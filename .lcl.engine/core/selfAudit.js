@@ -246,9 +246,13 @@ async function critiqueStep(session, step, changes, cancelToken = {}, sel) {
         }
         if (!firstFile && trimmed) { firstFile = c.path; firstContent = trimmed; }
     }
-    if (!firstFile) return { pass: true };     // nothing text-shaped to critique
+    if (!firstFile) return { pass: true, skipped: "no-text-artifact" };
 
-    // model critique — bounded, default PASS on any ambiguity or error
+    // model critique — bounded, default PASS on any ambiguity or error.
+    // A skipped critique still PASSES (a weak critic must never become an
+    // infinite-retry bottleneck) but now SAYS it was skipped, so the durable
+    // verify record can tell "the critic accepted this" from "the critic
+    // never actually looked".
     try {
         const res = await router.generate([
             { role: "system", content: CRITIC_SYSTEM },
@@ -260,7 +264,10 @@ async function critiqueStep(session, step, changes, cancelToken = {}, sel) {
         // sent to a paid endpoint, once per step, with no ledger row.
         ], CRITIQUE_TOKENS, cancelToken,
             null, sel !== undefined ? { selection: sel } : {});
-        if (res.error || cancelToken.cancelled) return { pass: true };
+        if (res.error || cancelToken.cancelled) {
+            return { pass: true,
+                     skipped: cancelToken.cancelled ? "cancelled" : "model-error" };
+        }
         const verdict = String(res.content || "").trim();
         // a real FAIL starts the reply with the word FAIL (boundary-anchored so
         // "FAILURE: none" or "this does not FAIL" do not trip it). A bare
@@ -271,7 +278,7 @@ async function critiqueStep(session, step, changes, cancelToken = {}, sel) {
         }
         return { pass: true };
     } catch {
-        return { pass: true };
+        return { pass: true, skipped: "critic-failed" };
     }
 }
 

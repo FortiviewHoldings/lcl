@@ -8107,6 +8107,160 @@ const turnsBySession = new Map();      // sessionId -> cancelToken
 const sessionAddenda = new Map();      // sessionId -> [text]
 const sessionStatus = new Map();       // sessionId -> { state, detail, at }
 
+/* ============================================================== POST-CHECK
+ * THE DETERMINISTIC GATE. A real session shipped an artifact that loaded its
+ * charts from a CDN — in an offline-first product — and named files that did
+ * not exist. The full self-review is optional and priced; THIS is neither: a
+ * grep-grade pass over the turn's own written files, every turn that wrote
+ * any, no model in the loop.
+ *
+ * Two checks, both chosen because they can be RIGHT:
+ *   1. OFFLINE — load-bearing network references (script/link/media src,
+ *      dynamic loader .src=, url(), @import, fetch, XHR, WebSocket,
+ *      import-from, protocol-relative included) in written web files. An
+ *      <a href> to the web still works offline, a <link rel=canonical>
+ *      loads nothing, and localhost is THIS machine — none of those flag.
+ *   2. FILES — path-like names ("site/app.js", never bare prose words) the
+ *      reply mentions that do not exist on disk. Files deleted this turn
+ *      and domain-shaped tokens are exempt; a turn that STAGED an approval
+ *      may name its future outputs, so nothing is flagged there.
+ *
+ * There is deliberately NO prose-claims check. A term-grep over the reply
+ * ("mentions BCD but nothing written contains it") was built, adversarially
+ * reviewed, and killed: it deterministically accused honest replies (every
+ * "removed the CDN reference" fix re-flags CDN forever) while the motivating
+ * fabrication — features claimed in plain prose — never matches an acronym
+ * regex at all. Judging prose is the model-graded reviews' job (self-audit,
+ * Ancient Knowledge); this gate only asserts what disk can prove.
+ *
+ * Findings ride the transcript as their own message (meta.model
+ * "post-check"), the same pattern as the self-audit note — never only in a
+ * log. Kill switch: settings.postCheck === false.
+ */
+const POST_CHECK_WEB_EXT = new Set([".html", ".htm", ".js", ".mjs", ".css"]);
+const POST_CHECK_MAX_FILES = 12;
+const POST_CHECK_READ_CAP = 512_000;   // lint the HEAD of even a huge page —
+                                       // a size skip would exempt exactly the
+                                       // big single-file artifacts most
+                                       // likely to carry a CDN reference
+// hosts that are THIS machine — a generated page talking to the local
+// engine or a Local Node service is a legitimately offline artifact
+const POST_CHECK_LOCAL_HOST = /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|[\w-]+\.localhost)(:\d+)?$/i;
+// machine-authored transcript messages — the gate examines the MODEL's
+// reply, never the auditors' notes or the orchestrator's own template
+const POST_CHECK_MACHINE = new Set(["self-audit", "post-check", "ancient-knowledge", "orchestrator"]);
+
+function postCheckHeadOf(full) {
+    const fd = fs.openSync(full, "r");
+    try {
+        const size = fs.fstatSync(fd).size;
+        const buf = Buffer.alloc(Math.min(POST_CHECK_READ_CAP, size));
+        const n = fs.readSync(fd, buf, 0, buf.length, 0);
+        return buf.subarray(0, n).toString("utf8");
+    } finally { fs.closeSync(fd); }
+}
+
+function postCheckExternalRefs(content) {
+    // load-bearing references only; protocol-relative ("//cdn…") resolves to
+    // the network everywhere but file://, so it counts
+    const U = "(?:https?:)?\\/\\/";
+    const pats = [
+        new RegExp(`<script[^>]{0,300}\\bsrc\\s*=\\s*["']${U}[^"']+`, "gi"),
+        new RegExp(`<link[^>]{0,300}\\bhref\\s*=\\s*["']${U}[^"']+[^>]{0,100}`, "gi"),
+        new RegExp(`<(?:img|iframe|video|audio|source)[^>]{0,300}\\bsrc\\s*=\\s*["']${U}[^"']+`, "gi"),
+        new RegExp(`\\.src\\s*=\\s*["'\`]${U}[^"'\`]+`, "gi"),   // dynamic loader injection
+        /url\(\s*["']?(?:https?:)?\/\/[^"')]+/gi,
+        /@import\s+["'](?:https?:)?\/\/[^"']+/gi,
+        /\bfetch\(\s*["'`]https?:\/\/[^"'`]+/gi,
+        /\bnew WebSocket\(\s*["'`]wss?:\/\/[^"'`]+/gi,
+        /\.open\(\s*["'][A-Za-z]+["']\s*,\s*["'`]https?:\/\/[^"'`]+/gi,   // XHR
+        /\bimport\s+[^;]{0,160}\bfrom\s*["']https?:\/\/[^"']+/gi,
+        /\bimport\(\s*["'`]https?:\/\/[^"'`]+/gi,
+    ];
+    const hits = [];
+    for (const re of pats) {
+        for (const m of content.matchAll(re)) {
+            const tag = m[0];
+            // a <link> that loads nothing (rel=canonical, alternate, …) is
+            // not a network dependency — only resource-loading rels count
+            if (/^<link/i.test(tag)
+                && !/rel\s*=\s*["']?[^"'>]*(stylesheet|icon|preload|modulepreload|manifest|font)/i.test(tag)) {
+                continue;
+            }
+            const u = (tag.match(/(?:wss?:|https?:)?\/\/[^\s"'`<>)]+/i) || [])[0];
+            if (!u) continue;
+            const host = u.replace(/^(?:wss?:|https?:)?\/\//i, "").split(/[/?#]/)[0];
+            if (!host || POST_CHECK_LOCAL_HOST.test(host)) continue;
+            hits.push(u);
+        }
+    }
+    return [...new Set(hits)];
+}
+
+function postCheckTurn(s, result) {
+    if (paths.readSettings().postCheck === false) return null;
+    if (!s || !s.repoPath) return null;
+    const changes = (result && result.changes) || [];
+    const norm = (p) => String(p || "").replace(/\\/g, "/").replace(/^\.\//, "");
+    const written = [...new Map(changes
+        .filter(c => c && c.path && c.kind !== "deleted" && !String(c.path).includes(".."))
+        .map(c => [norm(c.path), c])).values()];
+    if (!written.length) return null;    // a turn that built nothing has no artifacts to check
+
+    const findings = [];
+
+    // 1. OFFLINE: written web files that load from the network
+    for (const c of written.slice(0, POST_CHECK_MAX_FILES)) {
+        const rel = norm(c.path);
+        if (!POST_CHECK_WEB_EXT.has(path.extname(rel).toLowerCase())) continue;
+        let body = "";
+        try { body = postCheckHeadOf(path.join(s.repoPath, rel)); } catch { continue; }
+        const refs = postCheckExternalRefs(body);
+        if (refs.length) {
+            findings.push(`${rel} loads from the network (${refs.slice(0, 3).join(", ")}`
+                + (refs.length > 3 ? ` +${refs.length - 3} more` : "") + `) — it will not work offline.`);
+        }
+    }
+
+    // 2. FILES: path-like names in the MODEL's reply that do not exist.
+    //    A staged approval may legitimately name the file it will create, so
+    //    a turn that is waiting on the human is not second-guessed here.
+    const staged = ((result && result.pendingApprovals) || []).length > 0;
+    const finalMsg = [...((result && result.newMessages) || [])].reverse().find(m =>
+        m && m.role === "assistant" && typeof m.content === "string"
+        && !(m.meta && POST_CHECK_MACHINE.has(m.meta.model)));
+    const finalText = finalMsg ? finalMsg.content : "";
+    if (!staged && finalText) {
+        const deleted = new Set(changes
+            .filter(c => c && c.kind === "deleted" && c.path).map(c => norm(c.path)));
+        const noUrls = finalText.replace(/(?:wss?|https?):\/\/[^\s"'<>)]+/gi, " ");
+        const missing = [];
+        for (const m of noUrls.matchAll(/\b[\w][\w./\\-]{0,80}\.(html?|css|js|mjs|json|md|py|png|jpe?g|svg|txt|csv)\b/gi)) {
+            const rel = norm(m[0]);
+            // path-like only: "site/app.js" asserts a location, bare
+            // "index.html" (or prose like "Node.js") asserts nothing checkable
+            if (!rel.includes("/") || rel.includes("..") || missing.includes(rel)) continue;
+            // a domain-shaped head ("cdn.jsdelivr.net/…") is a URL, not a path
+            if (/^[\w-]+\.[a-z]{2,4}\//i.test(rel)) continue;
+            if (deleted.has(rel)) continue;    // truthfully reported as removed
+            try { if (!fs.existsSync(path.join(s.repoPath, rel))) missing.push(rel); }
+            catch { /* unresolvable name — not a finding */ }
+        }
+        if (missing.length) {
+            findings.push(`The reply names ${missing.slice(0, 6).map(f => `"${f}"`).join(", ")}`
+                + (missing.length > 6 ? ` (+${missing.length - 6} more)` : "")
+                + ` but ${missing.length === 1 ? "that file does" : "those files do"} not exist in the workspace.`);
+        }
+    }
+
+    if (!findings.length) return null;
+    return {
+        text: `Post-check — ${findings.length} finding(s) against this turn's files:\n`
+            + findings.map(f => `- ${f}`).join("\n"),
+        data: { findings: findings.length, files: written.length }
+    };
+}
+
 function setSessionStatus(sessionId, state, detail = "") {
     const prev = sessionStatus.get(sessionId);
     sessionStatus.set(sessionId, { state, detail: String(detail).slice(0, 140), at: Date.now() });
@@ -9138,6 +9292,25 @@ ipcMain.handle("lcl:chat", async (_e, id, content) => {
             "the turn completed but the endpoint reported no token usage");
     }
 
+    // THE DETERMINISTIC GATE — every turn that wrote files, no model in the
+    // loop. Both paths (orchestrated and chat) converge here. It asserts only
+    // what disk can prove — network loads in written web files, phantom paths
+    // in the reply; judging prose stays with the model-graded reviews. The
+    // finding rides the transcript like the self-audit note; failure of the
+    // CHECK must never sink a finished turn.
+    try {
+        const post = postCheckTurn(s, result);
+        if (post) {
+            const pcMsg = { role: "assistant", content: post.text,
+                            meta: { model: "post-check", postCheck: post.data } };
+            s.messages.push(pcMsg);
+            result.newMessages = [...(result.newMessages || []), pcMsg];
+            auditLog.write({ kind: "post-check", session: s.id,
+                             findings: post.data.findings, files: post.data.files,
+                             at: Date.now() });
+        }
+    } catch { /* the gate reports on the work; it never becomes the failure */ }
+
     // confirm-class tool calls staged this turn become approvable: the card
     // in the transcript carries the id, and ONLY lcl:approveTool can run it
     let staged = 0;
@@ -9576,6 +9749,28 @@ async function approveToolById(id) {
         // the message says so instead of letting the chip imply a revert
         backupTaken: !!backupId
     });
+    // THE FLOOR HOLDS ON EVERY DISPATCH SITE. An approved write is a write:
+    // the path's read history clears so the next read is fresh (a session in
+    // confirm-write mode must not collect stale "re-reading gains nothing"
+    // nudges on its own rewrites), and the artifact gets the same
+    // deterministic post-check every agent-loop turn gets — the most
+    // cautious mode must never be the one mode that ships unlinted.
+    if (change) {
+        try {
+            agent.clearReadHistory(s.id, s.repoPath,
+                [p.args && p.args.path, p.args && p.args.from, p.args && p.args.to]);
+        } catch { /* advisory — never blocks the approval */ }
+        try {
+            const post = postCheckTurn(s, { changes: [change], newMessages: [] });
+            if (post) {
+                s.messages.push({ role: "assistant", content: post.text,
+                                  meta: { model: "post-check", postCheck: post.data } });
+                auditLog.write({ kind: "post-check", session: s.id,
+                                 findings: post.data.findings, files: post.data.files,
+                                 approval: true, at: Date.now() });
+            }
+        } catch { /* the gate reports on the work; it never becomes the failure */ }
+    }
     sessions.save(s);
 
     return { ok: !failed, failed, output, change, backupTaken: !!backupId,
@@ -11552,6 +11747,22 @@ function contribDiscoverRepo() {
     }
     return { repo: null, channel: ident.owner + "/" + ident.repo };
 }
+
+/* READY-TO-CUT, CHEAPLY. The Patch badge asks this at boot and when the menu
+ * opens, so it must never spawn gh or touch the network — pure local git on
+ * the ALREADY-LINKED checkout (no discovery scan at boot). "Ready" = there
+ * is something a contributor could cut right now: uncommitted changes, or
+ * commits origin does not have (a failed push, an unshipped resume). */
+ipcMain.handle("lcl:contribReady", guard(async () => {
+    const repo = contribRepoRoot();
+    if (!repo) return { ready: false };
+    const st = contribExec("git", ["status", "--porcelain"], repo, 8000);
+    const dirty = st.ok ? st.out.split(/\r?\n/).filter(l => l.trim()).length : 0;
+    let ahead = 0;
+    const ah = contribExec("git", ["rev-list", "--count", "origin/main..HEAD"], repo, 8000);
+    if (ah.ok) ahead = Number(ah.out) || 0;
+    return { ready: dirty > 0 || ahead > 0, dirty, ahead };
+}));
 
 ipcMain.handle("lcl:contribStatus", guard(async () => {
     const found = contribDiscoverRepo();

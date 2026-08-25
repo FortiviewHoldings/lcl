@@ -520,7 +520,12 @@ const ARG_DETAIL = {
         args: [
             { name: "path", required: true, description: "file path relative to the folder, e.g. \"src/index.js\"" },
             { name: "fromLine", required: false, description: "first line to read (1-based)" },
-            { name: "lines", required: false, description: "how many lines to read" }
+            { name: "lines", required: false, description: "how many lines to read" },
+            // NATIVE CALLERS CANNOT PAGE A TOOL WHOSE SCHEMA HAS NO PAGE
+            // ARGUMENT (see list_files above). A truncated byte-mode read says
+            // "continue with offset N" — this is the argument that makes that
+            // sentence actionable instead of a dead end.
+            { name: "offset", required: false, description: "byte offset to start from — use it to page past a truncated read instead of re-reading the same first slice" }
         ]
     },
     write_file: {

@@ -181,13 +181,20 @@
                  repository and git; an installed build says so rather than
                  failing obscurely. Its own dropdown, as asked. -->
             <div class="menu" data-menu="patch">
-                <button class="menu-label">Patch</button>
+                <!-- the badge: something is READY TO CUT in the linked
+                     checkout (dirty files or unpushed commits) — same shape
+                     as the Knowledge badge, painted at boot and on open -->
+                <button class="menu-label">Patch<span id="patch-badge"
+                    class="menu-badge hidden"></span></button>
                 <div class="menu-panel">
                     <button data-action="patch-bay">Patch .lcl itself…</button>
                     <!-- contributors only: the whole release ritual — commit,
                          push, gate, publish — sequential, streamed, with the
-                         message drafted by a local model from the diff -->
-                    <button data-action="ship-release">Ship a release…</button>
+                         message drafted by a local model from the diff.
+                         The badge repeats HERE so the menu says which item
+                         the top-level badge belongs to. -->
+                    <button data-action="ship-release">Release Patch…<span
+                        id="ship-badge" class="menu-badge hidden"></span></button>
                 </div>
             </div>
 
@@ -1199,9 +1206,9 @@
 
     <!-- CONTRIBUTOR SHIP: the release ritual, sequential and streamed -->
     <div id="ship-scrim" class="hidden">
-        <div id="ship-panel" role="dialog" aria-modal="true" aria-label="Ship a release">
+        <div id="ship-panel" role="dialog" aria-modal="true" aria-label="Release Patch">
             <div class="panel-head">
-                <span>Ship a release</span>
+                <span>Release Patch</span>
                 <span id="ship-identity" class="ship-identity"></span>
                 <button id="ship-close" class="icon-btn" aria-label="Close">✕</button>
             </div>
@@ -1232,7 +1239,7 @@
                 <div id="ship-actions">
                     <span id="ship-state" class="ship-note"></span>
                     <button id="ship-cancel" class="ghost small hidden">Cancel</button>
-                    <button id="ship-run" class="primary small" disabled>Ship it</button>
+                    <button id="ship-run" class="primary small" disabled>Release it</button>
                 </div>
             </div>
         </div>

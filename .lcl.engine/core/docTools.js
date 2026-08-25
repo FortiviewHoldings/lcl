@@ -318,7 +318,11 @@ async function extractPdf(root, { path: relPath, page_start = 1, page_end } = {}
     try { pdfRaster = require("./pdfRaster"); } catch { /* headless: no render */ }
     try { ocrTools = require("./ocrTools"); } catch { /* headless: no ocr */ }
 
-    const base = path.basename(relPath, path.extname(relPath));
+    // base comes from `full` (realpath-canonical casing), NEVER the model's
+    // spelling of relPath — on NTFS "Report.pdf" and "report.pdf" are the
+    // same file, and a case-variant basename would mint a second lock key
+    // for the same physical sidecar, reopening the concurrent-write race
+    const base = path.basename(full, path.extname(full));
     const dirName = base + ".extract";
     const outDir = path.join(path.dirname(full), dirName);
     // root-relative POSIX folder, so both the @attachments re-prefix (agent.js)
@@ -356,6 +360,34 @@ async function extractPdf(root, { path: relPath, page_start = 1, page_end } = {}
     try { sample = fs.readFileSync(path.join(outDir, "text", "full.txt"), "utf8").slice(0, 3000); }
     catch { /* no text */ }
 
+    /* THE MAP RIDES WITH THE RESULT. Watched in a real session: a builder got
+     * this result, read the first 16KB of full.txt seven times, and never
+     * opened index.md or meta.json — so the document's own inventory (what is
+     * on every page, where the images are, what the outline says) never
+     * entered the model's context and 80% of the material was simply absent
+     * from the build. The digest is that inventory, inline, paid for once. */
+    const dig = [];
+    const digTitle = (m.meta && (m.meta.Title || m.meta.title)) || m.file;
+    dig.push(`${digTitle} — ${m.pages} page(s)` +
+        (m.more ? ` (extracted ${m.pageStart}-${m.pageEnd} so far)` : ""));
+    if (Array.isArray(m.outline) && m.outline.length) {
+        const tops = m.outline.map(o => o && o.title).filter(Boolean).slice(0, 15);
+        if (tops.length) dig.push("Outline: " + tops.join(" · "));
+    }
+    const perPage = Array.isArray(m.perPage) ? m.perPage : [];
+    const pageLines = perPage.slice(0, 60).map(r => {
+        const chars = r.textChars >= 1000
+            ? (r.textChars / 1000).toFixed(1) + "k" : String(r.textChars || 0);
+        return `p${r.page}: ${chars} chars` + (r.ocr ? " (OCR)" : "")
+            + ((r.images || []).length ? `, ${r.images.length} image(s)` : "")
+            + ((r.links || []).length ? `, ${r.links.length} link(s)` : "");
+    });
+    if (pageLines.length) {
+        dig.push("Per page: " + pageLines.join("; ")
+            + (perPage.length > 60 ? `; +${perPage.length - 60} more (see index.md)` : ""));
+    }
+    const digest = dig.join("\n").slice(0, 1600);
+
     const savedAs = path.posix.join(outRel, "index.md");
     const fullText = path.posix.join(outRel, "text", "full.txt");
     const imagesDir = path.posix.join(outRel, "images");
@@ -366,6 +398,7 @@ async function extractPdf(root, { path: relPath, page_start = 1, page_end } = {}
     const note = [];
     note.push(`Extracted pages ${m.pageStart}-${m.pageEnd} of ${m.pages}.`);
     note.push(`The COMPLETE text is in "${fullText}" — read it with read_file and quote it verbatim; do not summarise from the sample.`);
+    note.push(`read_file returns one slice per call — page FORWARD with {"path": "${fullText}", "fromLine": <last toLine + 1>, "lines": 400} until you reach the end; re-reading the same slice gains nothing. The "digest" field maps what is on every page.`);
     note.push(`Metadata, outline, links, annotations and form values are in "${metaFile}"; the rendered index is "${savedAs}".`);
     if (c.embeddedImages) note.push(`${c.embeddedImages} embedded image(s) saved in "${imagesDir}".`);
     if (c.renderedPages) note.push(`${c.renderedPages} full-page render(s) in "${pagesDir}".`);
@@ -375,12 +408,18 @@ async function extractPdf(root, { path: relPath, page_start = 1, page_end } = {}
     }
     if (m.more) note.push(`Continue with {"path": "${relPath}", "page_start": ${m.pageEnd + 1}}.`);
 
+    // FIELD ORDER IS SURVIVAL ORDER. The tool result is one JSON string cut at
+    // the session's cap (4000 chars on a small local model) — whatever sits
+    // past the cut does not exist for the model. The digest (what's in the
+    // document) and the note (what to do next) go BEFORE the 3000-char text
+    // sample, so a tight cap costs sample text, never the map or the plan.
     return {
         file: relPath, pages: m.pages, pageStart: m.pageStart, pageEnd: m.pageEnd,
         savedAs, fullText, imagesDir, pagesDir, metaFile,
         counts: c, render: m.render, ocr: m.ocr, unavailable: m.unavailable,
-        text: sample, truncated: true, more: m.more,
+        digest,
         note: note.join(" "),
+        text: sample, truncated: true, more: m.more,
     };
 }
 

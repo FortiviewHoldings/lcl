@@ -4323,17 +4323,22 @@ const SCENES = {
      * talking step, the run confirmed and called with the EDITED fields. */
     ship: async (win, js) => {
         const r = await js(`(async () => { try {
-            window.__harness.FIXTURES.contribStatus = () => ({ ok: true,
+            // status and plan RESOLVE SLOWLY on purpose: the panel must be
+            // seen populating stage by stage — shimmer, then the patch line,
+            // then the identity — never all at once behind a busy cursor
+            window.__harness.FIXTURES.contribStatus = () => new Promise(res =>
+                setTimeout(() => res({ ok: true,
                 repo: "C:/checkout", missing: [],
                 remote: { owner: "Org", repo: "lcl" },
                 identity: { name: "Contributor",
                             email: "1+c@users.noreply.github.com", login: "c" },
-                running: false });
-            window.__harness.FIXTURES.contribPlan = () => ({ repo: "C:/checkout",
+                running: false }), 160));
+            window.__harness.FIXTURES.contribPlan = () => new Promise(res =>
+                setTimeout(() => res({ repo: "C:/checkout",
                 files: ["M app/main.js"], dirtyCount: 12, official: 11,
                 version: "1.0.9", latestTag: "v1.0.9", willBump: true,
                 bumpNote: "v1.0.9 is already published — this ship bumps to v1.0.10 · official #12",
-                nextVersion: "1.0.10", nextOfficial: 12, branch: "public" });
+                nextVersion: "1.0.10", nextOfficial: 12, branch: "public" }), 80));
             window.__harness.FIXTURES.contribDraft = () => ({
                 commitMessage: "Fix the dock overlap",
                 releaseNotes: "Cards no longer overlap.", model: "qwen" });
@@ -4341,9 +4346,25 @@ const SCENES = {
             window.__harness.FIXTURES.contribRun = (opts) => { ranOpts = opts;
                 return new Promise(res => setTimeout(
                     () => res({ ok: true, version: "1.0.10" }), 300)); };
-            await openShipPanel();
+            const opening = openShipPanel();
+            await new Promise(r2 => setTimeout(r2, 30));
+            const out = {};
+            // mid-flight, stage 1: both fields shimmer, the state line names
+            // the stage and wears the pulsing working dot
+            out.waitShimmer =
+                document.getElementById("ship-versions").classList.contains("ship-wait")
+                && document.getElementById("ship-identity").classList.contains("ship-wait");
+            out.stateWorking =
+                document.getElementById("ship-state").innerText.includes("reading the checkout")
+                && document.getElementById("ship-state").classList.contains("working");
+            await new Promise(r2 => setTimeout(r2, 110));
+            // between stages: the patch line has landed, the identity has not
+            out.stagedOrder =
+                document.getElementById("ship-versions").innerText.includes("tree v1.0.9")
+                && document.getElementById("ship-identity").classList.contains("ship-wait");
+            await opening;
             await new Promise(r2 => setTimeout(r2, 250));
-            const out = {
+            Object.assign(out, {
                 identity: document.getElementById("ship-identity").innerText,
                 versions: document.getElementById("ship-versions").innerText,
                 bumpNote: document.getElementById("ship-bump-note").innerText,
@@ -4351,7 +4372,7 @@ const SCENES = {
                 notes: document.getElementById("ship-notes").value,
                 steps: document.querySelectorAll("#ship-steps .ship-step").length,
                 runEnabled: !document.getElementById("ship-run").disabled
-            };
+            });
             // THE DRAFT LOCKS AND STREAMS — a slow model writes into locked
             // fields, visibly, and only the parsed result unlocks them
             window.__harness.FIXTURES.contribDraft = () => new Promise(res =>
@@ -4399,7 +4420,7 @@ const SCENES = {
             document.getElementById("ship-run").click();
             await new Promise(r2 => setTimeout(r2, 150));
             const confirm = [...document.querySelectorAll("#modal-scrim button")]
-                .find(b => /ship it/i.test(b.innerText));
+                .find(b => /release it/i.test(b.innerText));
             out.confirmShown = !!confirm;
             if (confirm) confirm.click();
             await new Promise(r2 => setTimeout(r2, 120));
@@ -4428,8 +4449,24 @@ const SCENES = {
             out.replayNote = /previous run failed at push/.test(
                 document.getElementById("ship-state").innerText);
 
+            // READY-TO-CUT WEARS THE BADGE — on the menu label AND the item,
+            // counting what is cuttable; nothing pending takes both away
+            window.__harness.FIXTURES.contribReady = () =>
+                ({ ready: true, dirty: 12, ahead: 1 });
+            await shipBadgeFromBoot();
+            out.badgeOn =
+                !document.getElementById("patch-badge").classList.contains("hidden")
+                && document.getElementById("patch-badge").innerText === "13"
+                && !document.getElementById("ship-badge").classList.contains("hidden")
+                && document.getElementById("ship-badge").innerText === "13";
+            window.__harness.FIXTURES.contribReady = () => ({ ready: false });
+            await shipBadgeFromBoot();
+            out.badgeOff =
+                document.getElementById("patch-badge").classList.contains("hidden")
+                && document.getElementById("ship-badge").classList.contains("hidden");
+
             for (const k of ["contribStatus", "contribPlan", "contribDraft",
-                             "contribRun", "contribLastRun"])
+                             "contribRun", "contribLastRun", "contribReady"])
                 delete window.__harness.FIXTURES[k];
             document.getElementById("ship-close").click();
             return out;
@@ -4470,6 +4507,16 @@ const SCENES = {
             "comes back open with its own stderr and the state line names it " +
             "(the first real failure left nothing but 'exited 1' behind)",
             r.replayFailed === true && r.replayNote === true, r);
+        check("ship", "THE PANEL POPULATES IN FRONT OF YOU — mid-flight the unfilled " +
+            "fields shimmer and the state line pulses with the stage's name; the " +
+            "patch line lands BEFORE the identity ('see the relevant patch then " +
+            "see it actually doing something while the field inputs populate')",
+            r.waitShimmer === true && r.stateWorking === true
+            && r.stagedOrder === true, r);
+        check("ship", "READY-TO-CUT WEARS A BADGE — the Knowledge-badge shape on the " +
+            "Patch menu label AND on the Release Patch item, counting dirty+ahead; " +
+            "nothing pending takes both away",
+            r.badgeOn === true && r.badgeOff === true, r);
         await shoot(win, "ship");
     },
 

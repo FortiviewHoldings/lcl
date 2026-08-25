@@ -2115,6 +2115,35 @@ function addMessageRow(role, text, index, meta, attachments) {
         return row;
     }
 
+    // POST-CHECK — the deterministic no-fiction gate speaking, not a model.
+    // main.js tags it meta.model "post-check": claims in the reply that match
+    // nothing written, files named that don't exist, network loads in an
+    // offline product. Drawn as the app's own caveat so it can never be read
+    // as one more assistant opinion.
+    if (role === "assistant" && meta && meta.model === "post-check") {
+        const note = document.createElement("div");
+        note.className = "msg-postcheck";
+        const head = document.createElement("div");
+        head.className = "msg-postcheck-head";
+        // the message's own first line is the header ("Post-check — N finding(s)…")
+        const firstNl = String(text).indexOf("\n");
+        head.innerText = firstNl > 0 ? String(text).slice(0, firstNl) : "Post-check";
+        const bodyLine = document.createElement("div");
+        bodyLine.className = "msg-postcheck-body";
+        const bodyText = firstNl > 0 ? String(text).slice(firstNl + 1) : String(text);
+        if (window.lclSyntax) window.lclSyntax.renderMessageBody(bodyLine, bodyText, { markdown: true });
+        else bodyLine.innerText = bodyText;
+        note.appendChild(head); note.appendChild(bodyLine);
+        row.className = "msg-row assistant postcheck";
+        row.appendChild(note);
+        const acts = document.createElement("div");
+        acts.className = "msg-actions";
+        acts.appendChild(actionButton("copy", "Copy these findings", (b) => copyToClipboard(text, b)));
+        row.appendChild(acts);
+        chat.appendChild(row);
+        return row;
+    }
+
     // THE POPPED BUBBLES, REPLAYED. meta.steps is the engine's persisted step
     // transcript for the turn that produced this reply (agent.js recordStep,
     // orchestrator.js goalSteps). Drawn flat, above the reply, through the
@@ -3967,6 +3996,12 @@ function stepLine(phase, d = {}) {
                      text: `${d.failed ? "✗" : "✓"} ${d.tool}${d.summary ? ` — ${d.summary}` : ""}` };
         case "tool-progress":
             return { kind: "note", text: `· ${d.note || ""}` };
+        case "verify":
+            // the per-step critic's verdict — including the honest "passed
+            // unexamined" case, which used to be indistinguishable from a pass
+            return d.failed
+                ? { kind: "bad", text: `✗ verify — ${d.summary || "step"}${d.reason ? `: ${d.reason}` : ""}` }
+                : { kind: "good", text: `✓ verify — ${d.summary || "step"}${d.reason && d.reason !== "passed" ? ` (${d.reason})` : ""}` };
         case "correcting":
             return { kind: "warn", text: `↻ ${d.reason || "correcting a wrong refusal"}` };
         case "clarify":
@@ -5405,11 +5440,10 @@ if (window.lcl.onContribProgress) window.lcl.onContribProgress((p) => {
     // insight and the progress ARE the text appearing.
     if (p.step === "draft") {
         if (!shipDrafting) return;              // a stale stream paints nothing
-        if (p.line) $("ship-state").innerText = p.line;
+        if (p.line) shipState(p.line, true);
         if (p.draftText !== undefined) {
             $("ship-commit-msg").value = p.draftText;
-            $("ship-state").innerText =
-                `drafting — ${p.draftTokens || 0} tokens…`;
+            shipState(`drafting — ${p.draftTokens || 0} tokens…`, true);
         }
         return;
     }
@@ -5461,13 +5495,13 @@ async function shipDraft() {
         if (d && !d.error) {
             $("ship-commit-msg").value = d.commitMessage || "";
             $("ship-notes").value = d.releaseNotes || "";
-            $("ship-state").innerText = d.model
+            shipState(d.model
                 ? "drafted by the local model — edit anything before it runs"
-                : "model unavailable — heuristic draft, please edit";
+                : "model unavailable — heuristic draft, please edit");
         } else {
-            $("ship-state").innerText = "draft failed: " + ((d && d.error) || "unknown");
+            shipState("draft failed: " + ((d && d.error) || "unknown"));
         }
-    } catch { $("ship-state").innerText = "draft failed"; }
+    } catch { shipState("draft failed"); }
     shipDrafting = false;
     msgEl.readOnly = false; notesEl.readOnly = false;
     msgEl.classList.remove("drafting"); notesEl.classList.remove("drafting");
@@ -5475,16 +5509,43 @@ async function shipDraft() {
     btn.innerText = was;
 }
 
+/* the state line narrates each stage; the pulsing dot (CSS .working) is the
+ * "something is happening" signal — never the mouse cursor */
+function shipState(text, working) {
+    const el = $("ship-state");
+    el.innerText = text || "";
+    el.classList.toggle("working", !!working);
+}
+
 async function openShipPanel() {
     $("ship-scrim").classList.remove("hidden");
     shipPaintSteps();
-    // THE LAST RUN'S EVIDENCE COMES BACK. Reopening used to wipe the consoles
-    // — the one place the failure's stderr lived. Main keeps the transcript;
-    // the panel replays it, so a failed push is read, not remembered.
+    // THE PANEL OPENS FRESH AND POPULATES IN FRONT OF YOU. "i want to open
+    // the ui, see the relevant patch then see it actually doing something
+    // while the field inputs populate" — so: a blank face with waiting
+    // shimmers, then the patch line (versions/lanes), then the identity,
+    // then the draft streaming into the fields — each stage named on the
+    // state line as it runs. Nothing arrives all at once, and nothing is
+    // announced by a busy cursor.
+    $("ship-versions").innerText = "";
+    $("ship-bump-note").innerText = "";
+    $("ship-identity").innerText = "";
+    $("ship-gate-note").classList.add("hidden");
+    $("ship-run").disabled = true;
+    if (!shipRunning && !shipDrafting) {
+        $("ship-commit-msg").value = "";
+        $("ship-notes").value = "";
+    }
+    $("ship-versions").classList.add("ship-wait");
+    $("ship-identity").classList.add("ship-wait");
+    // ONLY A FAILED RUN'S EVIDENCE COMES BACK — that is the resume case, and
+    // its stderr is the one thing worth holding onto. A run that SHIPPED is
+    // history: replaying its consoles left the panel wearing the last patch
+    // while a new one sat ready in the tree, stale until it updated.
     let lastFailNote = "";
     try {
         const last = await window.lcl.contribLastRun();
-        if (last && last.at && !shipRunning) {
+        if (last && last.at && !last.ok && !shipRunning) {
             for (const [id, lines] of Object.entries(last.transcript || {})) {
                 const el = shipStepEl(id);
                 if (!el) continue;
@@ -5493,7 +5554,7 @@ async function openShipPanel() {
                 const st = (last.states || {})[id];
                 if (st && st !== "running") el.classList.add(st);
             }
-            if (!last.ok && last.failedStep) {
+            if (last.failedStep) {
                 const el = shipStepEl(last.failedStep);
                 if (el) el.classList.add("open");
                 lastFailNote =
@@ -5501,12 +5562,26 @@ async function openShipPanel() {
             }
         }
     } catch { /* a fresh panel is still a working panel */ }
-    $("ship-state").innerText = lastFailNote || "checking who you are…";
-    $("ship-run").disabled = true;
-    $("ship-gate-note").classList.add("hidden");
+
+    // STAGE 1 — the relevant patch, first: versions, lanes, what is pending
+    shipState("reading the checkout…", true);
+    const plan = await window.lcl.contribPlan();
+    $("ship-versions").classList.remove("ship-wait");
+    if (plan && !plan.error) {
+        $("ship-versions").innerText =
+            `tree v${plan.version} · official #${plan.official}`
+            + (plan.latestTag ? ` — published ${plan.latestTag}` : "")
+            + ` — ${plan.dirtyCount} file${plan.dirtyCount === 1 ? "" : "s"} pending`;
+        // the bump is main's DECISION — the panel just says it out loud
+        $("ship-bump-note").innerText = plan.bumpNote || "";
+    }
+
+    // STAGE 2 — who is cutting it
+    shipState(lastFailNote || "checking who you are…", !lastFailNote);
     const st = await window.lcl.contribStatus();
+    $("ship-identity").classList.remove("ship-wait");
     if (!st || st.error) {
-        $("ship-state").innerText = "could not check: " + ((st && st.error) || "no answer");
+        shipState("could not check: " + ((st && st.error) || "no answer"));
         return;
     }
     $("ship-identity").innerText = st.identity && st.identity.name
@@ -5535,46 +5610,64 @@ async function openShipPanel() {
             else if (r && r.error) $("ship-state").innerText = r.error;
         });
         note.appendChild(pick);
-        $("ship-state").innerText = "";
+        shipState("");
         return;
     }
-    // the plan: what is pending, which lanes, whether a bump is due
-    const plan = await window.lcl.contribPlan();
-    if (plan && !plan.error) {
-        $("ship-versions").innerText =
-            `tree v${plan.version} · official #${plan.official}`
-            + (plan.latestTag ? ` — published ${plan.latestTag}` : "")
-            + ` — ${plan.dirtyCount} file${plan.dirtyCount === 1 ? "" : "s"} pending`;
-        // the bump is main's DECISION — the panel just says it out loud
-        $("ship-bump-note").innerText = plan.bumpNote || "";
-        $("ship-run").disabled = false;
-        $("ship-run").dataset.identityName = st.identity.name || "";
-        $("ship-run").dataset.identityEmail = st.identity.email || "";
-        $("ship-run").dataset.dirty = String(plan.dirtyCount);
-        // a FAILED PREVIOUS RUN owns the state line and skips the auto-draft:
-        // the commit already exists, the fields already said what it says,
-        // and the fresh draft's note would bury the one message that matters
-        if (lastFailNote) {
-            $("ship-state").innerText = lastFailNote;
-        } else {
-            // an auto-found checkout says so once — nothing was asked for
-            $("ship-state").innerText = plan.dirtyCount
-                ? (st.repoHow === "discovered"
-                    ? `checkout found from your sessions: ${st.repo}` : "")
-                : "nothing is pending — the tree is clean";
-            // draft immediately: by the time the fields are read, they are full
-            shipDraft();
-        }
-    } else {
-        $("ship-state").innerText = "could not read the checkout: "
-            + ((plan && plan.error) || "unknown");
+    if (!plan || plan.error) {
+        shipState("could not read the checkout: "
+            + ((plan && plan.error) || "unknown"));
+        return;
     }
+    $("ship-run").disabled = false;
+    $("ship-run").dataset.identityName = st.identity.name || "";
+    $("ship-run").dataset.identityEmail = st.identity.email || "";
+    $("ship-run").dataset.dirty = String(plan.dirtyCount);
+    // STAGE 3 — the draft streams into the fields. A FAILED PREVIOUS RUN owns
+    // the state line and skips it: the commit already exists, the fields
+    // already said what it says, and a fresh draft's note would bury the one
+    // message that matters.
+    if (lastFailNote) {
+        shipState(lastFailNote);
+    } else if (!plan.dirtyCount) {
+        shipState("nothing is pending — the tree is clean");
+    } else {
+        // an auto-found checkout says so once — nothing was asked for
+        shipState(st.repoHow === "discovered"
+            ? `checkout found from your sessions: ${st.repo}`
+            : "drafting from the diff…", true);
+        shipDraft();
+    }
+}
+
+/* THE PATCH BADGE — same shape as the Knowledge badge: something is ready to
+ * cut (dirty files or unpushed commits in the linked checkout), said at the
+ * menu level AND on the line item it belongs to, without opening anything. */
+function shipPaintBadge(r) {
+    const n = r && r.ready ? (Number(r.dirty) || 0) + (Number(r.ahead) || 0) : 0;
+    for (const id of ["patch-badge", "ship-badge"]) {
+        const b = $(id);
+        if (!b) continue;
+        b.innerText = n > 99 ? "99+" : String(n);
+        b.title = n
+            ? `${r.dirty || 0} file${r.dirty === 1 ? "" : "s"} changed`
+              + (r.ahead ? ` · ${r.ahead} commit${r.ahead === 1 ? "" : "s"} not on origin` : "")
+              + " — ready to cut a patch"
+            : "";
+        b.classList.toggle("hidden", n <= 0);
+    }
+}
+async function shipBadgeFromBoot() {
+    if (typeof window.lcl.contribReady !== "function") return;
+    try { shipPaintBadge(await window.lcl.contribReady()); }
+    catch { /* the badge just stays hidden */ }
 }
 
 function closeShipPanel() {
     // closing hides the VIEW — a live run keeps running in main and keeps
     // streaming into these steps for when the panel reopens
     $("ship-scrim").classList.add("hidden");
+    // whatever just happened in there changed what is ready to cut
+    shipBadgeFromBoot();
 }
 
 $("ship-close").addEventListener("click", closeShipPanel);
@@ -5595,11 +5688,11 @@ $("ship-run").addEventListener("click", async () => {
         $("ship-state").innerText = "a commit message is required"; return;
     }
     const sure = await modal({
-        title: "Ship this release?",
+        title: "Release this patch?",
         message: "This commits and pushes your checkout, runs the full release gate, " +
             "builds and signs the installer, and publishes it to the channel every " +
             "install patches from. The gate takes several minutes.",
-        confirmLabel: "Ship it"
+        confirmLabel: "Release it"
     });
     if (!sure) return;
     shipRunning = true;
@@ -18193,6 +18286,11 @@ async function openEscalation() {
     // the knowledge badge: shipped sources not yet on this machine, known at
     // boot without opening anything — the count is ~64 stats, not the inventory
     kbBadgeFromBoot();
+    // the patch badge: something ready to cut in the linked checkout, known
+    // the same way — at boot, refreshed whenever the Patch menu opens
+    shipBadgeFromBoot();
+    const patchLabel = document.querySelector('.menu[data-menu="patch"] .menu-label');
+    if (patchLabel) patchLabel.addEventListener("click", shipBadgeFromBoot);
 
     // A SPEND WINDOW ROLLS OVER ON A CLOCK, not on a user action. Left idle
     // across a five-hour boundary, the plan ring and GO strip kept showing the

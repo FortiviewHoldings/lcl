@@ -281,7 +281,12 @@ function readFile(root, { path: relPath, offset = 0, fromLine = null, lines = nu
         // require: fsTools is a leaf module many things import.
         try { require("./secretGuard").rememberFile(relPath, content); }
         catch { /* the guard must never break a read */ }
-        return { content, size, offset: start, truncated: start + n < size };
+        // bytesRead is the byte count ACTUALLY consumed — the decoded string
+        // re-measures longer when the cap splits a multi-byte character
+        // (the partial sequence decodes to U+FFFD, 3 bytes), so a resume
+        // offset computed from the string overshoots and silently drops bytes
+        return { content, size, offset: start, bytesRead: n,
+                 truncated: start + n < size };
     } finally {
         fs.closeSync(fd);
     }
@@ -704,5 +709,8 @@ module.exports = {
     assertContentLooksRight,
     // the security scanners walk the workspace under the SAME containment
     // (junction-safe realpath re-validation) that every file tool uses
-    walk, contained
+    walk, contained,
+    // temp-then-rename, shared with pdfExtract so a sidecar file is never
+    // half-written when a reader (or a concurrent run) looks at it
+    atomicWriteSync
 };
