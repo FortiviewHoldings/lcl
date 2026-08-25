@@ -733,7 +733,13 @@
                     <div id="task-panel" class="sb-mod-inner hidden">
                         <div id="task-panel-head">
                             <span id="task-panel-title">Tasks</span>
-                            <button id="task-panel-clear" class="ghost small" title="Clear finished">Clear</button>
+                            <!-- icons, not words: "you are using text labels
+                                 for buttons, like clear and refresh ... it is
+                                 a SPACE HOG" — the meaning rides the tooltip -->
+                            <button id="task-panel-clear" class="ghost small icon-act icon-only"
+                                    title="Clear finished" aria-label="Clear finished">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                            </button>
                         </div>
                         <div id="task-list"></div>
                     </div>
@@ -745,7 +751,10 @@
                     <div id="activity-panel" class="sb-mod-inner hidden">
                         <div id="task-panel-head">
                             <span>Activity</span>
-                            <button id="activity-clear" class="ghost small" title="Clear this session's activity">Clear</button>
+                            <button id="activity-clear" class="ghost small icon-act icon-only"
+                                    title="Clear this session's activity" aria-label="Clear this session's activity">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                            </button>
                         </div>
                         <div id="activity-list"></div>
                     </div>
@@ -780,11 +789,15 @@
                             <input id="ws-search" type="search" spellcheck="false"
                                    autocomplete="off" placeholder="Find a file…"
                                    aria-label="Search files by name">
-                            <button id="ws-clear-marks" class="ghost small hidden"
-                                    title="Stop marking these files as changed. The changes themselves stay revertable from the chat.">
-                                Clear marks
+                            <button id="ws-clear-marks" class="ghost small icon-act icon-only hidden"
+                                    title="Stop marking these files as changed. The changes themselves stay revertable from the chat."
+                                    aria-label="Clear changed-file marks">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/><path d="M4 6l16 12" opacity="0.55"/></svg>
                             </button>
-                            <button id="ws-refresh" class="ghost small">Refresh</button>
+                            <button id="ws-refresh" class="ghost small icon-act icon-only"
+                                    title="Refresh the file list" aria-label="Refresh the file list">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                            </button>
                         </div>
                         <div id="ws-files"></div>
                     </div>
@@ -876,7 +889,9 @@
             <div id="machine-head">
                 <img src="../assets/mark-small.png" class="modal-mark" alt="" />
                 <span id="machine-title">Machine</span>
-                <button id="machine-refresh" title="Refresh">Refresh</button>
+                <button id="machine-refresh" class="icon-act icon-only" title="Refresh" aria-label="Refresh">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+                </button>
                 <button id="machine-close" title="Close">✕</button>
             </div>
 

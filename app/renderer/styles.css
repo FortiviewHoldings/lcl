@@ -7581,6 +7581,10 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
     /* templates come from sbLayout(); this stands only for the first frame */
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-auto-rows: minmax(0, auto);
+    /* NOTHING STRETCHES TO FILL. A card is as tall as its content (or its
+       drag); a short card beside a tall one sits over open panel ground —
+       never inflated into a full-height column because a slot was empty */
+    align-items: start;
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -7598,7 +7602,9 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
 }
 /* a module whose section is hidden disappears whole, grip and all */
 .sb-mod:has(> .sb-mod-inner.hidden) { display: none; }
-.sb-mod-inner { flex: 1; min-height: 0; }
+/* the inner block scrolls past the card's cap or dragged height — content is
+   never squeezed illegible to fit; it scrolls at full size */
+.sb-mod-inner { flex: 1; min-height: 0; overflow: auto; }
 .sb-mod.sb-lifting { opacity: 0.75; outline: 1px dashed var(--line-bright); }
 
 /* ---- the per-section HEADER BAR: grip · title · pop-out · minimize ---- */

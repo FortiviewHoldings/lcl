@@ -4286,7 +4286,11 @@ function appendActivityRow(entry) {
     row.className = "act-row " + entry.kind;
     const time = document.createElement("span");
     time.className = "act-time";
-    time.innerText = new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    // a row rebuilt from the transcript has no clock of its own — an honest
+    // dot beats a fabricated timestamp
+    time.innerText = entry.at
+        ? new Date(entry.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+        : "·";
     const text = document.createElement("span");
     text.className = "act-text";
     text.innerText = entry.text;
@@ -4304,16 +4308,54 @@ function appendActivityRow(entry) {
     list.scrollTop = list.scrollHeight;
 }
 
+/**
+ * THE FEED SURVIVES A RESTART. sessionActivity is in-memory, so a patch (or
+ * any app restart) used to blank the Activity panel of a session that has a
+ * whole history — "this session had history of that is no longer present
+ * after the patch." The transcript already persists every consequential step
+ * (assistant meta.steps); an empty feed rebuilds itself from them.
+ */
+function hydrateActivityFromTranscript(session) {
+    const KEEP = new Set(["planning", "plan-confirm", "tool", "tool-done",
+        "clarify", "grounding", "denied", "needs-approval", "correcting"]);
+    const out = [];
+    for (const m of (session.messages || [])) {
+        if (!m || !m.meta || !Array.isArray(m.meta.steps)) continue;
+        for (const st of m.meta.steps) {
+            if (!st || !KEEP.has(st.phase)) continue;
+            let l = null;
+            try { l = stepLine(st.phase, st.d || {}); } catch { /* shape drift */ }
+            if (!l) continue;
+            const d = st.d || {};
+            out.push({ at: 0, kind: l.kind, text: l.text,
+                       detail: String(d.summary || d.digest || d.path
+                                      || d.question || d.reason || "") });
+        }
+    }
+    return out.slice(-ACTIVITY_CAP);
+}
+
+// a session the operator CLEARED stays cleared this run — without this, the
+// transcript hydration would resurrect the feed one render after the clear
+const activityCleared = new Set();
+
 function renderActivity() {
     const list = $("activity-list");
     list.innerHTML = "";
-    const log = sessionActivity.get(active && active.id) || [];
+    let log = sessionActivity.get(active && active.id) || [];
+    if (!log.length && active && !activityCleared.has(active.id)) {
+        log = hydrateActivityFromTranscript(active);
+        if (log.length) sessionActivity.set(active.id, log);
+    }
     $("activity-panel").classList.toggle("hidden", log.length === 0);
     for (const e of log) appendActivityRow(e);
 }
 
 $("activity-clear").addEventListener("click", () => {
-    if (active) sessionActivity.delete(active.id);
+    if (active) {
+        sessionActivity.delete(active.id);
+        activityCleared.add(active.id);
+    }
     renderActivity();
 });
 
@@ -6121,14 +6163,21 @@ function sbGrid() {
     try {
         const g = JSON.parse(localStorage.getItem(SB_GRID_KEY) || "{}") || {};
         return {
-            rowSplit: Number.isFinite(+g.rowSplit) && +g.rowSplit > 0 ? +g.rowSplit : 50,
             colSplit: Number.isFinite(+g.colSplit) && +g.colSplit > 0 ? +g.colSplit : 50,
-            colW: (g.colW && typeof g.colW === "object") ? g.colW : {}
+            colW: (g.colW && typeof g.colW === "object") ? g.colW : {},
+            // per-card dragged heights — THE card the operator grabbed, alone.
+            // (rowSplit, the shared band drag, is dead: "its the controls to
+            // move the shit around and resize it, one container affects
+            // another." A stale rowSplit key is simply ignored.)
+            cardH: (g.cardH && typeof g.cardH === "object") ? g.cardH : {}
         };
-    } catch { return { rowSplit: 50, colSplit: 50, colW: {} }; }
+    } catch { return { colSplit: 50, colW: {}, cardH: {} }; }
 }
 function sbSaveGrid(g) {
-    try { localStorage.setItem(SB_GRID_KEY, JSON.stringify(g)); } catch { }
+    try {
+        localStorage.setItem(SB_GRID_KEY, JSON.stringify(
+            { colSplit: g.colSplit, colW: g.colW, cardH: g.cardH }));
+    } catch { }
 }
 
 const SB_COL_KEY = "lcl-sb-col-";
@@ -6169,11 +6218,14 @@ function sbFillSlack() {
 function sbFillSlackNow() { sbLayout(); }
 
 /**
- * THE GRID, laid. Quadrant cards take the 2-wide grid row-major in DOM
- * order; own-column cards become full-height tracks beside it; minimized
- * cards drop to auto rows at the bottom as the tray. Splits come from the
- * dragged geometry in sbGrid(); gOverride lets a live drag paint every
- * frame without writing storage until pointerup.
+ * THE GRID, laid — CARDS OWN THEIR SIZE. Rows are content-sized (auto), a
+ * filler row absorbs the leftover panel, and NOTHING stretches to fill:
+ * two lonely cards are two tidy cards over open ground, never two skinny
+ * full-height columns. An unsized card opens at natural height capped to
+ * ~half the panel (its inner block scrolls); a dragged height (g.cardH)
+ * belongs to THAT card alone. Own-column cards span down to the filler's
+ * end, so they are full-height without inflating anyone's content rows.
+ * A panel too narrow for two legible columns stacks everything in one.
  */
 function sbLayout(gOverride) {
     const host = document.getElementById("sb-mods");
@@ -6185,17 +6237,20 @@ function sbLayout(gOverride) {
     const g = gOverride || sbGrid();
     const minim = vis.filter(m => m.classList.contains("sb-minimized"));
     const live = vis.filter(m => !m.classList.contains("sb-minimized"));
-    const cols = live.filter(m => m.classList.contains("sb-col"));
-    const quad = live.filter(m => !m.classList.contains("sb-col"));
-    const R = Math.max(1, Math.ceil(quad.length / 2));
+    // a panel under 360px cannot hold two readable columns — stack ONE, and
+    // treat column cards as ordinary members while it lasts
+    const narrow = host.clientWidth < 360;
+    const cols = narrow ? [] : live.filter(m => m.classList.contains("sb-col"));
+    const quad = narrow ? live : live.filter(m => !m.classList.contains("sb-col"));
+    const twoCol = !narrow && quad.length > 1;
+    const R = twoCol ? Math.ceil(quad.length / 2) : quad.length;
 
     const tracks = [];
-    // one card gets ONE column — an empty second track is a dead hole, not
-    // a quadrant
-    if (quad.length === 1) tracks.push("minmax(0, 1fr)");
-    else if (quad.length) {
-        const a = Math.max(15, Math.min(85, g.colSplit));
-        tracks.push("minmax(0, " + a + "fr)", "minmax(0, " + (100 - a) + "fr)");
+    if (quad.length) {
+        if (twoCol) {
+            const a = Math.max(15, Math.min(85, g.colSplit));
+            tracks.push("minmax(0, " + a + "fr)", "minmax(0, " + (100 - a) + "fr)");
+        } else tracks.push("minmax(0, 1fr)");
     }
     for (const m of cols) {
         // no quadrant on screen: the columns simply share the panel — a saved
@@ -6205,54 +6260,70 @@ function sbLayout(gOverride) {
         const w = Number(g.colW[sbKey(m)]);
         if (Number.isFinite(w) && w >= SB_MIN_W) {
             // clamped against the LIVE panel, not the panel the width was
-            // saved against — an 864px record from a wide monitor must never
-            // crush the quadrant's fr tracks to zero on a narrow one
+            // saved against — a wide monitor's record must never crush the
+            // quadrant's tracks to zero on a narrow one
             const wc = Math.min(Math.round(w), Math.round(host.clientWidth * 0.75));
             tracks.push("minmax(" + SB_MIN_W + "px, " + wc + "px)");
         } else tracks.push("minmax(0, 100fr)");
     }
     host.style.gridTemplateColumns = tracks.join(" ");
 
+    // rows: R content rows, ONE filler that soaks up the leftover panel,
+    // then the tray. Content rows are auto — a card is as tall as itself.
     const rows = [];
-    // no live rows when everything is minimized — the tray starts at the top
-    // instead of floating under an empty stretch
-    if (live.length) {
-        if (R === 1) rows.push("minmax(0, 1fr)");
-        else if (R === 2) {
-            const a = Math.max(15, Math.min(85, g.rowSplit));
-            rows.push("minmax(58px, " + a + "fr)", "minmax(58px, " + (100 - a) + "fr)");
-        } else { for (let i = 0; i < R; i++) rows.push("minmax(58px, 1fr)"); }
-    }
+    for (let i = 0; i < R; i++) rows.push("auto");
+    rows.push("minmax(0, 1fr)");
     for (const _ of minim) rows.push("auto");
     host.style.gridTemplateRows = rows.join(" ");
 
-    const quadCols = quad.length === 1 ? 1 : (quad.length ? 2 : 0);
+    const quadCols = quad.length ? (twoCol ? 2 : 1) : 0;
+    const capPx = Math.round(host.clientHeight * 0.48);
     quad.forEach((m, i) => {
-        m.style.gridColumn = String((i % 2) + 1);
-        m.style.gridRow = String(Math.floor(i / 2) + 1);
-        m.style.height = ""; m.style.width = ""; m.style.maxHeight = "";
+        m.style.gridColumn = twoCol ? String((i % 2) + 1) : "1";
+        m.style.gridRow = twoCol ? String(Math.floor(i / 2) + 1) : String(i + 1);
+        m.style.alignSelf = "";
+        const spec = SB_MODS[sbKey(m)] || {};
+        const h = Number(g.cardH[sbKey(m)]);
+        if (!spec.fixed && Number.isFinite(h) && h >= 58) {
+            // a dragged height is THIS card's height — nobody else moves
+            m.style.height = Math.min(h, Math.round(host.clientHeight * 0.9)) + "px";
+            m.style.maxHeight = "none";
+            m.classList.add("sb-hset");
+        } else {
+            m.style.height = "";
+            // natural height, capped so one huge listing cannot eat the
+            // panel — the card's inner block scrolls past the cap
+            m.style.maxHeight = spec.fixed ? "" : capPx + "px";
+            m.classList.remove("sb-hset");
+        }
     });
     cols.forEach((m, i) => {
         m.style.gridColumn = String(quadCols + i + 1);
-        m.style.gridRow = "1 / span " + R;
-        m.style.height = ""; m.style.width = ""; m.style.maxHeight = "";
+        // span the content rows AND the filler — full height, without
+        // inflating any content row (the filler absorbs the demand)
+        m.style.gridRow = "1 / " + (R + 2);
+        m.style.alignSelf = "stretch";
+        m.style.height = ""; m.style.maxHeight = "";
+        m.classList.remove("sb-hset");
     });
-    const trayBase = live.length ? R : 0;
     minim.forEach((m, i) => {
         m.style.gridColumn = "1 / -1";
-        m.style.gridRow = String(trayBase + i + 1);
+        m.style.gridRow = String(R + 2 + i);
+        m.style.alignSelf = "";
         m.style.width = ""; m.style.maxHeight = "";
     });
 }
 
 /**
- * EDGE HANDLES — still the container's own edges, now driving the GRID.
+ * EDGE HANDLES — the container's own edges, sizing THE CONTAINER.
  *
- * "the click to resize works" — so resizing survived the quadrant, one level
- * up: dragging a quadrant card's bottom edge moves the ROW split the whole
- * grid shares; dragging its side edge moves the COLUMN split; dragging an
- * own-column card's side edge sets THAT column's width. Live drags paint
- * through sbLayout(gLive) every frame and write storage once, on release.
+ * "one container affects another" was the failure: the bottom edge dragged a
+ * shared row split, so growing one card shrank its neighbor. The bottom
+ * edge now sets THIS card's own height (g.cardH) — a delta on where the
+ * card started, nobody else moves. The one shared control left is the
+ * vertical COLUMN BOUNDARY on a quadrant card's side edge, which is how
+ * every two-pane splitter works; an own-column card's side edge sets that
+ * column's own width. Double-click any handle to reset what it drags.
  */
 function sbAttachHandles(mod) {
     const spec = SB_MODS[sbKey(mod)] || {};
@@ -6263,6 +6334,16 @@ function sbAttachHandles(mod) {
         mod.appendChild(h);
         return h;
     };
+    const reset = (wantW, wantH) => {
+        const g = sbGrid();
+        if (wantH) delete g.cardH[sbKey(mod)];
+        if (wantW) {
+            if (mod.classList.contains("sb-col")) delete g.colW[sbKey(mod)];
+            else g.colSplit = 50;
+        }
+        sbSaveGrid(g);
+        sbFillSlack();
+    };
     const startDrag = (e, handle, wantW, wantH) => {
         e.preventDefault();
         e.stopPropagation();
@@ -6271,14 +6352,10 @@ function sbAttachHandles(mod) {
         const r0 = mod.getBoundingClientRect();
         const x0 = e.clientX, y0 = e.clientY;
         const gLive = sbGrid();
-        // THE DRAG IS A DELTA ON THE STARTING GEOMETRY. The first cut mapped
-        // the pointer's ABSOLUTE position to the split — correct only when
-        // the grabbed edge IS the boundary, so 11 of the 13 handles
-        // teleported the split to its clamp on the first pixel of drag
-        // (adversarial review, confirmed). The split now moves by what the
-        // pointer moved, measured against the QUADRANT'S OWN SPAN — not the
-        // whole host, whose width includes column tracks, gaps and padding.
-        const g0 = { rowSplit: gLive.rowSplit, colSplit: gLive.colSplit,
+        // deltas on the starting geometry — a grab never leaps, whatever
+        // edge it is (the absolute-position mapping teleported; reviewed)
+        const g0 = { colSplit: gLive.colSplit,
+                     cardH: Number(gLive.cardH[sbKey(mod)]) || r0.height,
                      colW: Number(gLive.colW[sbKey(mod)]) || r0.width };
         const quadSpan = (() => {
             const qs = sbVisibleMods().filter(m =>
@@ -6286,27 +6363,28 @@ function sbAttachHandles(mod) {
                 && !m.classList.contains("sb-minimized")
                 && !m.classList.contains("sb-col"));
             if (!qs.length) return null;
-            let L = Infinity, T = Infinity, R = 0, B = 0;
+            let L = Infinity, R = 0;
             for (const q of qs) {
                 const r = q.getBoundingClientRect();
-                L = Math.min(L, r.left); T = Math.min(T, r.top);
-                R = Math.max(R, r.right); B = Math.max(B, r.bottom);
+                L = Math.min(L, r.left); R = Math.max(R, r.right);
             }
-            return { w: R - L, h: B - T };
+            return { w: R - L };
         })();
         const move = (ev) => {
             const host = $("sb-mods");
             const hr = host.getBoundingClientRect();
             if (!hr.width || !hr.height) return;
-            if (wantH && quadSpan && quadSpan.h > 40) {
-                gLive.rowSplit = Math.max(15, Math.min(85,
-                    g0.rowSplit + ((ev.clientY - y0) / quadSpan.h) * 100));
+            if (wantH) {
+                // THIS card's height, alone — floor for legibility, ceiling
+                // so one card cannot swallow the panel
+                gLive.cardH[sbKey(mod)] = Math.max(58,
+                    Math.min(Math.round(hr.height * 0.9),
+                             Math.round(g0.cardH + (ev.clientY - y0))));
             }
             if (wantW) {
                 if (mod.classList.contains("sb-col")) {
                     // the handle is the card's left edge: dragging LEFT
-                    // widens the column — a delta on its starting width, so
-                    // the grab never leaps, whatever the card is anchored to
+                    // widens the column — a delta on its starting width
                     gLive.colW[sbKey(mod)] = Math.max(SB_MIN_W,
                         Math.min(Math.round(hr.width * 0.75),
                                  Math.round(g0.colW - (ev.clientX - x0))));
@@ -6329,13 +6407,16 @@ function sbAttachHandles(mod) {
         handle.addEventListener("pointerup", up);
     };
     if (!spec.fixed) {
-        const b = mk("sb-h-bottom", "Drag the grid's row split");
+        const b = mk("sb-h-bottom", "Drag this card's height · double-click to reset");
         b.addEventListener("pointerdown", (e) => startDrag(e, b, false, true));
-        const c = mk("sb-h-corner", "Drag both of the grid's splits");
+        b.addEventListener("dblclick", () => reset(false, true));
+        const c = mk("sb-h-corner", "Drag this card's height and the column boundary · double-click to reset");
         c.addEventListener("pointerdown", (e) => startDrag(e, c, true, true));
+        c.addEventListener("dblclick", () => reset(true, true));
     }
-    const sde = mk("sb-h-side", "Drag the column boundary");
+    const sde = mk("sb-h-side", "Drag the column boundary · double-click to reset");
     sde.addEventListener("pointerdown", (e) => startDrag(e, sde, true, false));
+    sde.addEventListener("dblclick", () => reset(true, false));
 }
 
 function sbGripDrag(e, mod) {

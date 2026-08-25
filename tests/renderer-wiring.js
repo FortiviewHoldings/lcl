@@ -1938,15 +1938,18 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
         css.includes(".sb-h-bottom {") && css.includes("cursor: ns-resize")
         && css.includes(".sb-h-side {") && css.includes("cursor: ew-resize")
         && css.includes(".sb-h-corner {"), null);
-    check("...and the drag drives the GRID's geometry AS A DELTA on the " +
-          "starting splits, measured against the quadrant's own span — the " +
-          "absolute-position mapping teleported the split to its clamp on 11 " +
-          "of 13 handles (adversarial review, confirmed); a grab now moves " +
-          "the boundary by what the pointer moved, from any edge",
+    check("...and the drag sizes THE CARD THE OPERATOR GRABBED — the bottom " +
+          "edge sets that card's own height (g.cardH), a delta on where it " +
+          "started, and NOBODY ELSE MOVES ('one container affects another' " +
+          "was the failure). The one shared control left is the vertical " +
+          "column boundary, and every handle double-clicks back to default",
         js.includes("sbAttachHandles")
-        && js.includes("g0.rowSplit + ((ev.clientY - y0) / quadSpan.h) * 100")
+        && js.includes("gLive.cardH[sbKey(mod)] = Math.max(58,")
+        && js.includes("g0.cardH + (ev.clientY - y0)")
         && js.includes("g0.colSplit + ((ev.clientX - x0) / quadSpan.w) * 100")
         && js.includes("g0.colW - (ev.clientX - x0)")
+        && !js.includes("g.rowSplit") && !js.includes("gLive.rowSplit")
+        && js.includes('addEventListener("dblclick", () => reset(')
         && js.includes("sbLayout(gLive);")
         && js.includes("sbSaveGrid(gLive);"), null);
     check("...MINIMIZED IS A CLASS AND A KEY, MOVED TOGETHER — column mode " +
@@ -1956,11 +1959,11 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
         && (js.match(/sbSetMin\(mod, false\)/g) || []).length >= 2
         && !js.includes('mod.classList.remove("sb-minimized");'), null);
     check("...and the track math holds at the edges the review broke it on: " +
-          "ONE quad card gets ONE column (no dead half), columns with no " +
+          "a lone quad card gets ONE column (no dead half), columns with no " +
           "quadrant SHARE the panel instead of left-anchoring beside dead " +
           "space, and a saved column width is clamped against the LIVE panel " +
           "so a wide monitor's record cannot crush the quadrant to zero",
-        js.includes('if (quad.length === 1) tracks.push("minmax(0, 1fr)");')
+        js.includes('} else tracks.push("minmax(0, 1fr)");')
         && js.includes('if (!quad.length) { tracks.push("minmax(0, 1fr)"); continue; }')
         && js.includes("Math.round(host.clientWidth * 0.75)"), null);
     check("a task row in a narrow cell keeps its COUNT and ETA — words wrap " +
@@ -1968,6 +1971,34 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
           "and the tooltip carries the full line",
         /\.task-title \{[^}]*overflow-wrap: normal;/s.test(css)
         && js.includes("row._title.title = row._title.innerText;"), null);
+
+    /* "you are using text labels for buttons, like clear and refresh, etc.
+     * no, stop doing that it is a SPACE HOG" — panel controls are icons with
+     * tooltips, never words eating a card's width. */
+    check("PANEL BUTTONS ARE ICONS, NOT WORDS — Clear, Refresh and Clear-marks " +
+          "carry an svg and a tooltip, and no sidebar header button spends its " +
+          "card's width on a text label",
+        ["task-panel-clear", "activity-clear", "ws-refresh",
+         "ws-clear-marks", "machine-refresh"].every(id => {
+            const i = html.indexOf('id="' + id + '"');
+            if (i < 0) return false;
+            const b = html.slice(i, html.indexOf("</button>", i));
+            return b.includes("icon-only") && b.includes("<svg")
+                && b.includes("title=") && !/>\s*(Clear|Refresh|Clear marks)\s*</.test(b);
+        }), null);
+
+    /* "this session had history of that is no longer present after the
+     * patch" — the in-memory feed dies with a restart, but the transcript
+     * already persists every consequential step. An empty feed rebuilds
+     * itself; a feed the operator CLEARED stays cleared. */
+    check("THE ACTIVITY FEED SURVIVES A RESTART — an empty feed rehydrates " +
+          "from the transcript's persisted steps, a cleared one stays " +
+          "cleared, and a rebuilt row shows an honest dot instead of a " +
+          "fabricated timestamp",
+        js.includes("function hydrateActivityFromTranscript")
+        && js.includes("!activityCleared.has(active.id)")
+        && js.includes("activityCleared.add(active.id);")
+        && js.includes(': "·";'), null);
 
     /* "did not complete and prompted me for input, but the prompt never
      * appeared, it was waiting on something that it never asked me, but said
@@ -1997,16 +2028,22 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
     check("...the stack SCROLLS when the user sizes past the panel — " +
           "nothing is ever crushed to make room",
         (() => { const i = css.indexOf("#sb-mods {");
-                 return css.slice(i, i + 500).includes("overflow-y: auto"); })(),
+                 return css.slice(i, i + 900).includes("overflow-y: auto"); })(),
         null);
     check("...and the fixed info card gets no height handle — stretching an " +
           "info card only stretches whitespace",
         js.includes("if (!spec.fixed) {"), null);
-    check("every live grid row keeps a READING floor — minmax(58px, …) on the " +
-          "quadrant's bands, so no drag of the splits can crush a card below " +
-          "legibility",
-        /minmax\(58px, " \+ a \+ "fr\)/.test(js)
-        || js.includes('rows.push("minmax(58px,'), null);
+    check("CARDS OWN THEIR SIZE — content rows are auto over a filler that " +
+          "absorbs the slack, NOTHING stretches to fill (align-items: start), " +
+          "an unsized card caps near half the panel with its inner block " +
+          "scrolling, a dragged card floors at 58px legibility, and a panel " +
+          "too narrow for two readable columns stacks ONE",
+        js.includes('rows.push("minmax(0, 1fr)");')
+        && js.includes("host.clientHeight * 0.48")
+        && (() => { const i = css.indexOf("#sb-mods {");
+                    return css.slice(i, i + 900).includes("align-items: start"); })()
+        && /\.sb-mod-inner \{[^}]*overflow: auto;/.test(css)
+        && js.includes("host.clientWidth < 360"), null);
     check("SESSION ROWS DO NOT COMPRESS. When the list became a bounded flex " +
           "scroll region its children could still shrink, so instead of a " +
           "scrollbar the ROWS were squeezed — titles crushed, nothing " +
@@ -2047,14 +2084,13 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
           "Preview and it being its own third column, when active'",
         js.includes("function sbToggleCol")
         && js.includes('"sb-colbtn"')
-        && js.includes('"1 / span " + R')
+        && js.includes('"1 / " + (R + 2)')
         && js.includes("SB_COL_DEFAULT = { preview: true }"), null);
     check("...MINIMIZED CARDS DROP TO THE TRAY — full-width header bars below " +
           "the live rows, and when EVERYTHING is minimized the tray starts at " +
           "the top instead of floating under an empty stretch",
         js.includes('m.style.gridColumn = "1 / -1";')
-        && js.includes("const trayBase = live.length ? R : 0;")
-        && js.includes("String(trayBase + i + 1)"), null);
+        && js.includes("String(R + 2 + i)"), null);
     check("...A FLOATING CARD'S CONTROLS TELL THE TRUTH: the pop-out and " +
           "column buttons vanish while popped, and the minimize button is " +
           "the way home — 'we dont need the pop out button when popped out, " +

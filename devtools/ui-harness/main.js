@@ -2326,6 +2326,9 @@ const SCENES = {
     sidebar: async (win, js) => {
         const m = await js(`(async () => {
             active.repoPath = "D:/work/repo";
+            // wide enough for two READABLE columns — under 360px the dock
+            // deliberately stacks one column instead of cropping text
+            document.getElementById("body").style.setProperty("--ws-w", "560px");
             toggleWorkspace(true);
             renderWorkspace();
             await new Promise(r => setTimeout(r, 250));
@@ -2380,32 +2383,40 @@ const SCENES = {
             "neighbors instead of touching borders",
             M.wscard.left - M.tasks.right >= 4
             && M.activity.top - M.tasks.bottom >= 4, M);
-        check("sidebar", "NOT ONE OF THEM IS CRUSHED — every card at or above the reading " +
-            "floor the grid rows guarantee",
-            open.every(k => M[k].h >= 58), M);
+        check("sidebar", "NOT ONE OF THEM IS CRUSHED — every card stands at its own " +
+            "content height, none squeezed below a readable header",
+            open.every(k => M[k].h >= 24), M);
         await shoot(win, "sidebar-all-open");
 
-        // THE SPLITS ARE THE OPERATOR'S GEOMETRY and the grid obeys them.
+        // A CARD'S DRAGGED HEIGHT IS ITS OWN — sizing one card moves NOBODY
+        // else ("one container affects another" was the failure).
         const dragged = await js(`(async () => {
-            localStorage.setItem("lcl-sb-grid",
-                JSON.stringify({ rowSplit: 70, colSplit: 50, colW: {} }));
-            sbApplySizes();
-            await new Promise(r => setTimeout(r, 300));
             const g = (id) => Math.round([...document.querySelectorAll(".sb-mod")]
                 .find(x => x.dataset.mod === id).getBoundingClientRect().height);
-            const out = { tasks: g("tasks"), activity: g("activity") };
+            const before = { tasks: g("tasks"), activity: g("activity"),
+                             wscard: g("wscard") };
+            localStorage.setItem("lcl-sb-grid",
+                JSON.stringify({ colSplit: 50, colW: {}, cardH: { tasks: 300 } }));
+            sbApplySizes();
+            await new Promise(r => setTimeout(r, 300));
+            const after = { tasks: g("tasks"), activity: g("activity"),
+                            wscard: g("wscard") };
             localStorage.removeItem("lcl-sb-grid");
             sbApplySizes();
             await new Promise(r => setTimeout(r, 200));
-            return out;
+            return { before, after };
         })()`);
-        check("sidebar", "A DRAGGED SPLIT IS GEOMETRY THE GRID OBEYS — rowSplit 70 makes " +
-            "the top band decisively taller than the bottom, and clearing it " +
-            "restores the even quadrant",
-            dragged.tasks > dragged.activity * 1.5, dragged);
+        check("sidebar", "A DRAGGED HEIGHT BELONGS TO THAT CARD ALONE — tasks lands on " +
+            "its 300px, and neither its row neighbor nor the card below moved a " +
+            "pixel for it",
+            dragged.after.tasks === 300
+            && Math.abs(dragged.after.activity - dragged.before.activity) <= 2
+            && Math.abs(dragged.after.wscard - dragged.before.wscard) <= 2,
+            dragged);
 
         await js(`(() => { delete active.repoPath; renderWorkspace();
-                           closeFileViewer(); })()`);
+                           closeFileViewer();
+                           document.getElementById("body").style.removeProperty("--ws-w"); })()`);
     },
 
     /* "clicking install launches a container to install, while the Manage this
@@ -3385,6 +3396,8 @@ const SCENES = {
         /* ---- the right panel: THE QUADRANT DOCK, driven for real ---- */
         const ws = await js(`(async () => {
             active.repoPath = "C:/fake-workspace";
+            // wide enough for two readable columns — the quadrant under test
+            document.getElementById("body").style.setProperty("--ws-w", "560px");
             window.__harness.FIXTURES.listFiles = () => ({ ok: true, truncated: false,
                 entries: Array.from({length: 40}, (_, i) => "file-" + i + ".md (100 bytes)") });
             window.__harness.FIXTURES.viewFile = (_id, rel) => ({
@@ -3432,13 +3445,15 @@ const SCENES = {
             await new Promise(r => setTimeout(r, 150));
             const p1 = preview.getBoundingClientRect();
 
-            // A QUADRANT CARD'S BOTTOM HANDLE MOVES THE ROW SPLIT
+            // A CARD'S BOTTOM HANDLE SIZES THAT CARD — its neighbors hold still
             const t0 = tasks.getBoundingClientRect();
+            const n0 = wscard.getBoundingClientRect();
             drag(tasks.querySelector(".sb-h-bottom"),
                 t0.left + 40, hr.top + hr.height * 0.72, 8);
             await new Promise(r => setTimeout(r, 150));
             const t1 = tasks.getBoundingClientRect();
-            // ...and a crush attempt stops on the row's reading floor
+            const n1 = wscard.getBoundingClientRect();
+            // ...and a crush attempt stops on the card's own reading floor
             drag(tasks.querySelector(".sb-h-bottom"),
                 t0.left + 40, hr.top + 1, 9);
             await new Promise(r => setTimeout(r, 150));
@@ -3453,8 +3468,9 @@ const SCENES = {
                 colWidenedBy: Math.round(p1.width - p0.width),
                 rowGrewTo: Math.round(t1.height),
                 rowWas: Math.round(t0.height),
+                neighborHeld: Math.abs(Math.round(n1.height) - Math.round(n0.height)) <= 2,
                 flooredAt: Math.round(t2.height),
-                gridSaved: Number(saved.rowSplit) > 0
+                gridSaved: Number(saved.cardH && saved.cardH.tasks) > 0
                     && Number(saved.colW && saved.colW.preview) > 0,
                 cardHasNoHeightHandle: !wscard.querySelector(".sb-h-bottom"),
                 cardStillMovable: !!wscard.querySelector(".sb-mod-grip"),
@@ -3501,6 +3517,7 @@ const SCENES = {
             delete active.repoPath;
             renderWorkspace();
             document.getElementById("task-panel").classList.add("hidden");
+            document.getElementById("body").style.removeProperty("--ws-w");
             for (const k of ["lcl-sb-grid", "lcl-sb-col-tasks", "lcl-sb-order"])
                 localStorage.removeItem(k);
             sbApplySizes();
@@ -3514,16 +3531,16 @@ const SCENES = {
         check("workspace", "GRAB A COLUMN'S SIDE EDGE and THAT column's width " +
             "follows — the drag writes the grid's geometry, not a card's box",
             ws.colWidenedBy > 40 && ws.colWidenedBy < 200, ws);
-        check("workspace", "A QUADRANT CARD'S BOTTOM EDGE MOVES THE ROW SPLIT " +
-            "— drag toward the panel's floor and the top band grows to match " +
-            "the pointer",
-            ws.rowGrewTo > ws.rowWas + 40, ws);
-        check("workspace", "...and a crush attempt stops at the reading floor " +
-            "the grid rows guarantee — no card is ever dragged out of " +
-            "legibility",
+        check("workspace", "A CARD'S BOTTOM EDGE SIZES THAT CARD — drag it " +
+            "toward the panel's floor and the card grows to match the " +
+            "pointer, AND ITS ROW NEIGHBOR HOLDS STILL: 'one container " +
+            "affects another' is dead",
+            ws.rowGrewTo > ws.rowWas + 40 && ws.neighborHeld, ws);
+        check("workspace", "...and a crush attempt stops at the card's own " +
+            "58px reading floor — no card is ever dragged out of legibility",
             ws.flooredAt >= 50 && ws.flooredAt <= 140, ws.flooredAt);
-        check("workspace", "THE SPLITS PERSIST — one lcl-sb-grid record " +
-            "carrying the row split and the column's width, written on " +
+        check("workspace", "THE GEOMETRY PERSISTS — one lcl-sb-grid record " +
+            "carrying the card's height and the column's width, written on " +
             "release, not per frame",
             ws.gridSaved, ws);
         check("workspace", "OWN COLUMN IS ONE CLICK AND ONE CLICK HOME — the " +
