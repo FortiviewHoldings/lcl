@@ -155,7 +155,10 @@
             </div>
 
             <div class="menu" data-menu="knowledge">
-                <button class="menu-label">Knowledge</button>
+                <!-- the badge: how many shipped sources this machine has not
+                     downloaded yet — painted at boot and after every batch -->
+                <button class="menu-label">Knowledge<span id="kb-badge"
+                    class="menu-badge hidden"></span></button>
                 <div class="menu-panel">
                     <!-- ONE knowledge item, opening ONE knowledge UI. There
                          were two ("Read the knowledge…" and "Knowledge
@@ -716,13 +719,13 @@
                  is fully resizeable and pick and place ... all the contents
                  bound by the workspace sidebar."
 
-                 Every function of this panel is one .sb-mod: a grip strip you
-                 DRAG TO REORDER, over the section itself. Between adjacent
-                 visible modules the manager (app.js) lays a full-width
-                 divider — grab the BOUNDARY between two sections and drag it,
-                 the way every splitter works; drag down, the section above
-                 grows. Sizes and order persist. A module whose inner block is
-                 hidden takes its divider with it. -->
+                 Every function of this panel is one .sb-mod card in THE
+                 QUADRANT DOCK: a 2-wide grid — 1|2 over 3|4 in the saved
+                 order — where each card is its own container. A card can
+                 minimize to the tray at the bottom, expand into its own
+                 full-height column (Preview is born that way), or pop out as
+                 a floating window. Edge handles drag the grid's row and
+                 column splits. Order, splits, and every state persist. -->
             <div id="sb-mods">
 
                 <div class="sb-mod" data-mod="tasks">

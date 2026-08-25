@@ -1771,6 +1771,37 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
           "by a tag rather than by living in two dropdowns",
         /ships with \.lcl/.test(js) && /added by you/.test(js) &&
         /\.kb-tag\.added\s*\{/.test(cssCode));
+
+    /* ---- THE BADGE, THE ORDER, AND AN HONEST DOWNLOAD-ALL ----
+     * "a badge that appears in the knowledge dropdown, prefixing the Knowledge
+     * button ... when there is knowledge in the source list, that is not
+     * downloaded to the machine. this would reenable the download all button,
+     * if disabled but also host the newest at the top, for the source
+     * knowledge, not the user added" */
+    const mainKb = fs.readFileSync(path.join(__dirname, "..", "app", "main.js"), "utf8");
+    check("KNOWLEDGE BADGE — a span prefixes the Knowledge menu label, painted " +
+          "from a count cheap enough to ask at boot (never the inventory walk)",
+        /id="kb-badge"/.test(html) &&
+        /function kbPaintBadge\(/.test(js) &&
+        /kbBadgeFromBoot\(\);/.test(js) &&
+        /window\.lcl\.knowledgeMissingCount\(\)/.test(js) &&
+        /\.menu-badge\s*\{/.test(cssCode) &&
+        /lcl:knowledgeMissingCount/.test(mainKb));
+    check("...the badge and the button both count the FETCHABLE — missing " +
+          "sources WITH a recorded URL, exactly what a click will start; the " +
+          "label used to promise sourcesMissing while the batch attempted only " +
+          "the with-URL subset",
+        /const fetchable = lib\.docs\.filter\(d => !d\.sourceOnDisk && d\.sourceUrl\)\.length;/.test(js) &&
+        /"Download all \(" \+ fetchable \+ "\)"/.test(js) &&
+        /fetchable/.test(mainKb));
+    check("...the shipped shelf hosts the NEWEST at the top — not-yet-downloaded " +
+          "sources float first (fetchable ahead of URL-less), stable within " +
+          "bands, and the user's own libraries are never reordered this way",
+        /a\.sourceOnDisk \? 2 : \(a\.sourceUrl \? 0 : 1\)/.test(mainKb));
+    check("...and opening the panel paints a WAIT WITH A FACE — the list shows " +
+          "'reading the shelf…' instead of sitting blank for the whole " +
+          "inventory walk, which read as 'takes really long to open'",
+        /loadingNote\("reading the shelf…"/.test(js));
 }
 
 (async () => {
@@ -1907,15 +1938,62 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
         css.includes(".sb-h-bottom {") && css.includes("cursor: ns-resize")
         && css.includes(".sb-h-side {") && css.includes("cursor: ew-resize")
         && css.includes(".sb-h-corner {"), null);
-    check("...and the drag resizes THAT container from its own rect — no " +
-          "divider arithmetic deciding some other section moves, which is " +
-          "what made resizing act the inverse of how it should",
+    check("...and the drag drives the GRID's geometry AS A DELTA on the " +
+          "starting splits, measured against the quadrant's own span — the " +
+          "absolute-position mapping teleported the split to its clamp on 11 " +
+          "of 13 handles (adversarial review, confirmed); a grab now moves " +
+          "the boundary by what the pointer moved, from any edge",
         js.includes("sbAttachHandles")
-        && js.includes("r0.height + (ev.clientY - y0)")
-        && js.includes("r0.width - (ev.clientX - x0)"), null);
-    check("...order, heights AND widths persist per machine",
-        js.includes("lcl-sb-order") && js.includes("lcl-sb-h-")
-        && js.includes("lcl-sb-w-"), null);
+        && js.includes("g0.rowSplit + ((ev.clientY - y0) / quadSpan.h) * 100")
+        && js.includes("g0.colSplit + ((ev.clientX - x0) / quadSpan.w) * 100")
+        && js.includes("g0.colW - (ev.clientX - x0)")
+        && js.includes("sbLayout(gLive);")
+        && js.includes("sbSaveGrid(gLive);"), null);
+    check("...MINIMIZED IS A CLASS AND A KEY, MOVED TOGETHER — column mode " +
+          "and pop-out expand through sbSetMin, so a reload can never " +
+          "resurrect a tray bar the operator left expanded",
+        js.includes("function sbSetMin")
+        && (js.match(/sbSetMin\(mod, false\)/g) || []).length >= 2
+        && !js.includes('mod.classList.remove("sb-minimized");'), null);
+    check("...and the track math holds at the edges the review broke it on: " +
+          "ONE quad card gets ONE column (no dead half), columns with no " +
+          "quadrant SHARE the panel instead of left-anchoring beside dead " +
+          "space, and a saved column width is clamped against the LIVE panel " +
+          "so a wide monitor's record cannot crush the quadrant to zero",
+        js.includes('if (quad.length === 1) tracks.push("minmax(0, 1fr)");')
+        && js.includes('if (!quad.length) { tracks.push("minmax(0, 1fr)"); continue; }')
+        && js.includes("Math.round(host.clientWidth * 0.75)"), null);
+    check("a task row in a narrow cell keeps its COUNT and ETA — words wrap " +
+          "whole (never mid-word, never an ellipsis eating the live numbers) " +
+          "and the tooltip carries the full line",
+        /\.task-title \{[^}]*overflow-wrap: normal;/s.test(css)
+        && js.includes("row._title.title = row._title.innerText;"), null);
+
+    /* "did not complete and prompted me for input, but the prompt never
+     * appeared, it was waiting on something that it never asked me, but said
+     * it was asking me" — a turn's result is applied by the sendText call
+     * awaiting it, and that promise dies with a renderer reload or a dropped
+     * IPC reply. The status event is the one signal that always arrives. */
+    check("AN ORPHANED COMPLETION STILL LANDS — when the active session " +
+          "settles (idle, failed, waiting, approval) and no live send in this " +
+          "renderer owns it, paintSessionStatus refetches from disk and " +
+          "repaints, so the ask can never exist only as a status line",
+        (() => {
+            const i = js.indexOf("function paintSessionStatus");
+            if (i < 0) return false;
+            const b = js.slice(i, i + 4200);
+            return b.includes('["idle", "failed", "waiting", "approval"].includes(st.state)')
+                && b.includes("!pendingSessions.has(sessionId)")
+                && b.includes("window.lcl.getSession(sessionId)")
+                && b.includes("renderMessages(active.messages);");
+        })(), null);
+    check("...order, splits AND per-card modes persist per machine — and the " +
+          "wrapping-row era's per-card px keys have no writer left, so a " +
+          "stale lcl-sb-h-* value can never shape the quadrant",
+        js.includes("lcl-sb-order") && js.includes("lcl-sb-grid")
+        && js.includes("lcl-sb-col-")
+        && !js.includes('localStorage.setItem("lcl-sb-h-')
+        && !js.includes("SB_H_KEY +") && !js.includes("SB_W_KEY +"), null);
     check("...the stack SCROLLS when the user sizes past the panel — " +
           "nothing is ever crushed to make room",
         (() => { const i = css.indexOf("#sb-mods {");
@@ -1924,9 +2002,11 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
     check("...and the fixed info card gets no height handle — stretching an " +
           "info card only stretches whitespace",
         js.includes("if (!spec.fixed) {"), null);
-    check("the preview keeps its floor (120px) through the module spec, so a " +
-          "drag can never crush the document out of sight",
-        js.includes("preview:  { min: 120 }"), null);
+    check("every live grid row keeps a READING floor — minmax(58px, …) on the " +
+          "quadrant's bands, so no drag of the splits can crush a card below " +
+          "legibility",
+        /minmax\(58px, " \+ a \+ "fr\)/.test(js)
+        || js.includes('rows.push("minmax(58px,'), null);
     check("SESSION ROWS DO NOT COMPRESS. When the list became a bounded flex " +
           "scroll region its children could still shrink, so instead of a " +
           "scrollbar the ROWS were squeezed — titles crushed, nothing " +
@@ -1938,45 +2018,69 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
         css.includes("#machine-dock {") && css.includes("margin-top: auto;")
         && html.includes('id="machine-dock"'), null);
 
-    /* ---- FULLY MODULAR, ROUND TWO (10 Aug, night) ---- */
-    check("A DRAGGED HEIGHT IS INTENT. The 46% natural-height cap skips " +
-          ".sb-sized, and BOTH add-sites exist — the live drag AND the " +
-          "size-restore in sbApplySizes, counted separately so dropping " +
-          "either one fails — the cap that limited how far a section could be " +
-          "dragged down was this cap applying to deliberate drags too",
-        css.includes(':not([data-mod="files"]):not(.sb-sized)')
-        && js.split('classList.add("sb-sized")').length - 1 >= 2, null);
-    check("SIDE BY SIDE IS REAL. The panel is a wrapping row, so two " +
-          "narrowed modules whose widths fit SHARE a row — and the grip " +
-          "drop logic splits on X inside a shared row, on Y across rows",
+    /* ---- THE QUADRANT DOCK (24 Aug) ----
+     * "i feel like ordering is important here ... the right side bar should
+     * be a quadrant, like a true hero section card would be. righ now all
+     * the borders touch, i would rather them be their own containers, within
+     * that sidepanel. and two columns ... 1 = Tasks 2 = Workspace
+     * 3 = Activity 4 = Files ... with position 5, being Preview and it being
+     * its own third column, when active." */
+    check("THE DOCK IS A GRID OF CARDS. #sb-mods is display:grid with a gap, " +
+          "each .sb-mod its own container — border, radius, its own ground — " +
+          "instead of bands whose borders touch",
         (() => { const i = css.indexOf("#sb-mods {");
-                 return css.slice(i, i + 500).includes("flex-flow: row wrap"); })()
-        && js.includes("ev.clientX < r.left + r.width / 2"), null);
-    check("...and the panel is SHARED OUT rather than handed to whoever is " +
-          "first. It used to cap everything but files at 46% and let files " +
-          "absorb the leftover; measured with all five modules open in a " +
-          "702px panel, three of them took 540px in DOM order and the file " +
-          "list sat on its 80px floor. Max-min fair division now, with a " +
-          "dragged height spent off the budget first as intent. The pin " +
-          "covers the divider, its zero-width bail (a collapsed panel keeps " +
-          "its height, so clientHeight alone passed), the two guards that " +
-          "stop a pass that writes every height from waking itself forever, " +
-          "and its refresh triggers: the panel-width drag and the " +
-          "expand-after-slide, which flip no class the module observer sees",
+                 return css.slice(i, i + 600).includes("display: grid")
+                     && css.slice(i, i + 600).includes("gap: 6px"); })()
+        && (() => { const i = css.indexOf(".sb-mod {");
+                 const b = css.slice(i, i + 700);
+                 return b.includes("border: 1px solid var(--line)")
+                     && b.includes("border-radius: var(--radius-sm)"); })(), null);
+    check("...the DEFAULT ORDER is the operator's numbering — tasks, wscard, " +
+          "activity, files, row-major into 1|2 over 3|4 — and placement is " +
+          "computed from DOM order, so the saved order IS the quadrant",
+        js.includes('["tasks", "wscard", "activity", "files", "preview"]')
+        && js.includes("String((i % 2) + 1)")
+        && js.includes("String(Math.floor(i / 2) + 1)"), null);
+    check("...OWN COLUMN is a real mode: a header button toggles it, the card " +
+          "becomes a full-height track beside the quadrant, the choice " +
+          "persists, and Preview is born a column — 'position 5, being " +
+          "Preview and it being its own third column, when active'",
+        js.includes("function sbToggleCol")
+        && js.includes('"sb-colbtn"')
+        && js.includes('"1 / span " + R')
+        && js.includes("SB_COL_DEFAULT = { preview: true }"), null);
+    check("...MINIMIZED CARDS DROP TO THE TRAY — full-width header bars below " +
+          "the live rows, and when EVERYTHING is minimized the tray starts at " +
+          "the top instead of floating under an empty stretch",
+        js.includes('m.style.gridColumn = "1 / -1";')
+        && js.includes("const trayBase = live.length ? R : 0;")
+        && js.includes("String(trayBase + i + 1)"), null);
+    check("...A FLOATING CARD'S CONTROLS TELL THE TRUTH: the pop-out and " +
+          "column buttons vanish while popped, and the minimize button is " +
+          "the way home — 'we dont need the pop out button when popped out, " +
+          "we need the minimize button to minimize the popped out window " +
+          "back into the tray to its slot'",
+        css.includes(".sb-mod.sb-popped > .sb-mod-head .sb-pop,")
+        && css.includes(".sb-mod.sb-popped > .sb-mod-head .sb-colbtn { display: none; }")
+        && (() => { const i = js.indexOf('mkBtn("sb-min"');
+                 return i >= 0 && js.slice(i, i + 400)
+                     .includes("sbDock(mod); return;"); })(), null);
+    check("...the grip drop logic still splits on X beside a neighbor and on " +
+          "Y across rows, and every mid-drag reorder RE-LAYS the grid so the " +
+          "cards follow the pointer instead of freezing until release",
+        js.includes("ev.clientX < r.left + r.width / 2")
+        && js.includes("other.before(mod); sbLayout(); break;")
+        && js.includes("other.after(mod); sbLayout(); break;"), null);
+    check("...and the layout pass keeps its era-crossing guards: the rAF " +
+          "debounce under the sbFillSlack name every caller still speaks, " +
+          "the observer stop, the zero-size bail (a collapsed panel keeps " +
+          "its height), and refreshes from the panel-width drag and the " +
+          "expand-after-slide",
         js.includes("function sbFillSlack")
-        && js.includes("function sbShareOut")
-        && js.includes("Math.min(i.want, Math.max(mid, i.min))")
-        // a dragged height and a fixed card come off the budget, never divided
-        && js.includes("userH > 0 || spec.fixed || m.classList.contains(")
-        && js.slice(js.indexOf("userH > 0 || spec.fixed"),
-                    js.indexOf("userH > 0 || spec.fixed") + 120).includes("sb-sized")
-        // ...and the two independent stops on the observer feedback loop
+        && js.includes("function sbLayout")
         && js.includes("if (!sbApplying) sbFillSlack();")
-        && js.includes('if (p.el.style.height !== want) p.el.style.height = want;')
         && js.includes("!host.clientHeight || !host.clientWidth")
         && (() => {
-            // the ws-resize drag body and toggleWorkspace's open branch each
-            // call the measurement
             const i = js.indexOf('$("ws-resize").addEventListener');
             const t = js.indexOf("function toggleWorkspace");
             return i >= 0 && js.slice(i, i + 1200).includes("sbFillSlack()")

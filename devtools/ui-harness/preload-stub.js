@@ -339,6 +339,9 @@ const FIXTURES = {
     knowledgeLibraries: () => (window.__harness && window.__harness.k6 === false
         ? { error: "not in this build" }        /* forces the legacy path */
         : KNOWLEDGE_LIBS),
+    // the boot-time badge count: cheap in the real main (shelf + ~64 stats),
+    // fixed here to match KNOWLEDGE_LIBS — 2 missing, only 1 with a URL
+    knowledgeMissingCount: () => ({ missing: 2, fetchable: 1 }),
     /* The legacy pair, so the harness can drive the path a build without K6
      * takes. Shapes copied from main.js: the shelf names each built-in doc's
      * `source` (the PDF) beside its `file` (the extraction), and the extraction

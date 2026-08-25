@@ -237,6 +237,22 @@ check("the live bubble went flat the same way, keeping its class name for " +
       "the harness cleanup",
     /\.msg-typing \{[^}]*background: none;/s.test(cssSrc));
 
+/* "you keep the thinking... portion of the tool at the top. it doesnt move
+ * down as it prints. as if it is keeping up with you as you read. so you have
+ * no idea the thing is thinking until you scroll all the way up." Two causes,
+ * two pins. */
+check("the thinking bubble STAYS LAST as live tool rows land — the re-append " +
+      "queries .msg-typing, the class that exists (\".typing\" matched nothing " +
+      "for an era, so every work row stacked below the bubble and buried it)",
+    /chat\.querySelector\("\.msg-typing"\)/.test(appSrc)
+    && !/chat\.querySelector\("\.typing"\)/.test(appSrc));
+
+check("...and the liveness head is STICKY with its own opaque ground — dots, " +
+      "phase and timer pinned to the viewport edge while any of the bubble " +
+      "is in view, so a wall of step log never hides that the app is alive",
+    /\.typing-head \{[^}]*position: sticky;/s.test(cssSrc)
+    && /\.typing-head \{[^}]*background: var\(--bg\);/s.test(cssSrc));
+
 check("the recede rule is gone — a permanent record does not fade its own " +
       "history",
     !/\.typing-step:not\(:last-child\)/.test(cssSrc));

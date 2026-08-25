@@ -10479,6 +10479,9 @@ ipcMain.handle("lcl:knowledgeLibraries", guard(() => {
     try { shelf = JSON.parse(fs.readFileSync(shelfFile, "utf8")); } catch { /* below */ }
     if (shelf && Array.isArray(shelf.subjects)) {
         const docs = [];
+        // hoisted: this resolves the data dir — once per inventory, not once
+        // per document of a 64-volume shelf
+        const mirror = builtinSourceCacheRoot();
         for (const sub of shelf.subjects) {
             for (const d of sub.docs || []) {
                 // THE SOURCE, NEVER THE EXTRACTION. `d.file` is the .txt the
@@ -10493,7 +10496,7 @@ ipcMain.handle("lcl:knowledgeLibraries", guard(() => {
                 // installed = present in the writable download cache OR shipped
                 // under resources; the cache is checked first because that is
                 // where a download lands in a packaged build
-                for (const p of [path.join(builtinSourceCacheRoot(), rel), full]) {
+                for (const p of [path.join(mirror, rel), full]) {
                     try { const st = fs.statSync(p); if (st.isFile()) { onDisk = true; bytes = st.size; break; } }
                     catch { /* try the next location */ }
                 }
@@ -10518,6 +10521,15 @@ ipcMain.handle("lcl:knowledgeLibraries", guard(() => {
                 });
             }
         }
+        // THE NEWEST AT THE TOP OF THE SHIPPED SHELF. A patch that adds
+        // knowledge adds sources this machine has not downloaded yet — those
+        // float first (fetchable ones ahead of URL-less ones), because they
+        // are exactly what Download-all is about to act on. The sort is
+        // stable, so shelf order survives inside each band. The user's own
+        // libraries are never reordered this way — their folders, their order.
+        docs.sort((a, b) =>
+            ((a.sourceOnDisk ? 2 : (a.sourceUrl ? 0 : 1))
+           - (b.sourceOnDisk ? 2 : (b.sourceUrl ? 0 : 1))));
         libs.push({
             id: BUILTIN_LIB_ID, title: "Ships with .lcl",
             addedByUser: false, builtin: true,
@@ -10582,6 +10594,44 @@ ipcMain.handle("lcl:knowledgeLibraries", guard(() => {
     }
 
     return libs;
+}));
+
+/**
+ * THE CHEAP COUNT BEHIND THE BADGE. "i really want that to also be a badge
+ * ... prefixing the Knowledge button ... when there is knowledge in the
+ * source list, that is not downloaded to the machine." The renderer needs
+ * this number at BOOT, long before anyone opens the panel — so it must never
+ * ride the full inventory (user-library walks, per-doc metadata). This is
+ * shelf.json + sources.json + two existsSyncs per built-in doc, nothing else.
+ * `fetchable` counts only missing docs WITH a recorded URL — the ones
+ * Download-all can actually act on, which is what the badge promises.
+ */
+ipcMain.handle("lcl:knowledgeMissingCount", guard(() => {
+    const kroot = path.join(paths.resourceRoot(), "knowledge");
+    let shelf = null;
+    try {
+        shelf = JSON.parse(fs.readFileSync(
+            path.join(kroot, "text", "shelf.json"), "utf8"));
+    } catch { return { missing: 0, fetchable: 0 }; }
+    if (!shelf || !Array.isArray(shelf.subjects)) return { missing: 0, fetchable: 0 };
+    const urls = knowledgeSourceMap();
+    const mirror = builtinSourceCacheRoot();
+    let missing = 0, fetchable = 0;
+    for (const sub of shelf.subjects) {
+        for (const d of sub.docs || []) {
+            const rel = String(d.source || "");
+            if (!rel || !DOC_EXT_RE.test(rel)) continue;
+            let onDisk = false;
+            for (const p of [path.join(mirror, rel), path.join(kroot, rel)]) {
+                try { if (fs.statSync(p).isFile()) { onDisk = true; break; } }
+                catch { /* try the next location */ }
+            }
+            if (onDisk) continue;
+            missing++;
+            if (urls[rel]) fetchable++;
+        }
+    }
+    return { missing, fetchable };
 }));
 
 /**

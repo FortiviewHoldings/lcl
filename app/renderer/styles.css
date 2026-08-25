@@ -420,6 +420,25 @@ select:disabled, .dd-toggle:disabled {
     color: var(--text);
 }
 
+/* the knowledge badge: shipped sources this machine has not downloaded yet.
+   It rides the menu label so the fact is visible WITHOUT opening anything —
+   "a badge that appears ... prefixing the Knowledge button" */
+.menu-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 6px;
+    min-width: 16px;
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--attn) 24%, transparent);
+    border: 1px solid color-mix(in srgb, var(--attn) 45%, transparent);
+    color: var(--attn);
+    font-size: var(--fs-tiny);
+    line-height: 15px;
+    text-align: center;
+    vertical-align: 1px;
+}
+.menu-badge.hidden { display: none; }
+
 .menu-panel {
     display: none;
     position: absolute;
@@ -1847,6 +1866,19 @@ details.msg-tool pre {
     display: flex;
     align-items: center;
     gap: var(--sp-3);
+    /* THE LIVENESS NEVER SCROLLS AWAY. A long turn grows the step log past a
+       screen; without this the dots, phase and timer sit at the top of the
+       bubble and the reader at the bottom sees a wall of text with no sign
+       the app is alive — "you have no idea the thing is thinking until you
+       scroll all the way up." Sticky pins the head to the viewport's top
+       edge while any part of the bubble is in view. Its own opaque ground,
+       because the bubble's is none (pinned: the live run and the finished
+       record are one flat surface). */
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    padding: var(--sp-1) 0;
 }
 
 .typing-log {
@@ -3536,7 +3568,14 @@ details.msg-tool.failed summary { color: #e9a2a2; }
 .task-stop.hidden { display: none !important; }
 @keyframes taskpulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
 .task-body { min-width: 0; flex: 1; }
-.task-title { font-size: var(--fs-base); color: var(--text); overflow-wrap: anywhere; }
+/* WORD wrap, never mid-word: a quadrant cell is half the panel, and
+   overflow-wrap:anywhere broke titles as "Indexing the d / arkroom" (the
+   wraps gate caught it). An ellipsis was worse — it ate the live count and
+   ETA renderTask writes into this line (adversarial review, confirmed).
+   Words wrap whole, the counters stay readable on the next line, and the
+   tooltip carries the full text for whatever still clips. */
+.task-title { font-size: var(--fs-base); color: var(--text);
+    overflow-wrap: normal; min-width: 0; }
 .task-row.running .task-title { color: #cfe0f0; }
 .task-detail {
     font-size: var(--fs-tiny); color: var(--text-faint); margin-top: 2px;
@@ -7527,21 +7566,21 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
 }
 
 /* ============================================================ SB MODULES
-   Each function of the right panel is one module: a grip strip to PICK AND
-   PLACE it, the section itself, and a full-width divider on every boundary
-   between visible modules — resize lives on the boundary, where every
-   splitter puts it, not in a corner. */
+   THE QUADRANT DOCK. "the right side bar should be a quadrant, like a true
+   hero section card would be. right now all the borders touch, i would
+   rather them be their own containers, within that sidepanel." Each card is
+   its own container in a 2-wide grid — 1|2 over 3|4 in the saved order — an
+   own-column card is a full-height track beside the quadrant, and minimized
+   cards drop to the bottom as the tray. sbLayout() writes the tracks. */
 #sb-mods {
     flex: 1;
     min-height: 0;
-    display: flex;
-    /* A WRAPPING ROW, not a column: two side-handle-narrowed modules whose
-       widths fit SHARE a row — side by side is part of "fully modular".
-       Sized past the panel, the stack SCROLLS; nothing is ever crushed. */
-    flex-flow: row wrap;
-    align-content: flex-start;
-    align-items: flex-start;
-    justify-content: flex-end;
+    display: grid;
+    gap: 6px;
+    padding: 6px;
+    /* templates come from sbLayout(); this stands only for the first frame */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-auto-rows: minmax(0, auto);
     overflow-y: auto;
     overflow-x: hidden;
 }
@@ -7550,27 +7589,13 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
-    flex: 0 0 auto;
-    width: 100%;                     /* a row of its own until narrowed */
+    /* its own container, not a band in a stack */
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.015);
 }
-/* a module narrowed by its side handle keeps its boundary visible against
-   whatever now sits beside it */
-.sb-mod.sb-narrowed { border-left: 1px solid var(--line); }
-/* LAYOUT-LEVEL BOUNDS for modules the operator has NOT sized. Without these,
-   a module opening at its natural CONTENT height (a 200-line document:
-   ~1100px) filled the whole panel and crushed the flex module to ZERO —
-   measured. But a DRAGGED height is intent: .sb-sized lifts the cap, and the
-   stack scrolls instead. The reported problem — the drag being limited — was this
-   cap applying to explicit drags too. */
-.sb-mod[data-mod="files"] { min-height: 80px; }
-/* 46% EACH ACROSS FIVE MODULES IS 230% OF THE PANEL. This was the whole rule,
-   and with tasks, activity, the workspace card, files and the preview all
-   open it handed 540 of 702 measured pixels to the first three in DOM order
-   and left the file list on its 80px floor. sbFillSlack shares the panel out
-   max-min fair now and writes the real ceiling inline; this survives only for
-   the frame before it runs, so nothing opens at full document height. */
-.sb-mod:not([data-mod="files"]):not(.sb-sized) { max-height: 46%; }
 /* a module whose section is hidden disappears whole, grip and all */
 .sb-mod:has(> .sb-mod-inner.hidden) { display: none; }
 .sb-mod-inner { flex: 1; min-height: 0; }
@@ -7625,7 +7650,8 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
 }
 .sb-mod-btn:hover { color: var(--text-dim); background: rgba(255, 255, 255, 0.06); }
 
-/* minimized: only the header bar shows */
+/* minimized: only the header bar shows — a full-width bar in the TRAY at the
+   bottom of the panel (sbLayout places it), never a half-empty quadrant cell */
 .sb-mod.sb-minimized { height: 22px !important; min-height: 22px; max-height: 22px; overflow: hidden; }
 .sb-mod.sb-minimized > .sb-mod-inner,
 .sb-mod.sb-minimized > .sb-handle { display: none; }
@@ -7651,6 +7677,12 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
 }
 .sb-mod.sb-popped > .sb-mod-head { cursor: move; }
 .sb-mod.sb-popped > .sb-mod-inner { flex: 1; overflow: auto; }
+/* a FLOATING card needs no pop-out button (it is out) and no column button
+   (columns are a dock idea) — the minimize button is the way home:
+   "we dont need the pop out button when popped out, we need the minimize
+   button to minimize the popped out window back into the tray to its slot" */
+.sb-mod.sb-popped > .sb-mod-head .sb-pop,
+.sb-mod.sb-popped > .sb-mod-head .sb-colbtn { display: none; }
 /* the dock's edge-resize handles do not apply to a floating card — they clamp
    width to the sidebar panel and write the DOCKED-size keys, leaking a bad
    height back into the dock on return. A popped card resizes by nothing but

@@ -890,6 +890,34 @@ const SCENES = {
         check("wraps", "...and none of them breaks at 1024x720 either, which is where a " +
             "container too small for its own word would show up first",
             narrow.broken.length === 0, narrow.broken);
+
+        /* THE LIVENESS NEVER SCROLLS AWAY — "you keep the thinking portion at
+         * the top ... you have no idea the thing is thinking until you scroll
+         * all the way up." The head is sticky with its own opaque ground, and
+         * the bubble the head belongs to STAYS LAST as live tool rows land. */
+        const live = await js(`(() => {
+            const head = document.querySelector(".msg-typing .typing-head");
+            const cs = head ? getComputedStyle(head) : null;
+            const bubble = document.querySelector(".msg-typing");
+            // simulate a landed tool row, then run the keep-last re-append the
+            // live tool-done path performs
+            const row = document.createElement("div");
+            row.className = "msg-tool work-row live-row";
+            chat.appendChild(row);
+            const t = chat.querySelector(".msg-typing");
+            if (t) chat.appendChild(t);
+            const stillLast = chat.lastElementChild === bubble;
+            row.remove();
+            return { sticky: cs ? cs.position : "none",
+                     opaque: cs ? cs.backgroundColor : "",
+                     stillLast };
+        })()`);
+        check("wraps", "THE THINKING HEAD IS STICKY with its own opaque ground, and the " +
+            "bubble returns to LAST place after a live tool row lands — the liveness " +
+            "(dots, phase, timer) can never be buried above a long turn's output",
+            live.sticky === "sticky" && live.stillLast
+            && live.opaque !== "rgba(0, 0, 0, 0)" && live.opaque !== "transparent",
+            live);
         await shoot(win, "wraps");
         win.setSize(1440, 900);
         await wait(400);
@@ -1920,6 +1948,9 @@ const SCENES = {
                 onAdded: !!(added && added.querySelector(".kb-fetch-all"))
             };
             if (!btn) return out;
+            const badge = document.getElementById("kb-badge");
+            out.badge = badge ? badge.innerText : "";
+            out.badgeShown = !!badge && !badge.classList.contains("hidden");
             const before = (window.lcl.__calls || []).filter(c => c.key === "fetchKnowledgeSource").length;
             btn.click();
             await new Promise(r => setTimeout(r, 500));
@@ -1930,9 +1961,15 @@ const SCENES = {
             out.note = note ? note.innerText : "";
             return out;
         })()`);
-        check("knowledge", "DOWNLOAD ALL IS ONE BUTTON ON THE SHIPPED SHELF — counting its " +
-            "missing sources — and never on a user's own folder, which has nothing to fetch",
-            dl.onShipped && dl.label.includes("Download all (2)") && !dl.onAdded, dl);
+        check("knowledge", "DOWNLOAD ALL IS ONE BUTTON ON THE SHIPPED SHELF — and its " +
+            "number is the FETCHABLE count, the downloads the click will start: the " +
+            "fixture has 2 missing but only 1 with a URL, and the button says so " +
+            "instead of promising two and attempting one. Never on a user's own folder",
+            dl.onShipped && dl.label.includes("Download all (1)") && !dl.onAdded, dl);
+        check("knowledge", "...THE BADGE PREFIXES THE KNOWLEDGE MENU with the same " +
+            "fetchable number — sources in the list, not on this machine, visible " +
+            "without opening anything",
+            dl.badgeShown && dl.badge === "1", dl);
         check("knowledge", "...clicking it fetches ONLY the missing-with-URL documents, each " +
             "through the same approved handler as the single download — the on-disk one and " +
             "the URL-less one are skipped, not failed",
@@ -2308,15 +2345,16 @@ const SCENES = {
             const mods = {};
             for (const el of host.querySelectorAll(":scope > .sb-mod")) {
                 const b = el.getBoundingClientRect();
-                const inner = el.querySelector(".sb-mod-inner");
                 mods[el.dataset.mod] = {
-                    h: Math.round(b.height),
-                    innerH: inner ? Math.round(inner.getBoundingClientRect().height) : 0,
-                    fullyVisible: b.top >= hr.top - 1 && b.bottom <= hr.bottom + 1
+                    h: Math.round(b.height), w: Math.round(b.width),
+                    left: Math.round(b.left - hr.left),
+                    top: Math.round(b.top - hr.top),
+                    right: Math.round(b.right - hr.left),
+                    bottom: Math.round(b.bottom - hr.top)
                 };
             }
             return { panelH: Math.round(hr.height),
-                     overflowing: host.scrollHeight > host.clientHeight + 1,
+                     panelW: Math.round(hr.width),
                      mods };
         })()`);
         const M = m.mods;
@@ -2324,41 +2362,47 @@ const SCENES = {
         check("sidebar", "ALL FIVE MODULES ARE OPEN — the state he was describing, not a " +
             "convenient subset",
             open.length === 5 && open.every(k => M[k].h > 0), m);
-        check("sidebar", "NOT ONE OF THEM IS CRUSHED. The file list sat on its 80px floor — " +
-            "a header and one row — while three modules above it took 540 of 702 " +
-            "pixels in DOM order",
-            open.every(k => M[k].h >= 100), M);
-        check("sidebar", "...and every one of them is fully inside the panel: nothing has " +
-            "to be scrolled to before you can see that it exists",
-            !m.overflowing && open.every(k => M[k].fullyVisible), m);
-        check("sidebar", "...and TASKS and ACTIVITY specifically show their content, not " +
-            "just a title bar — those are the two he could not see",
-            M.tasks.innerH >= 90 && M.activity.innerH >= 90, M);
-        check("sidebar", "...and the share-out spends the panel rather than hoarding it — " +
-            "the modules together fill what there is, within a module's floor",
-            (() => {
-                const used = open.reduce((a, k) => a + M[k].h, 0);
-                return used > m.panelH - 60 && used <= m.panelH + 1;
-            })(), { used: open.reduce((a, k) => a + M[k].h, 0), panelH: m.panelH });
+        check("sidebar", "THE QUADRANT IS REAL — tasks top-left, workspace top-right, " +
+            "activity bottom-left, files bottom-right: the operator's 1|2 over 3|4, " +
+            "by default, from DOM order alone",
+            M.tasks && M.wscard && M.activity && M.files
+            && M.tasks.left < M.wscard.left
+            && Math.abs(M.tasks.top - M.wscard.top) < 8
+            && M.activity.top > M.tasks.bottom - 4
+            && M.activity.left < M.files.left
+            && Math.abs(M.activity.top - M.files.top) < 8, M);
+        check("sidebar", "...PREVIEW IS ITS OWN COLUMN — position 5, full height beside " +
+            "the quadrant, born that way when a document opens",
+            M.preview
+            && M.preview.left >= Math.max(M.wscard.right, M.files.right) - 4
+            && M.preview.h >= m.panelH - 24, M);
+        check("sidebar", "...and the cards are their OWN CONTAINERS — a real gap between " +
+            "neighbors instead of touching borders",
+            M.wscard.left - M.tasks.right >= 4
+            && M.activity.top - M.tasks.bottom >= 4, M);
+        check("sidebar", "NOT ONE OF THEM IS CRUSHED — every card at or above the reading " +
+            "floor the grid rows guarantee",
+            open.every(k => M[k].h >= 58), M);
         await shoot(win, "sidebar-all-open");
 
-        // A DRAGGED HEIGHT IS INTENT and survives the share-out untouched.
+        // THE SPLITS ARE THE OPERATOR'S GEOMETRY and the grid obeys them.
         const dragged = await js(`(async () => {
-            localStorage.setItem("lcl-sb-h-activity", "300");
+            localStorage.setItem("lcl-sb-grid",
+                JSON.stringify({ rowSplit: 70, colSplit: 50, colW: {} }));
             sbApplySizes();
             await new Promise(r => setTimeout(r, 300));
-            const el = [...document.querySelectorAll(".sb-mod")]
-                .find(x => x.dataset.mod === "activity");
-            const h = Math.round(el.getBoundingClientRect().height);
-            localStorage.removeItem("lcl-sb-h-activity");
-            el.style.height = ""; el.classList.remove("sb-sized");
+            const g = (id) => Math.round([...document.querySelectorAll(".sb-mod")]
+                .find(x => x.dataset.mod === id).getBoundingClientRect().height);
+            const out = { tasks: g("tasks"), activity: g("activity") };
+            localStorage.removeItem("lcl-sb-grid");
             sbApplySizes();
             await new Promise(r => setTimeout(r, 200));
-            return { h };
+            return out;
         })()`);
-        check("sidebar", "A HEIGHT THE OPERATOR DRAGGED IS NEVER REDIVIDED — it comes off " +
-            "the budget before anything else is measured",
-            dragged.h === 300, dragged);
+        check("sidebar", "A DRAGGED SPLIT IS GEOMETRY THE GRID OBEYS — rowSplit 70 makes " +
+            "the top band decisively taller than the bottom, and clearing it " +
+            "restores the even quadrant",
+            dragged.tasks > dragged.activity * 1.5, dragged);
 
         await js(`(() => { delete active.repoPath; renderWorkspace();
                            closeFileViewer(); })()`);
@@ -3338,7 +3382,7 @@ const SCENES = {
             sb.footVisible && sb.barAtBottom, sb);
         await shoot(win, "sidebar-pinned");
 
-        /* ---- the right panel: MODULES with the container's OWN edge handles ---- */
+        /* ---- the right panel: THE QUADRANT DOCK, driven for real ---- */
         const ws = await js(`(async () => {
             active.repoPath = "C:/fake-workspace";
             window.__harness.FIXTURES.listFiles = () => ({ ok: true, truncated: false,
@@ -3348,84 +3392,70 @@ const SCENES = {
                 content: "# Doc\\n" + "line of the document\\n".repeat(200) });
             toggleWorkspace(true);
             renderWorkspace();
+            // all four quadrant cards on screen, so the splits mean something
+            document.getElementById("task-panel").classList.remove("hidden");
+            recordActivity(active.id, "tool", "▸ read_file", "src/index.js");
             await new Promise(r => setTimeout(r, 300));
             openFileViewer("file-3.md");
             await new Promise(r => setTimeout(r, 350));
 
-            const mods = [...document.querySelectorAll("#sb-mods > .sb-mod")];
-            const modOf = (k) => mods.find(m => m.dataset.mod === k);
+            const modOf = (k) => [...document.querySelectorAll("#sb-mods > .sb-mod")]
+                .find(m => m.dataset.mod === k);
             const preview = modOf("preview"), files = modOf("files"),
-                  wscard = modOf("wscard");
-            const bottom = preview.querySelector(".sb-h-bottom");
-            const side = preview.querySelector(".sb-h-side");
+                  wscard = modOf("wscard"), tasks = modOf("tasks");
             const body = document.getElementById("ws-viewer-body");
+            const host = document.getElementById("sb-mods");
+            const hr = host.getBoundingClientRect();
 
-            const drag = (handle, dx, dy, pid) => {
+            const drag = (handle, toX, toY, pid) => {
                 const r = handle.getBoundingClientRect();
                 const o = (x, y) => ({ bubbles: true, clientX: x, clientY: y,
                                        pointerId: pid });
                 handle.dispatchEvent(new PointerEvent("pointerdown",
                     o(r.left + 3, r.top + 3)));
-                handle.dispatchEvent(new PointerEvent("pointermove",
-                    o(r.left + 3 + dx, r.top + 3 + dy)));
-                handle.dispatchEvent(new PointerEvent("pointerup",
-                    o(r.left + 3 + dx, r.top + 3 + dy)));
+                handle.dispatchEvent(new PointerEvent("pointermove", o(toX, toY)));
+                handle.dispatchEvent(new PointerEvent("pointerup", o(toX, toY)));
             };
 
-            // a fresh doc opens at the cap — shrink first so there is room
+            // PREVIEW IS BORN A COLUMN — full height, its own track
             const p0 = preview.getBoundingClientRect();
-            drag(bottom, 0, -200, 7);            // grab MY bottom, drag up: I shrink
-            await new Promise(r => setTimeout(r, 120));
-            const pShrunk = preview.getBoundingClientRect();
-            drag(bottom, 0, 120, 8);             // grab MY bottom, drag down: I grow
-            await new Promise(r => setTimeout(r, 120));
-            const p1 = preview.getBoundingClientRect();
-            drag(bottom, 0, -900, 9);            // crush attempt: floor holds
-            await new Promise(r => setTimeout(r, 120));
-            const p2 = preview.getBoundingClientRect();
+            const bornColumn = preview.classList.contains("sb-col")
+                && p0.height >= hr.height - 24
+                && p0.left >= Math.max(wscard.getBoundingClientRect().right,
+                                       files.getBoundingClientRect().right) - 4;
 
-            // width: grab the INNER edge, drag toward the panel: I narrow
-            drag(side, 160, 0, 10);
-            await new Promise(r => setTimeout(r, 120));
-            const p3 = preview.getBoundingClientRect();
-
-            // THE SLACK HANDOFF, MEASURED. files was never height-dragged, so
-            // the fill must park its bottom on the panel's bottom — row-wrap
-            // made flex-grow mean width, so this is sbFillSlack's work now
-            await new Promise(r => setTimeout(r, 200));
-            const host = document.getElementById("sb-mods");
-            const hr = host.getBoundingClientRect();
-            let maxB = hr.top;
-            for (const m of mods) {
-                if (getComputedStyle(m).display === "none") continue;
-                maxB = Math.max(maxB, m.getBoundingClientRect().bottom);
-            }
-            const slackGap = Math.round(hr.top + host.clientHeight - maxB);
-
-            // SIDE BY SIDE: narrow files as well — two modules whose widths
-            // fit must SHARE a row
-            const fside = files.querySelector(".sb-h-side");
-            drag(fside, 180, 0, 12);
+            // ITS SIDE HANDLE SETS THE COLUMN'S WIDTH — drag the left edge
+            // LEFT and the column widens toward the quadrant (dragging right
+            // runs into the 140px reading floor at this panel width)
+            drag(preview.querySelector(".sb-h-side"),
+                p0.left - 80, p0.top + 40, 7);
             await new Promise(r => setTimeout(r, 150));
-            const fr = files.getBoundingClientRect();
-            const pr = preview.getBoundingClientRect();
-            const sideBySide = Math.abs(fr.top - pr.top) < 3
-                && Math.abs(fr.left - pr.left) > 40;
+            const p1 = preview.getBoundingClientRect();
+
+            // A QUADRANT CARD'S BOTTOM HANDLE MOVES THE ROW SPLIT
+            const t0 = tasks.getBoundingClientRect();
+            drag(tasks.querySelector(".sb-h-bottom"),
+                t0.left + 40, hr.top + hr.height * 0.72, 8);
+            await new Promise(r => setTimeout(r, 150));
+            const t1 = tasks.getBoundingClientRect();
+            // ...and a crush attempt stops on the row's reading floor
+            drag(tasks.querySelector(".sb-h-bottom"),
+                t0.left + 40, hr.top + 1, 9);
+            await new Promise(r => setTimeout(r, 150));
+            const t2 = tasks.getBoundingClientRect();
+
+            let saved = {};
+            try { saved = JSON.parse(localStorage.getItem("lcl-sb-grid") || "{}"); } catch {}
 
             const out = {
-                slackGap, sideBySide,
-                openedAtCap: Math.round(p0.height),
+                bornColumn,
                 panelH: Math.round(hr.height),
-                floorOf: (SB_MODS.preview || {}).min || 120,
-                shrank: Math.round(p0.height - pShrunk.height),
-                shrunkTo: Math.round(pShrunk.height),
-                draggedBy: 200,
-                grew: Math.round(p1.height - pShrunk.height),
-                flooredAt: Math.round(p2.height),
-                narrowedBy: Math.round(p1.width - p3.width),
-                narrowedFlag: preview.classList.contains("sb-narrowed"),
-                hSaved: Number(localStorage.getItem("lcl-sb-h-preview")) > 0,
-                wSaved: Number(localStorage.getItem("lcl-sb-w-preview")) > 0,
+                colWidenedBy: Math.round(p1.width - p0.width),
+                rowGrewTo: Math.round(t1.height),
+                rowWas: Math.round(t0.height),
+                flooredAt: Math.round(t2.height),
+                gridSaved: Number(saved.rowSplit) > 0
+                    && Number(saved.colW && saved.colW.preview) > 0,
                 cardHasNoHeightHandle: !wscard.querySelector(".sb-h-bottom"),
                 cardStillMovable: !!wscard.querySelector(".sb-mod-grip"),
                 bodyScroll: body.scrollHeight > body.clientHeight,
@@ -3433,17 +3463,31 @@ const SCENES = {
                     > document.getElementById("ws-files").clientHeight
             };
 
+            // OWN COLUMN IS ONE CLICK — tasks joins preview as a full-height
+            // track, and one more click returns it to its quadrant slot
+            tasks.querySelector(".sb-colbtn").click();
+            await new Promise(r => setTimeout(r, 150));
+            const tc = tasks.getBoundingClientRect();
+            out.colModeFullHeight = tasks.classList.contains("sb-col")
+                && tc.height >= hr.height - 24;
+            out.colModeSaved = localStorage.getItem("lcl-sb-col-tasks") === "1";
+            tasks.querySelector(".sb-colbtn").click();
+            await new Promise(r => setTimeout(r, 150));
+            out.colModeBack = !tasks.classList.contains("sb-col")
+                && localStorage.getItem("lcl-sb-col-tasks") === "0";
+
             // pick and place still works with handles in the way
             const beforeOrder = [...document.querySelectorAll("#sb-mods > .sb-mod")]
                 .map(m => m.dataset.mod).join(",");
             const grip = files.querySelector(".sb-mod-grip");
             const g0 = grip.getBoundingClientRect();
-            const go = (y) => ({ bubbles: true, clientX: 40, clientY: y, pointerId: 11 });
-            grip.dispatchEvent(new PointerEvent("pointerdown", go(g0.top + 5)));
+            const w0 = wscard.getBoundingClientRect();
+            const go = (x, y) => ({ bubbles: true, clientX: x, clientY: y, pointerId: 11 });
+            grip.dispatchEvent(new PointerEvent("pointerdown", go(g0.left + 4, g0.top + 5)));
             grip.dispatchEvent(new PointerEvent("pointermove",
-                go(wscard.getBoundingClientRect().top + 4)));
+                go(w0.left + 10, w0.top + 4)));
             grip.dispatchEvent(new PointerEvent("pointerup",
-                go(wscard.getBoundingClientRect().top + 4)));
+                go(w0.left + 10, w0.top + 4)));
             await new Promise(r => setTimeout(r, 150));
             out.orderBefore = beforeOrder;
             out.orderAfter = [...document.querySelectorAll("#sb-mods > .sb-mod")]
@@ -3456,48 +3500,37 @@ const SCENES = {
             delete window.__harness.FIXTURES.viewFile;
             delete active.repoPath;
             renderWorkspace();
-            for (const k of ["lcl-sb-h-preview", "lcl-sb-w-preview",
-                             "lcl-sb-w-files", "lcl-sb-order"])
+            document.getElementById("task-panel").classList.add("hidden");
+            for (const k of ["lcl-sb-grid", "lcl-sb-col-tasks", "lcl-sb-order"])
                 localStorage.removeItem(k);
+            sbApplySizes();
             return out;
         })()`);
-        check("workspace", "GRAB THE CONTAINER'S OWN BOTTOM EDGE: drag up, THAT " +
-            "container shrinks by what was dragged — or down to its own floor, " +
-            "whichever comes first; drag down, it grows. No divider arithmetic " +
-            "deciding some OTHER section moves — 'grab the bottom, or any edge, " +
-            "and drag that containers height'.\n" +
-            "          The floor case is the one that runs here, and it is why " +
-            "this reads as a range rather than a number: the panel is shared " +
-            "out max-min fair now, so a fresh preview opens at its share (267px " +
-            "measured) rather than at a flat 46% of the panel, and 200px of " +
-            "drag reaches the 120px floor before it runs out. Asserting a " +
-            "shrink of 160-240 only held while one module could take nearly " +
-            "half the panel on its own",
-            // EITHER it moved by what was dragged, OR it stopped on its floor.
-            // Which of the two happens depends on how tall the module opened,
-            // and THAT depends on how many modules are open — 267px when this
-            // scene runs alone, 194px after the scenes that open tasks and
-            // activity. A pixel count here was a pin on scene order.
-            (ws.shrank >= ws.draggedBy - 40
-             || ws.shrunkTo <= ws.floorOf + 2)
-            && ws.shrank > 40 && ws.grew > 90 && ws.grew < 150, ws);
-        check("workspace", "...a 900px crush attempt stops at the module's own " +
-            "floor",
-            ws.flooredAt >= 118 && ws.flooredAt <= 140, ws.flooredAt);
-        check("workspace", "GRAB THE SIDE EDGE: the container's WIDTH follows, " +
-            "and the module marks itself narrowed",
-            ws.narrowedBy > 120 && ws.narrowedBy < 200 && ws.narrowedFlag, ws);
-        check("workspace", "...height AND width persist per module",
-            ws.hSaved && ws.wSaved, ws);
-        check("workspace", "a fresh document still opens AT ITS SHARE of the " +
-            "panel, never swallowing it. A 200-line document is ~1,100px of " +
-            "natural height; unbounded it filled the panel and crushed " +
-            "everything else to nothing. Asserted as a FRACTION of the panel: " +
-            "the absolute number is a function of how many modules are open, " +
-            "so a pixel range here was a pin on scene order",
-            ws.openedAtCap >= ws.floorOf
-            && ws.openedAtCap <= Math.round(ws.panelH * 0.62)
-            && ws.openedAtCap < 900, ws);
+        check("workspace", "PREVIEW IS BORN A COLUMN — 'position 5, being " +
+            "Preview and it being its own third column, when active': full " +
+            "height, its own track beside the quadrant, from the moment a " +
+            "document opens",
+            ws.bornColumn, ws);
+        check("workspace", "GRAB A COLUMN'S SIDE EDGE and THAT column's width " +
+            "follows — the drag writes the grid's geometry, not a card's box",
+            ws.colWidenedBy > 40 && ws.colWidenedBy < 200, ws);
+        check("workspace", "A QUADRANT CARD'S BOTTOM EDGE MOVES THE ROW SPLIT " +
+            "— drag toward the panel's floor and the top band grows to match " +
+            "the pointer",
+            ws.rowGrewTo > ws.rowWas + 40, ws);
+        check("workspace", "...and a crush attempt stops at the reading floor " +
+            "the grid rows guarantee — no card is ever dragged out of " +
+            "legibility",
+            ws.flooredAt >= 50 && ws.flooredAt <= 140, ws.flooredAt);
+        check("workspace", "THE SPLITS PERSIST — one lcl-sb-grid record " +
+            "carrying the row split and the column's width, written on " +
+            "release, not per frame",
+            ws.gridSaved, ws);
+        check("workspace", "OWN COLUMN IS ONE CLICK AND ONE CLICK HOME — the " +
+            "card becomes a full-height track ('pop it out into its own " +
+            "column ... a new button on the card'), the choice persists, and " +
+            "the same button returns it to its quadrant slot",
+            ws.colModeFullHeight && ws.colModeSaved && ws.colModeBack, ws);
         check("workspace", "the info CARD is movable but not resizable — an " +
             "info card has a natural size, and a height handle on it would " +
             "only stretch whitespace",
@@ -3510,15 +3543,6 @@ const SCENES = {
             && ws.orderSaved.indexOf("files") > 0
             && ws.orderSaved.indexOf("files") < ws.orderSaved.indexOf("wscard"),
             { before: ws.orderBefore, after: ws.orderAfter });
-        check("workspace", "THE SLACK IS HANDED TO THE FLEX MODULE — its " +
-            "bottom parks on the panel's bottom without the operator sizing " +
-            "it. Existence of sbFillSlack proves nothing; this measures the " +
-            "handoff",
-            ws.slackGap >= -4 && ws.slackGap <= 6, ws.slackGap);
-        check("workspace", "SIDE BY SIDE IS REAL — narrow two modules and " +
-            "they SHARE A ROW: same top, different lefts. Fully modular " +
-            "pick-and-place includes beside, not just above and below",
-            ws.sideBySide, ws);
         await shoot(win, "workspace-modules");
 
         /* ---- the GO strip: three ceilings at once, from the plan's docs ---- */
@@ -4185,6 +4209,122 @@ const SCENES = {
             /\b4 files\b/.test(r.meta), r.meta);
         await shoot(win, "files-default-state");
     },
+    /* THE STUCK APPROVAL, REPRODUCED FROM THE OPERATOR'S OWN SESSION.
+     * "did not complete and prompted me for input, but the prompt never
+     * appeared, it was waiting on something that it never asked me, but said
+     * it was asking me." His session file: user goal → tool message CARRYING
+     * the proposal (run_dev_server, classification execute) → orchestrator
+     * summary saying "Approve it below". The transcript shape is verbatim;
+     * the card must render from it, answerable, every time it paints. */
+    "staged-card": async (win, js) => {
+        const r = await js(`(async () => { try {
+            const stuck = {
+                id: "s-staged", title: "extract the data from this PDF",
+                messages: [
+                    { role: "user", content: "extract the data and build a tool" },
+                    { role: "tool", name: "run_dev_server",
+                      content: "Shown to the user for approval (execute action). It has NOT run. Wait for their decision — do not attempt it another way.",
+                      failed: false, repaired: false, truncatedBody: false, notified: false,
+                      proposal: { kind: "tool", id: "tool-repro-1", tool: "run_dev_server",
+                          args: { dir: "", port: "0" }, digest: "",
+                          classification: "execute", capability: "sys.execute",
+                          capabilityLabel: "Running commands",
+                          sessionId: "s-staged", repoPath: "C:/fake", target: null } },
+                    { role: "assistant",
+                      content: "Paused — an action needs your approval (7 file(s) so far). Approve it below to run it, then send your next message to continue the build.",
+                      meta: { model: "orchestrator", planSteps: 6, files: 7, steps: [] } }
+                ]
+            };
+            const origGetSession = window.__harness.FIXTURES.getSession;
+            window.__harness.FIXTURES.getSession = (id) => id === "s-staged" ? stuck
+                : origGetSession(id);
+            await switchSession("s-staged");
+            await new Promise(r => setTimeout(r, 300));
+            const card = document.querySelector(".tool-approval");
+            const out = {
+                cardRendered: !!card,
+                names: !!card && /run dev server/i.test(card.innerText),
+                saysNothingRan: !!card && /Nothing has run yet/.test(card.innerText),
+                answerable: !!card && [...card.querySelectorAll("button")].length > 0,
+                summaryShown: [...document.querySelectorAll(".msg-row.assistant")]
+                    .some(m => /needs your approval/.test(m.innerText || ""))
+            };
+            // an expired approval (app restarted since staging) answers
+            // HONESTLY instead of spinning — the map in main is gone
+            window.__harness.FIXTURES.approveTool =
+                () => ({ ok: false, error: "unknown or expired proposal" });
+            const btn = card && [...card.querySelectorAll("button")]
+                .find(b => /only this once/i.test(b.innerText));
+            if (btn) { btn.click(); await new Promise(r => setTimeout(r, 250)); }
+            out.expiredHonest = !!card && /Expired \\(the app restarted\\)/.test(card.innerText);
+            // THE LIVE PATH: the turn that ENDS by staging draws the card the
+            // moment its result lands — this is the moment the operator
+            // watched fail ("said it was asking me" with nothing asked)
+            const live = { id: "s-live", title: "live", messages: [] };
+            window.__harness.FIXTURES.getSession = (id) =>
+                id === "s-staged" ? stuck : id === "s-live" ? live : origGetSession(id);
+            window.__harness.FIXTURES.chat = () => ({
+                id: "s-live", title: "live",
+                new_messages: JSON.parse(JSON.stringify(stuck.messages)),
+                changes: []
+            });
+            await switchSession("s-live");
+            await new Promise(r => setTimeout(r, 200));
+            await sendText("extract the data and build a tool", active);
+            await new Promise(r => setTimeout(r, 350));
+            out.liveCard = !!document.querySelector(".tool-approval");
+            out.livePause = [...document.querySelectorAll(".msg-row.assistant")]
+                .some(m => /needs your approval/.test(m.innerText || ""));
+            delete window.__harness.FIXTURES.chat;
+
+            // THE ORPHANED COMPLETION: the renderer lost the turn's reply (a
+            // reload mid-turn, a dropped IPC) — main finished, persisted, and
+            // set the status; nothing in this renderer owns the completion.
+            // The status event alone must land the ask on screen.
+            const orphanState = { current: { id: "s-orphan", title: "orphan", messages: [] } };
+            window.__harness.FIXTURES.getSession = (id) =>
+                id === "s-orphan" ? orphanState.current
+                : id === "s-staged" ? stuck : origGetSession(id);
+            await switchSession("s-orphan");
+            await new Promise(r => setTimeout(r, 200));
+            out.orphanBlankFirst = !document.querySelector(".tool-approval");
+            // ...the turn "finishes" on disk while this renderer holds nothing
+            orphanState.current = { id: "s-orphan", title: "orphan",
+                messages: JSON.parse(JSON.stringify(stuck.messages)) };
+            window.lcl.__fire("onSessionStatus", { sessionId: "s-orphan",
+                state: "approval", detail: "an action needs your approval" });
+            await new Promise(r => setTimeout(r, 350));
+            out.orphanHealed = !!document.querySelector(".tool-approval")
+                && [...document.querySelectorAll(".msg-row.assistant")]
+                    .some(m => /needs your approval/.test(m.innerText || ""));
+
+            window.__harness.FIXTURES.getSession = origGetSession;
+            delete window.__harness.FIXTURES.approveTool;
+            await switchSession("s1");
+            return out;
+        } catch (e) { return { threw: true, stack: String(e.stack).slice(0, 500) }; } })()`);
+        check("staged-card", "A SESSION REOPENED ONTO A STAGED APPROVAL DRAWS THE CARD — " +
+            "the proposal-bearing tool message renders as an answerable approval, " +
+            "with the pause summary beside it, never a claim of asking with " +
+            "nothing asked",
+            r.cardRendered && r.names && r.saysNothingRan && r.answerable
+            && r.summaryShown, r);
+        check("staged-card", "...and an approval whose in-memory record died with an app " +
+            "restart says so HONESTLY on the card — 'Expired (the app restarted) — " +
+            "ask again to re-stage it'",
+            r.expiredHonest, r);
+        check("staged-card", "THE LIVE PATH DRAWS IT TOO — a turn that ends by staging " +
+            "paints the card the moment its result lands, beside the pause summary, " +
+            "with the operator watching",
+            r.liveCard && r.livePause, r);
+        check("staged-card", "AN ORPHANED COMPLETION STILL LANDS — when the renderer " +
+            "lost the turn's reply (reload mid-turn, dropped IPC), the status event " +
+            "alone heals the transcript: the ask appears, instead of a status that " +
+            "says 'asking you' over a transcript that never asks",
+            r.orphanBlankFirst && r.orphanHealed, r);
+        await shoot(win, "staged-card");
+    },
+
     "sidebar-modular": async (win, js) => {
         const r = await js(`(async () => {
             const before = window.__errors.length;
@@ -4199,26 +4339,42 @@ const SCENES = {
             const hasPop = !!(header && header.querySelector(".sb-mod-btn.sb-pop"));
             const hasTitle = !!(header && header.querySelector(".sb-mod-title"));
 
-            // minimize → collapses to the header
+            // minimize → collapses to the header AND drops to the TRAY: a
+            // full-width bar at the bottom of the panel, not a half-empty cell
             header.querySelector(".sb-mod-btn.sb-min").click();
-            await new Promise(r => setTimeout(r, 80));
+            await new Promise(r => setTimeout(r, 120));
+            const tRect = tasks.getBoundingClientRect();
+            const others = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+                .filter(m => m !== tasks && getComputedStyle(m).display !== "none");
             const minimized = tasks.classList.contains("sb-minimized")
-                && Math.round(tasks.getBoundingClientRect().height) <= 26;
-            header.querySelector(".sb-mod-btn.sb-min").click();  // restore
-            await new Promise(r => setTimeout(r, 80));
+                && Math.round(tRect.height) <= 26;
+            const inTray = tasks.style.gridColumn === "1 / -1"
+                && others.every(m => tRect.top >= m.getBoundingClientRect().top - 1);
 
-            // pop out → floats as a fixed card on <body>
+            // pop out STRAIGHT FROM THE TRAY → floats expanded, and the
+            // minimized KEY clears with the class — the desync here booted a
+            // card minimized after a reload though it was left expanded
             header.querySelector(".sb-mod-btn.sb-pop").click();
             await new Promise(r => setTimeout(r, 100));
             const popped = tasks.classList.contains("sb-popped")
                 && getComputedStyle(tasks).position === "fixed"
                 && tasks.parentElement === document.body;
+            const minKeyCleared =
+                localStorage.getItem("lcl-sb-min-tasks") !== "1"
+                && !tasks.classList.contains("sb-minimized");
             const placeholder = !!document.querySelector('.sb-mod-placeholder[data-for="tasks"]');
-            // dock it back
-            tasks.querySelector(".sb-mod-btn.sb-pop").click();
+            // WHILE FLOATING: the pop-out and column buttons are gone — "we
+            // dont need the pop out button when popped out" — and the
+            // MINIMIZE button is the way home
+            const popBtnGone = getComputedStyle(
+                tasks.querySelector(".sb-mod-btn.sb-pop")).display === "none";
+            const colBtnGone = getComputedStyle(
+                tasks.querySelector(".sb-mod-btn.sb-colbtn")).display === "none";
+            tasks.querySelector(".sb-mod-btn.sb-min").click();   // the way home
             await new Promise(r => setTimeout(r, 100));
             const docked = !tasks.classList.contains("sb-popped")
-                && tasks.parentElement.id === "sb-mods";
+                && tasks.parentElement.id === "sb-mods"
+                && !tasks.classList.contains("sb-minimized");
 
             // triple-dot → hide the activity section's VIEW
             document.getElementById("sb-view-menu-btn").click();
@@ -4235,16 +4391,29 @@ const SCENES = {
                 hidView = act.classList.contains("sb-hidden-view");
                 actBox.querySelector("input").click();   // restore
             }
-            return { hasMin, hasPop, hasTitle, minimized, popped, placeholder,
+            return { hasMin, hasPop, hasTitle, minimized, inTray, popped,
+                     placeholder, popBtnGone, colBtnGone, minKeyCleared,
                      docked, menuOpen, rows, hidView, errs: window.__errors.slice(before) };
         })()`);
         check("sidebar-modular", "EVERY SECTION HAS A HEADER BAR — grip title, " +
-            "minimize and pop-out — and driving it throws nothing",
+            "column, minimize and pop-out — and driving it throws nothing",
             r.hasTitle && r.hasMin && r.hasPop && r.errs.length === 0, r);
-        check("sidebar-modular", "MINIMIZE collapses a section to just its header; " +
-            "POP-OUT floats it as a fixed card on the body (leaving a placeholder) " +
-            "and docking returns it",
-            r.minimized && r.popped && r.placeholder && r.docked, r);
+        check("sidebar-modular", "MINIMIZE collapses a section to its header AND " +
+            "drops it to the TRAY — a full-width bar at the bottom of the " +
+            "panel, below every live card, never a half-empty quadrant cell",
+            r.minimized && r.inTray, r);
+        check("sidebar-modular", "POP-OUT floats the card on the body (leaving a " +
+            "placeholder); WHILE FLOATING the pop-out and column buttons are " +
+            "gone and the MINIMIZE button is the way home — 'we dont need the " +
+            "pop out button when popped out, we need the minimize button to " +
+            "minimize the popped out window back into the tray to its slot'",
+            r.popped && r.placeholder && r.popBtnGone && r.colBtnGone
+            && r.docked, r);
+        check("sidebar-modular", "POPPING A TRAY BAR CLEARS THE MINIMIZED KEY with the " +
+            "class — the session's end state and the reload's restored state can " +
+            "never diverge (adversarial review: a stale lcl-sb-min-* booted a card " +
+            "minimized that was left expanded)",
+            r.minKeyCleared, r);
         check("sidebar-modular", "THE TRIPLE-DOT MENU lists the sections and hides " +
             "a section's VIEW without removing it from the dock structure",
             r.menuOpen && r.rows >= 4 && r.hidView, r);
@@ -4257,7 +4426,7 @@ const SCENES = {
             await new Promise(r => setTimeout(r, 80));
             const handle = tasks.querySelector(".sb-h-bottom");
             const hidden = !handle || getComputedStyle(handle).display === "none";
-            tasks.querySelector(".sb-mod-btn.sb-pop").click();  // dock back
+            tasks.querySelector(".sb-mod-btn.sb-min").click();  // the way home
             await new Promise(r => setTimeout(r, 80));
             return hidden;
         })()`);

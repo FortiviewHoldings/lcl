@@ -4146,7 +4146,11 @@ function renderTask(task) {
         taskEls.set(task.id, row);
     }
 
-    if (task.title) row._title.innerText = task.title;
+    if (task.title) {
+        row._title.innerText = task.title;
+        // the full line survives any clipping a narrow quadrant cell does
+        row._title.title = task.title;
+    }
     // mirrors eta.human() in the engine — kept short enough for a progress row
     function fmtDuration(ms) {
         const s = Math.round(ms / 1000);
@@ -4175,6 +4179,9 @@ function renderTask(task) {
             ? ` · ${task.etaBasis === "live" ? "" : "~"}${fmtDuration(task.etaMs)} left`
             : "";
         row._title.innerText = `${task.title || ""} — ${n}/${total} (${pct}%)${eta}`;
+        // the live count and ETA must never be lost to a narrow cell's edge —
+        // the tooltip carries the whole line
+        row._title.title = row._title.innerText;
         row._bar.classList.remove("hidden");
         row._fill.style.width = pct + "%";
     } else {
@@ -4357,8 +4364,14 @@ window.lcl.onProgress((info) => {
                 try {
                     const el = addToolBubble(d0.msg);
                     el.classList.add("live-row");
-                    const t = chat.querySelector(".typing");
-                    if (t) chat.appendChild(t);   // keep the thinking bubble last
+                    // keep the thinking bubble LAST. The selector said ".typing"
+                    // for an era while the class said "msg-typing", so this
+                    // re-append was dead and every live tool row stacked BELOW
+                    // the bubble — burying the only liveness indicator at the
+                    // top of a long turn. Reported: "you keep the thinking
+                    // portion at the top. it doesnt move down as it prints."
+                    const t = chat.querySelector(".msg-typing");
+                    if (t) chat.appendChild(t);
                     scrollToBottom(false);
                 } catch { /* the durable feed above still recorded it */ }
             }
@@ -5172,6 +5185,36 @@ function paintSessionStatus(sessionId, st) {
         // refresh the context ring when a turn finishes — the new tokens
         // from the answer are now in the session's messages
         setTimeout(refreshContextRing, 200);
+    }
+
+    /* AN ORPHANED COMPLETION STILL LANDS. A turn's result is applied by the
+     * sendText call that awaits it — and that promise dies with a renderer
+     * reload or a dropped IPC reply, leaving main's completed turn with no
+     * living code path to paint it: the status line says "an action needs
+     * your approval" while the transcript shows no ask. Reported, verbatim:
+     * "it was waiting on something that it never asked me, but said it was
+     * asking me." The status event is the one signal that always arrives, so
+     * it heals the transcript: when the ACTIVE session settles (idle, failed,
+     * waiting, approval) and no live send in THIS renderer owns it, refetch
+     * from disk and repaint — the staged card, the answer, whatever landed. */
+    const settled = ["idle", "failed", "waiting", "approval"].includes(st.state);
+    if (settled && (!prev || prev.state === "working")
+        && active && active.id === sessionId
+        && !pendingSessions.has(sessionId)) {
+        (async () => {
+            try {
+                const fresh = await window.lcl.getSession(sessionId);
+                if (!fresh || fresh.error) return;
+                if (!active || active.id !== sessionId) return;
+                if ((fresh.messages || []).length !== (active.messages || []).length) {
+                    active.messages = fresh.messages;
+                    if (fresh.changes) active.changes = fresh.changes;
+                    stopProgress();
+                    renderMessages(active.messages);
+                    setControls();
+                }
+            } catch { /* the next open still shows the disk truth */ }
+        })();
     }
 
     if (!row) return;
@@ -6015,32 +6058,26 @@ function fmtBytes(n) {
  *  place, like an actual HERO ... all the contents bound by the workspace
  *  sidebar."
  *
- * So the panel is a stack of MODULES — tasks, activity, the workspace card,
- * files, preview — and this manager owns three things about them:
+ * So the panel is THE QUADRANT DOCK — tasks, the workspace card, activity,
+ * files as 1|2 over 3|4, preview as its own column when active — and this
+ * manager owns three things about the cards:
  *
- *   RESIZE    a full-width divider on every BOUNDARY between two visible
- *             modules. Grab the boundary, drag it; drag down and the section
- *             above grows — the way every splitter anyone has used works.
- *             (The first cut used CSS resize grips: a tiny triangle in each
- *             section's bottom-right corner — the resize handle in the
- *             opposite location from where anyone would expect it, now gone.)
- *   PLACE     drag a module's grip strip to reorder the stack.
- *   REMEMBER  order and every dragged height persist per machine.
+ *   RESIZE    the grid's row and column SPLITS, dragged from any card's
+ *             edges; an own-column card's side edge sets that column's width.
+ *   PLACE     drag a card's grip strip into any slot; DOM order is the grid.
+ *   REMEMBER  order, splits, per-card modes and pop geometry, per machine.
  *
- * Bounds: each module has a floor, and a drag can never push the flex module
- * (files — the slack absorber) below its own. A module whose inner block is
- * hidden takes its divider with it (the CSS :has rule hides the wrapper).
+ * Every live row keeps a 58px reading floor; minimized cards drop to the
+ * tray at the bottom; a card whose inner block is hidden disappears whole
+ * (the CSS :has rule hides the wrapper).
  */
 const SB_MODS = {
-    tasks:    { min: 58 },
-    activity: { min: 72 },
-    wscard:   { fixed: true },          // an info card: moveable, never resized
-    files:    { min: 80, flex: true },  // absorbs whatever the others leave
-    preview:  { min: 120 }
+    wscard: { fixed: true }             // an info card: moveable, never resized
 };
 const SB_ORDER_KEY = "lcl-sb-order";
-const SB_H_KEY = "lcl-sb-h-";
-const SB_W_KEY = "lcl-sb-w-";
+// lcl-sb-h-*/lcl-sb-w-* (per-card px sizes) belonged to the wrapping-row
+// era; the grid persists its geometry as splits under lcl-sb-grid instead.
+// Old keys are simply ignored — stale values must never shape the quadrant.
 const SB_MIN_W = 140;
 
 const sbModEls = () => [...$("sb-mods").querySelectorAll(":scope > .sb-mod")];
@@ -6051,7 +6088,13 @@ const sbKey = (m) => m.dataset.mod;
 function sbApplyOrder() {
     let order = null;
     try { order = JSON.parse(localStorage.getItem(SB_ORDER_KEY) || "null"); } catch { }
-    if (!Array.isArray(order)) return;
+    // THE DEFAULT QUADRANT, in the operator's own numbering: "top left =
+    // position 1, top right = 2, bottom left = 3, bottom right = 4 ...
+    // 1 = Tasks, 2 = Workspace, 3 = Activity, 4 = Files" — with Preview as
+    // its own column when active. Grid placement is DOM order, row-major, so
+    // the order array IS the quadrant. A saved order still wins: positions
+    // are "the suggested default by me", not a cage.
+    if (!Array.isArray(order)) order = ["tasks", "wscard", "activity", "files", "preview"];
     const host = $("sb-mods");
     for (const key of order) {
         const el = sbModEls().find(m => sbKey(m) === key);
@@ -6059,104 +6102,59 @@ function sbApplyOrder() {
     }
 }
 
+/* ======================= THE QUADRANT DOCK =======================
+ * "i feel like ordering is important here ... the right side bar should be a
+ * quadrant, like a true hero section card would be. right now all the borders
+ * touch, i would rather them be their own containers, within that sidepanel."
+ *
+ * The dock is a GRID now. Quadrant cards take the 2-wide grid in DOM order —
+ * row-major, so the saved order IS the operator's 1|2 / 3|4 numbering. A card
+ * expanded into its OWN COLUMN (.sb-col) becomes a full-height track beside
+ * the quadrant — Preview is born that way ("position 5, being Preview and it
+ * being its own third column, when active"). Minimized cards drop to the
+ * bottom of the panel as full-width header bars: the tray. Resize handles
+ * survived the change by moving up a level: they drag the grid's row and
+ * column SPLITS (and an own-column card's width) instead of one card's box.
+ */
+const SB_GRID_KEY = "lcl-sb-grid";
+function sbGrid() {
+    try {
+        const g = JSON.parse(localStorage.getItem(SB_GRID_KEY) || "{}") || {};
+        return {
+            rowSplit: Number.isFinite(+g.rowSplit) && +g.rowSplit > 0 ? +g.rowSplit : 50,
+            colSplit: Number.isFinite(+g.colSplit) && +g.colSplit > 0 ? +g.colSplit : 50,
+            colW: (g.colW && typeof g.colW === "object") ? g.colW : {}
+        };
+    } catch { return { rowSplit: 50, colSplit: 50, colW: {} }; }
+}
+function sbSaveGrid(g) {
+    try { localStorage.setItem(SB_GRID_KEY, JSON.stringify(g)); } catch { }
+}
+
+const SB_COL_KEY = "lcl-sb-col-";
+const SB_COL_DEFAULT = { preview: true };
+function sbColOn(key) {
+    let v = null; try { v = localStorage.getItem(SB_COL_KEY + key); } catch { }
+    if (v === "1") return true;
+    if (v === "0") return false;
+    return !!SB_COL_DEFAULT[key];
+}
+
 function sbApplySizes() {
     for (const m of sbModEls()) {
-        const spec = SB_MODS[sbKey(m)] || {};
-        m.style.flex = "0 0 auto";
-        let h = null, w = null;
-        try {
-            h = Number(localStorage.getItem(SB_H_KEY + sbKey(m)));
-            w = Number(localStorage.getItem(SB_W_KEY + sbKey(m)));
-        } catch { }
-        if (spec.fixed) { m.style.height = ""; }
-        else if (Number.isFinite(h) && h > 0) {
-            m.style.height = Math.max(spec.min || 58, h) + "px";
-            // an explicit height is INTENT — the layout-level 46% cap is for
-            // modules opening at natural content height, not for a drag the
-            // operator is making on purpose
-            m.classList.add("sb-sized");
-        } else {
-            m.style.height = "";
-            m.classList.remove("sb-sized");
-        }
-        if (Number.isFinite(w) && w >= SB_MIN_W) {
-            // clamp a restored width to the panel it is restoring INTO — the
-            // width was saved against some other panel width, and unclamped
-            // it pushes the module's own left-edge handles off-canvas
-            const panelW = $("sb-mods").clientWidth;
-            const wc = panelW > 0 ? Math.min(w, panelW) : w;
-            m.style.width = wc + "px";
-            m.classList.toggle("sb-narrowed", !(panelW > 0) || wc < panelW - 2);
-        } else {
-            m.style.width = ""; m.classList.remove("sb-narrowed");
-        }
+        m.classList.toggle("sb-col", sbColOn(sbKey(m)));
     }
     sbFillSlack();
 }
 
-/**
- * THE FLEX MODULE STILL ABSORBS THE SLACK — measured, not flexed. In the old
- * column layout `flex: 1 1 auto` made files soak up leftover height; the
- * panel is a WRAPPING ROW now (side-by-side is real), where flex-grow means
- * width, not height. So: if the operator has not sized files themself, put it
- * at its floor, measure the gap left under the stack, and give the gap to it.
- * rAF-debounced; called after size/order changes and whenever anything in the
- * panel shows or hides.
- */
-/* ==================================================== SHARING OUT THE PANEL
- *
- * When activities or tasks start while more sidebar items are open, the panel
- * gets so compressed that the tasks and activities are no longer visible.
- *
- * MEASURED, driving the real renderer with every module open and both feeds
- * running (panel 702px tall):
- *
- *     tasks      175px      natural height, capped at 46%
- *     activity   199px      natural height, capped at 46%
- *     wscard     166px      fixed card
- *     files       80px      ITS FLOOR — one row of one file visible
- *     preview     87px      header and a sliver
- *                ----
- *                707px      in a 702px panel
- *
- * The old rule was `max-height: 46%` on everything except files, and files
- * absorbed "the slack". Three modules opening at their natural height ate
- * 540 of 702 pixels between them, in DOM ORDER, and the two that mattered got
- * whatever was left — which was nothing. 46% each across five modules is 230%
- * of the panel; the arithmetic was never going to work.
- *
- * So nobody takes their natural height by right. Every module states what it
- * wants and the smallest height it can still be READ at, and the panel is
- * shared out max-min fair: raise a ceiling until the total fits, and anyone
- * already below the ceiling keeps what they asked for. Small modules are
- * never trimmed to make room for big ones; big ones converge on an equal
- * share. A height the operator DRAGGED is intent and is never touched — it
- * comes off the budget before anyone else is measured.
- */
+/* The max-min fair share-out (sbShareOut) and its measured essay lived here
+ * for the wrapping-row era. The dock is a grid now: tracks do the dividing,
+ * splits are the operator's dragged geometry, and nothing is measured to be
+ * shared out. sbFillSlack keeps its name and its rAF debounce because every
+ * caller and observer still speaks it. */
 let sbFillPending = false;
-let sbSeenVisible = null;         // which modules were on screen last pass
-let sbApplying = false;           // true while this function writes heights
+let sbApplying = false;           // true while the layout pass writes style
 
-/**
- * Max-min fair division.
- *
- * Finds the ceiling L where everyone under it keeps what they wanted and
- * everyone over it is trimmed to L, subject to never going below `min`.
- * Bisection rather than the closed form: the floors make it piecewise and
- * forty halvings lands inside a tenth of a pixel.
- */
-function sbShareOut(items, budget) {
-    const hard = items.reduce((a, i) => a + i.min, 0);
-    if (hard >= budget) return items.map(i => i.min);   // it scrolls; say so above
-    let lo = 0, hi = Math.max(...items.map(i => i.want), budget);
-    for (let k = 0; k < 40; k++) {
-        const mid = (lo + hi) / 2;
-        const sum = items.reduce(
-            (a, i) => a + Math.min(i.want, Math.max(mid, i.min)), 0);
-        if (sum > budget) hi = mid; else lo = mid;
-    }
-    return items.map(i => Math.floor(Math.min(i.want, Math.max(lo, i.min))));
-}
 
 function sbFillSlack() {
     if (sbFillPending) return;
@@ -6168,109 +6166,93 @@ function sbFillSlack() {
     });
 }
 
-function sbFillSlackNow() {
-    {
-        const host = document.getElementById("sb-mods");
-        // clientWidth 0 = the panel is collapsed (its grid column is closed
-        // but, unlike display:none, it keeps its height) or mid-slide — a
-        // measurement in that state wraps every module onto its own row and
-        // bakes a nonsense height that reopening never corrects
-        if (!host || !host.clientHeight || !host.clientWidth) return;
+function sbFillSlackNow() { sbLayout(); }
 
-        const vis = sbVisibleMods();
-        if (!vis.length) return;
-        let budget = host.clientHeight;
-        const pool = [];
+/**
+ * THE GRID, laid. Quadrant cards take the 2-wide grid row-major in DOM
+ * order; own-column cards become full-height tracks beside it; minimized
+ * cards drop to auto rows at the bottom as the tray. Splits come from the
+ * dragged geometry in sbGrid(); gOverride lets a live drag paint every
+ * frame without writing storage until pointerup.
+ */
+function sbLayout(gOverride) {
+    const host = document.getElementById("sb-mods");
+    // clientWidth 0 = the panel is collapsed or mid-slide — a layout written
+    // in that state is nonsense the reopen never corrects
+    if (!host || !host.clientHeight || !host.clientWidth) return;
+    const vis = sbVisibleMods().filter(m => !m.classList.contains("sb-popped"));
+    if (!vis.length) return;
+    const g = gOverride || sbGrid();
+    const minim = vis.filter(m => m.classList.contains("sb-minimized"));
+    const live = vis.filter(m => !m.classList.contains("sb-minimized"));
+    const cols = live.filter(m => m.classList.contains("sb-col"));
+    const quad = live.filter(m => !m.classList.contains("sb-col"));
+    const R = Math.max(1, Math.ceil(quad.length / 2));
 
-        for (const m of vis) {
-            const key = sbKey(m);
-            const spec = SB_MODS[key] || {};
-            let userH = 0;
-            try { userH = Number(localStorage.getItem(SB_H_KEY + key)); } catch { }
-            // A DRAGGED HEIGHT IS INTENT and a fixed card is a fixed card.
-            // Both are spent before anything else is measured.
-            //
-            // .sb-sized IS CHECKED TOO, AND IT IS THE ONE THAT MATTERS DURING A
-            // DRAG. The drag adds that class on the first pointermove and only
-            // writes localStorage on pointerup, so between those two moments a
-            // module is being dragged and looks unsized — and the observer that
-            // the drag itself wakes would hand its height back to the divider,
-            // fighting the operator mid-gesture.
-            if (userH > 0 || spec.fixed || m.classList.contains("sb-sized")) {
-                budget -= m.getBoundingClientRect().height;
-                continue;
-            }
-            // natural height, measured with our own cap lifted so the reading
-            // is the CONTENT's, not the last allocation's
-            m.style.maxHeight = "none";
-            m.style.height = "auto";
-            pool.push({ el: m, key, spec });
-        }
-        if (!pool.length) return;
-
-        for (const p of pool) {
-            // never let one enormous module (a 3,000-file listing) distort the
-            // division: nothing can WANT more than the whole panel
-            p.want = Math.min(p.el.scrollHeight || p.el.offsetHeight,
-                              host.clientHeight);
-            p.min = p.spec.min || 58;
-            // and nothing can want less than it can be read at
-            if (p.want < p.min) p.want = p.min;
-        }
-
-        const heights = sbShareOut(pool, Math.max(0, budget));
-        // ...and if everyone got what they asked for there is slack left over.
-        // It goes to the module built to absorb it, which is the file list.
-        let used = heights.reduce((a, h) => a + h, 0);
-        const slack = Math.floor(budget - used);
-        if (slack > 0) {
-            const i = pool.findIndex(p => p.spec.flex);
-            if (i >= 0) heights[i] += slack;
-        }
-
-        // NOTHING IS WRITTEN THAT IS ALREADY TRUE. An idempotent pass is what
-        // lets the observer above stay broad: re-measuring costs a reflow and
-        // ends there, instead of dirtying an attribute and waking itself.
-        {
-            pool.forEach((p, i) => {
-                const want = heights[i] + "px";
-                if (p.el.style.height !== want) p.el.style.height = want;
-                // the share-out IS the cap now — the 46% rule only governs the
-                // frame before this first runs
-                if (p.el.style.maxHeight !== "none") p.el.style.maxHeight = "none";
-            });
-        }
-
-        /* A MODULE THAT STARTS WORKING SAYS SO.
-         *
-         * When the floors do not fit the panel it scrolls — correct, nothing
-         * is crushed — but then a feed that begins mid-turn can open below the
-         * fold with nothing to draw the eye. Anything newly on screen is
-         * scrolled to, once, the first time it appears. */
-        const now = new Set(vis.map(sbKey));
-        if (sbSeenVisible && host.scrollHeight > host.clientHeight + 1) {
-            const fresh = vis.find(m => !sbSeenVisible.has(sbKey(m)));
-            if (fresh) {
-                try { fresh.scrollIntoView({ block: "nearest", behavior: "smooth" }); }
-                catch { fresh.scrollIntoView(false); }
-            }
-        }
-        sbSeenVisible = now;
+    const tracks = [];
+    // one card gets ONE column — an empty second track is a dead hole, not
+    // a quadrant
+    if (quad.length === 1) tracks.push("minmax(0, 1fr)");
+    else if (quad.length) {
+        const a = Math.max(15, Math.min(85, g.colSplit));
+        tracks.push("minmax(0, " + a + "fr)", "minmax(0, " + (100 - a) + "fr)");
     }
+    for (const m of cols) {
+        // no quadrant on screen: the columns simply share the panel — a saved
+        // px width against nothing to trade with left-anchors a lone column
+        // beside dead space
+        if (!quad.length) { tracks.push("minmax(0, 1fr)"); continue; }
+        const w = Number(g.colW[sbKey(m)]);
+        if (Number.isFinite(w) && w >= SB_MIN_W) {
+            // clamped against the LIVE panel, not the panel the width was
+            // saved against — an 864px record from a wide monitor must never
+            // crush the quadrant's fr tracks to zero on a narrow one
+            const wc = Math.min(Math.round(w), Math.round(host.clientWidth * 0.75));
+            tracks.push("minmax(" + SB_MIN_W + "px, " + wc + "px)");
+        } else tracks.push("minmax(0, 100fr)");
+    }
+    host.style.gridTemplateColumns = tracks.join(" ");
+
+    const rows = [];
+    // no live rows when everything is minimized — the tray starts at the top
+    // instead of floating under an empty stretch
+    if (live.length) {
+        if (R === 1) rows.push("minmax(0, 1fr)");
+        else if (R === 2) {
+            const a = Math.max(15, Math.min(85, g.rowSplit));
+            rows.push("minmax(58px, " + a + "fr)", "minmax(58px, " + (100 - a) + "fr)");
+        } else { for (let i = 0; i < R; i++) rows.push("minmax(58px, 1fr)"); }
+    }
+    for (const _ of minim) rows.push("auto");
+    host.style.gridTemplateRows = rows.join(" ");
+
+    const quadCols = quad.length === 1 ? 1 : (quad.length ? 2 : 0);
+    quad.forEach((m, i) => {
+        m.style.gridColumn = String((i % 2) + 1);
+        m.style.gridRow = String(Math.floor(i / 2) + 1);
+        m.style.height = ""; m.style.width = ""; m.style.maxHeight = "";
+    });
+    cols.forEach((m, i) => {
+        m.style.gridColumn = String(quadCols + i + 1);
+        m.style.gridRow = "1 / span " + R;
+        m.style.height = ""; m.style.width = ""; m.style.maxHeight = "";
+    });
+    const trayBase = live.length ? R : 0;
+    minim.forEach((m, i) => {
+        m.style.gridColumn = "1 / -1";
+        m.style.gridRow = String(trayBase + i + 1);
+        m.style.width = ""; m.style.maxHeight = "";
+    });
 }
 
 /**
- * EDGE HANDLES — the container's own edges, not a separate bar.
+ * EDGE HANDLES — still the container's own edges, now driving the GRID.
  *
- * The requirement: grab the bottom, or any edge, and drag that container's
- *  height and width. The divider system resized the boundary's FIXED side,
- *  which from the user's point of view meant grabbing below one section sometimes
- *  resized a different one — the drag acted inverse to expectation. So the
- *  handles belong to the CONTAINER now: grab a module's bottom edge and drag
- *  down, THAT module gets taller; grab its side edge, THAT module gets
- *  narrower or wider; the corner does both. When the stack outgrows the panel
- *  the panel scrolls — no module is ever crushed to make room, which is what
- *  the layout-level floors are for.
+ * "the click to resize works" — so resizing survived the quadrant, one level
+ * up: dragging a quadrant card's bottom edge moves the ROW split the whole
+ * grid shares; dragging its side edge moves the COLUMN split; dragging an
+ * own-column card's side edge sets THAT column's width. Live drags paint
+ * through sbLayout(gLive) every frame and write storage once, on release.
  */
 function sbAttachHandles(mod) {
     const spec = SB_MODS[sbKey(mod)] || {};
@@ -6288,52 +6270,71 @@ function sbAttachHandles(mod) {
         handle.classList.add("dragging");
         const r0 = mod.getBoundingClientRect();
         const x0 = e.clientX, y0 = e.clientY;
-        const panelW = $("sb-mods").clientWidth;
+        const gLive = sbGrid();
+        // THE DRAG IS A DELTA ON THE STARTING GEOMETRY. The first cut mapped
+        // the pointer's ABSOLUTE position to the split — correct only when
+        // the grabbed edge IS the boundary, so 11 of the 13 handles
+        // teleported the split to its clamp on the first pixel of drag
+        // (adversarial review, confirmed). The split now moves by what the
+        // pointer moved, measured against the QUADRANT'S OWN SPAN — not the
+        // whole host, whose width includes column tracks, gaps and padding.
+        const g0 = { rowSplit: gLive.rowSplit, colSplit: gLive.colSplit,
+                     colW: Number(gLive.colW[sbKey(mod)]) || r0.width };
+        const quadSpan = (() => {
+            const qs = sbVisibleMods().filter(m =>
+                !m.classList.contains("sb-popped")
+                && !m.classList.contains("sb-minimized")
+                && !m.classList.contains("sb-col"));
+            if (!qs.length) return null;
+            let L = Infinity, T = Infinity, R = 0, B = 0;
+            for (const q of qs) {
+                const r = q.getBoundingClientRect();
+                L = Math.min(L, r.left); T = Math.min(T, r.top);
+                R = Math.max(R, r.right); B = Math.max(B, r.bottom);
+            }
+            return { w: R - L, h: B - T };
+        })();
         const move = (ev) => {
-            if (wantH) {
-                const h = Math.max(spec.min || 58, r0.height + (ev.clientY - y0));
-                mod.style.height = h + "px";
-                mod.style.flex = "0 0 auto";
-                // lift the natural-height cap the moment the drag starts —
-                // a deliberate drag goes as far as the operator takes it,
-                // and the panel scrolls if that is past the bottom
-                mod.classList.add("sb-sized");
+            const host = $("sb-mods");
+            const hr = host.getBoundingClientRect();
+            if (!hr.width || !hr.height) return;
+            if (wantH && quadSpan && quadSpan.h > 40) {
+                gLive.rowSplit = Math.max(15, Math.min(85,
+                    g0.rowSplit + ((ev.clientY - y0) / quadSpan.h) * 100));
             }
             if (wantW) {
-                // the side handle is on the INNER (left) edge: dragging it
-                // left widens the container toward the chat, right narrows it
-                const w = Math.max(SB_MIN_W,
-                    Math.min(panelW, r0.width - (ev.clientX - x0)));
-                mod.style.width = w + "px";
-                mod.classList.toggle("sb-narrowed", w < panelW - 2);
+                if (mod.classList.contains("sb-col")) {
+                    // the handle is the card's left edge: dragging LEFT
+                    // widens the column — a delta on its starting width, so
+                    // the grab never leaps, whatever the card is anchored to
+                    gLive.colW[sbKey(mod)] = Math.max(SB_MIN_W,
+                        Math.min(Math.round(hr.width * 0.75),
+                                 Math.round(g0.colW - (ev.clientX - x0))));
+                } else if (quadSpan && quadSpan.w > 40) {
+                    gLive.colSplit = Math.max(15, Math.min(85,
+                        g0.colSplit + ((ev.clientX - x0) / quadSpan.w) * 100));
+                }
             }
+            sbLayout(gLive);
         };
         const up = () => {
             try { handle.releasePointerCapture(e.pointerId); } catch { }
             handle.classList.remove("dragging");
             handle.removeEventListener("pointermove", move);
             handle.removeEventListener("pointerup", up);
-            try {
-                if (wantH) localStorage.setItem(SB_H_KEY + sbKey(mod),
-                    String(Math.round(mod.getBoundingClientRect().height)));
-                if (wantW) {
-                    const w = Math.round(mod.getBoundingClientRect().width);
-                    if (w >= panelW - 2) localStorage.removeItem(SB_W_KEY + sbKey(mod));
-                    else localStorage.setItem(SB_W_KEY + sbKey(mod), String(w));
-                }
-            } catch { }
+            sbSaveGrid(gLive);
             sbFillSlack();
         };
         handle.addEventListener("pointermove", move);
         handle.addEventListener("pointerup", up);
     };
     if (!spec.fixed) {
-        const b = mk("sb-h-bottom", "Drag to resize this section's height");
+        const b = mk("sb-h-bottom", "Drag the grid's row split");
         b.addEventListener("pointerdown", (e) => startDrag(e, b, false, true));
-        const c = mk("sb-h-corner", "Drag to resize this section");
+        const c = mk("sb-h-corner", "Drag both of the grid's splits");
         c.addEventListener("pointerdown", (e) => startDrag(e, c, true, true));
     }
-    const sde = mk("sb-h-side", "Drag to resize this section's width");
+    const sde = mk("sb-h-side", "Drag the column boundary");
     sde.addEventListener("pointerdown", (e) => startDrag(e, sde, true, false));
 }
 
@@ -6366,11 +6367,11 @@ function sbGripDrag(e, mod) {
                 : ev.clientY < r.top + r.height / 2;
             if (before
                 && mod.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_PRECEDING) {
-                other.before(mod); break;
+                other.before(mod); sbLayout(); break;
             }
             if (!before
                 && mod.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING) {
-                other.after(mod); break;
+                other.after(mod); sbLayout(); break;
             }
         }
     };
@@ -6446,17 +6447,30 @@ function sbBuildHeader(mod) {
         b.addEventListener("click", (e) => { e.stopPropagation(); fn(); });
         head.appendChild(b);
     };
-    // pop-out / dock-back (toggles)
+    // own column: the middle life between a quadrant slot and a floating
+    // card — "pop it out into its own column ... that should be a new button
+    // on the card". Full height, still in the dock, no floating real estate.
+    mkBtn("sb-colbtn", "Expand into its own full-height column",
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="4" y="4" width="16" height="16" rx="1"/><line x1="14" y1="4" x2="14" y2="20"/></svg>',
+        () => sbToggleCol(mod));
+    // pop-out (dock-back lives on the minimize button while floating)
     mkBtn("sb-pop", "Pop out as a floating card",
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
         'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M14 4h6v6"/><path d="M20 4l-8 8"/><path d="M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/></svg>',
         () => sbTogglePop(mod));
-    // minimize / expand (toggles)
+    // minimize / expand — and on a FLOATING card, the dock-back control:
+    // "we dont need the pop out button when popped out, we need the minimize
+    // button to minimize the popped out window back into the tray to its slot"
     mkBtn("sb-min", "Minimize to the header",
         '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
         'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></svg>',
-        () => sbToggleMin(mod));
+        () => {
+            if (mod.classList.contains("sb-popped")) { sbDock(mod); return; }
+            sbToggleMin(mod);
+        });
 
     // the old bare grip strip, if present, is replaced by this header
     const oldGrip = mod.querySelector(":scope > .sb-mod-grip");
@@ -6464,10 +6478,51 @@ function sbBuildHeader(mod) {
     mod.insertBefore(head, mod.firstChild);
 }
 
-function sbToggleMin(mod) {
-    const on = mod.classList.toggle("sb-minimized");
+/**
+ * MINIMIZED IS A CLASS AND A KEY, MOVED TOGETHER. Column mode and pop-out
+ * both expand a minimized card; when they stripped only the class, the stale
+ * key resurrected a tray bar on reload that the operator had left expanded —
+ * the session's end state and the restored state diverged. Every path that
+ * changes the minimized STATE goes through here.
+ */
+function sbSetMin(mod, on) {
+    mod.classList.toggle("sb-minimized", on);
     try { localStorage.setItem(SB_MIN_KEY + sbKey(mod), on ? "1" : "0"); } catch { }
+}
+function sbToggleMin(mod) {
+    sbSetMin(mod, !mod.classList.contains("sb-minimized"));
+    sbPaintModBtns(mod);
     sbFillSlack();
+}
+
+/** Own-column mode: a full-height track in the dock, toggled per card. */
+function sbToggleCol(mod) {
+    const on = mod.classList.toggle("sb-col");
+    try { localStorage.setItem(SB_COL_KEY + sbKey(mod), on ? "1" : "0"); } catch { }
+    // a card entering its own column has the whole height — nothing to hide,
+    // and the minimized KEY clears with the class or a reload brings it back
+    if (on) sbSetMin(mod, false);
+    sbPaintModBtns(mod);
+    sbFillSlack();
+}
+
+/** The header buttons say what they will DO from this state. */
+function sbPaintModBtns(mod) {
+    const popped = mod.classList.contains("sb-popped");
+    const minB = mod.querySelector(":scope > .sb-mod-head .sb-min");
+    if (minB) {
+        minB.title = popped
+            ? "Return this card to its slot in the dock"
+            : mod.classList.contains("sb-minimized")
+                ? "Expand from the header" : "Minimize to the header";
+        minB.setAttribute("aria-label", minB.title);
+    }
+    const colB = mod.querySelector(":scope > .sb-mod-head .sb-colbtn");
+    if (colB) {
+        colB.title = mod.classList.contains("sb-col")
+            ? "Return to the quadrant" : "Expand into its own full-height column";
+        colB.setAttribute("aria-label", colB.title);
+    }
 }
 
 /* pop a module OUT of the dock into a floating, draggable card */
@@ -6476,7 +6531,7 @@ function sbTogglePop(mod) {
     const key = sbKey(mod);
     const r = mod.getBoundingClientRect();
     mod.classList.add("sb-popped");
-    mod.classList.remove("sb-minimized");
+    sbSetMin(mod, false);      // the key clears WITH the class — see sbSetMin
     // a placeholder holds its spot in the dock so order/return is stable
     const ph = document.createElement("div");
     ph.className = "sb-mod-placeholder";
@@ -6517,6 +6572,7 @@ function sbTogglePop(mod) {
         ro.observe(mod);
         mod._popRO = ro;
     } catch { /* no ResizeObserver: size still saves on drag-end */ }
+    sbPaintModBtns(mod);
     sbFillSlack();
 }
 function sbDock(mod) {
@@ -6528,6 +6584,7 @@ function sbDock(mod) {
         || document.querySelector('.sb-mod-placeholder[data-for="' + key + '"]');
     if (ph) ph.replaceWith(mod); else $("sb-mods").appendChild(mod);
     try { localStorage.removeItem(SB_POP_KEY + key); } catch { }
+    sbPaintModBtns(mod);
     sbApplySizes();
     sbFillSlack();
 }
@@ -6571,6 +6628,7 @@ function sbApplyModStates() {
     for (const m of sbModEls().concat([...document.querySelectorAll("body > .sb-mod")])) {
         const key = sbKey(m);
         m.classList.toggle("sb-hidden-view", hidden.has(key));
+        m.classList.toggle("sb-col", sbColOn(key));
         let mn = "0"; try { mn = localStorage.getItem(SB_MIN_KEY + key) || "0"; } catch { }
         m.classList.toggle("sb-minimized", mn === "1" && !m.classList.contains("sb-popped"));
         // POP STATE SURVIVES A RELOAD: a saved pop record whose module is
@@ -6581,6 +6639,7 @@ function sbApplyModStates() {
             try { pop = localStorage.getItem(SB_POP_KEY + key); } catch { }
             if (pop) sbTogglePop(m);
         }
+        sbPaintModBtns(m);
     }
 }
 
@@ -11413,6 +11472,34 @@ async function legacyKnowledgeInventory() {
     return { libs, api: "legacy" };
 }
 
+/**
+ * THE BADGE ON THE MENU. "a badge that appears in the knowledge dropdown,
+ * prefixing the Knowledge button ... when there is knowledge in the source
+ * list, that is not downloaded to the machine." The count is the FETCHABLE
+ * number — missing sources with a recorded URL, exactly what Download-all
+ * will act on — so the badge never promises what no button can deliver.
+ * Painted at boot from the cheap count, and again from every inventory
+ * refresh and finished batch.
+ */
+function kbPaintBadge(fetchable) {
+    const b = $("kb-badge");
+    if (!b) return;
+    const n = Number(fetchable) || 0;
+    b.innerText = n > 99 ? "99+" : String(n);
+    b.title = n
+        ? n + " shipped source" + (n === 1 ? "" : "s") +
+          " not downloaded to this machine yet"
+        : "";
+    b.classList.toggle("hidden", n <= 0);
+}
+async function kbBadgeFromBoot() {
+    if (typeof window.lcl.knowledgeMissingCount !== "function") return;
+    try {
+        const r = await window.lcl.knowledgeMissingCount();
+        if (r && !r.error) kbPaintBadge(r.fetchable);
+    } catch { /* the badge just stays hidden */ }
+}
+
 // the last Download-all outcome, keyed by library — refreshKnowledge rebuilds
 // the panel, so a note appended to the old DOM would die instantly; the render
 // re-attaches this instead
@@ -11471,9 +11558,20 @@ async function refreshKnowledge() {
     const list = $("kb-list");
     $("kb-error").classList.add("hidden");
     list.innerHTML = "";
+    // SAY IT IS WORKING. The wipe above used to be followed by a silent await
+    // on the whole inventory — the panel frame appeared instantly and then
+    // sat BLANK for the entire walk, which reads as "takes really long to
+    // open". The wait is the same; now it is a wait with a face.
+    list.appendChild(loadingNote("reading the shelf…", "kb-empty"));
 
     const inv = await loadKnowledgeInventory();
     const libs = inv.libs || [];
+    list.innerHTML = "";
+    // the panel now knows the truth the badge estimates — repaint it in
+    // passing, and every finished batch lands here too via its own refresh
+    kbPaintBadge(libs.filter(l => !l.addedByUser)
+        .reduce((a, l) => a + l.docs.filter(
+            d => !d.sourceOnDisk && d.sourceUrl).length, 0));
 
     if (!libs.length) {
         const empty = document.createElement("div");
@@ -11633,14 +11731,26 @@ function buildLibraryGroup(lib) {
         // download with one button to download all, not just one of the
         // knowledge sources." The button only STARTS the module-owned batch
         // (kbStartBatch) — see the runner above for why ownership matters.
+        //
+        // THE COUNT IS THE FETCHABLE COUNT. The label used to say
+        // sourcesMissing (every absent doc) while the batch only ever
+        // attempted the absent-WITH-URL ones — with sources.json missing the
+        // button could promise (62) and the batch attempt zero. The number on
+        // the button is now the number of downloads the click will start, the
+        // badge shows the same number, and a fresh patch that records new
+        // URLs re-arms a button that had gone quiet.
+        const fetchable = lib.docs.filter(d => !d.sourceOnDisk && d.sourceUrl).length;
         const all = document.createElement("button");
         all.className = "primary small kb-fetch-all";
-        all.title = "Fetch every missing source document for this library";
         const live = kbBatch && kbBatch.libId === lib.id && !kbBatch.finished;
         all.innerText = live
             ? "Downloading " + kbBatch.n + "/" + kbBatch.total + " — " + kbBatch.current + "…"
-            : "Download all (" + lib.sourcesMissing + ")";
-        all.disabled = !!live;
+            : "Download all (" + fetchable + ")";
+        all.disabled = !!live || (!live && fetchable === 0);
+        all.title = fetchable || live
+            ? "Fetch every missing source document for this library"
+            : lib.sourcesMissing + " missing, but no download URLs are " +
+              "recorded for them — a patch that records the URLs re-enables this";
         all.addEventListener("click", () => { kbStartBatch(lib); });
         actions.appendChild(all);
     }
@@ -17637,6 +17747,10 @@ async function openEscalation() {
     // to another machine, not a local API call
     pollNodeBars();
     setInterval(pollNodeBars, 8000);
+
+    // the knowledge badge: shipped sources not yet on this machine, known at
+    // boot without opening anything — the count is ~64 stats, not the inventory
+    kbBadgeFromBoot();
 
     // A SPEND WINDOW ROLLS OVER ON A CLOCK, not on a user action. Left idle
     // across a five-hour boundary, the plan ring and GO strip kept showing the

@@ -234,6 +234,8 @@ contextBridge.exposeInMainWorld("lcl", {
     // three the panel falls through to the older calls and an uninstalled source
     // can only be reported as "not on disk", which is the defect, not the state.
     knowledgeLibraries: () => ipcRenderer.invoke("lcl:knowledgeLibraries"),
+    // the badge's number, cheap enough to ask at boot — never the inventory
+    knowledgeMissingCount: () => ipcRenderer.invoke("lcl:knowledgeMissingCount"),
     openKnowledgeDoc: (id) => ipcRenderer.invoke("lcl:openKnowledgeDoc", id),
     fetchKnowledgeSource: (id) => ipcRenderer.invoke("lcl:fetchKnowledgeSource", id),
     // the renderer accepts either name (`fetchKnowledgeSource || fetchKnowledgeDoc`);
