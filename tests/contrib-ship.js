@@ -51,12 +51,39 @@ check("CONTRIBUTORS ONLY, decided by facts not flags — gh auth status, " +
     && sec.includes("missing.push(")
     && sec.includes('fs.existsSync(path.join(p0, ".git"))'), null);
 
-check("THE IDENTITY IS READ, NOT TYPED — the checkout's git config first, " +
-      "then the gh account's noreply address; the fields the operator used " +
-      "to paste by hand",
-    sec.includes('["config", "user.name"]')
-    && sec.includes('["config", "user.email"]')
-    && sec.includes("@users.noreply.github.com"), null);
+check("THE COMMIT EMAIL IS ALWAYS THE GH NOREPLY — the first cut preferred " +
+      "git config's email, which was the operator's PRIVATE address: GitHub " +
+      "rejected the push with GH007 (email privacy), twice, and the audit " +
+      "tail named it. The noreply is built from the gh account whenever a " +
+      "login exists; config email survives only for the no-gh case that " +
+      "cannot ship anyway, and config supplies the display name only",
+    sec.includes("GH007")
+    && sec.includes("@users.noreply.github.com")
+    && sec.includes('["config", "user.name"]')
+    && sec.indexOf("@users.noreply.github.com")
+        < sec.indexOf('["config", "user.email"]'), null);
+
+/* "reading the diff is INSANELY slow, and has absolutely no insight to what
+ * the fuck is going on or the total progress ... it should lock out those
+ * fields, until the auto text generator runs. and that should have a
+ * visualization" */
+check("THE DRAFT IS WATCHED, NOT WAITED ON — every phase says itself (diff " +
+      "read, model loading, drafting) and the generation STREAMS: the engine " +
+      "hands back accumulated text per tick and the renderer paints it into " +
+      "the field, token count on the state line",
+    sec.includes("const draftSay = (line)")
+    && sec.includes("loading the local model")
+    && sec.includes("draftText: String((t && t.text)")
+    && js.includes("p.draftText !== undefined")
+    && js.includes("drafting — ${p.draftTokens || 0} tokens"), null);
+
+check("...and the FIELDS LOCK while the model writes — read-only from the " +
+      "first phase line to the parsed result, a stale stream paints " +
+      "nothing, and only then are the fields the operator's",
+    js.includes("msgEl.readOnly = true; notesEl.readOnly = true;")
+    && js.includes("if (!shipDrafting) return;")
+    && js.includes("msgEl.readOnly = false; notesEl.readOnly = false;")
+    && css.includes(".ship-field textarea.drafting"), null);
 
 check("SEQUENTIAL, NEVER CONCURRENT — every step is awaited to exit before " +
       "the next starts, a non-zero exit stops the chain, and a second run is " +

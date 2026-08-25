@@ -4352,6 +4352,29 @@ const SCENES = {
                 steps: document.querySelectorAll("#ship-steps .ship-step").length,
                 runEnabled: !document.getElementById("ship-run").disabled
             };
+            // THE DRAFT LOCKS AND STREAMS — a slow model writes into locked
+            // fields, visibly, and only the parsed result unlocks them
+            window.__harness.FIXTURES.contribDraft = () => new Promise(res =>
+                setTimeout(() => res({ commitMessage: "Streamed final",
+                    releaseNotes: "Notes final", model: "q" }), 260));
+            document.getElementById("ship-redraft").click();
+            await new Promise(r2 => setTimeout(r2, 60));
+            out.draftLocked =
+                document.getElementById("ship-commit-msg").readOnly === true;
+            window.lcl.__fire("onContribProgress",
+                { step: "draft", line: "loading the local model…" });
+            window.lcl.__fire("onContribProgress",
+                { step: "draft", draftText: "COMMIT: half-written", draftTokens: 7 });
+            await new Promise(r2 => setTimeout(r2, 40));
+            out.draftStreamed =
+                document.getElementById("ship-commit-msg").value.includes("half-written")
+                && /drafting — 7 tokens/.test(
+                    document.getElementById("ship-state").innerText);
+            await new Promise(r2 => setTimeout(r2, 280));
+            out.draftParsed =
+                document.getElementById("ship-commit-msg").value === "Streamed final"
+                && document.getElementById("ship-commit-msg").readOnly === false;
+
             // the stream lands in the step that is talking, and opens it
             window.lcl.__fire("onContribProgress", { step: "gate", state: "running" });
             window.lcl.__fire("onContribProgress", { step: "gate", line: "1. Test suite" });
@@ -4417,6 +4440,11 @@ const SCENES = {
             r.msg === "Fix the dock overlap"
             && /no longer overlap/.test(r.notes || "")
             && r.steps === 6 && r.runEnabled === true, r);
+        check("ship", "THE DRAFT LOCKS AND STREAMS — the fields go read-only, the " +
+            "model's text paints in live with a token count, and only the parsed " +
+            "result hands the fields back",
+            r.draftLocked === true && r.draftStreamed === true
+            && r.draftParsed === true, r);
         check("ship", "THE STREAM IS THE SHOW — a running step opens itself, its dot " +
             "pulses, and every output line lands in its own console",
             r.gateRunning === true && r.gateLines === true, r);

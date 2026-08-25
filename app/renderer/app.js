@@ -5382,7 +5382,22 @@ function shipPaintSteps() {
 
 /* the stream: every line lands in its step's console; state flips paint the
  * dot and auto-open the step that is talking */
+let shipDrafting = false;
 if (window.lcl.onContribProgress) window.lcl.onContribProgress((p) => {
+    // THE DRAFT WRITES ITSELF ON SCREEN. Phase lines land on the state row
+    // ("diff read — 214 files", "loading the local model…"), and the
+    // generation streams into the locked commit field token by token — the
+    // insight and the progress ARE the text appearing.
+    if (p.step === "draft") {
+        if (!shipDrafting) return;              // a stale stream paints nothing
+        if (p.line) $("ship-state").innerText = p.line;
+        if (p.draftText !== undefined) {
+            $("ship-commit-msg").value = p.draftText;
+            $("ship-state").innerText =
+                `drafting — ${p.draftTokens || 0} tokens…`;
+        }
+        return;
+    }
     const el = shipStepEl(p.step);
     if (!el) return;
     if (p.state) {
@@ -5413,10 +5428,19 @@ if (window.lcl.onContribProgress) window.lcl.onContribProgress((p) => {
 });
 
 async function shipDraft() {
+    if (shipDrafting || shipRunning) return;
     const btn = $("ship-redraft");
+    const msgEl = $("ship-commit-msg"), notesEl = $("ship-notes");
+    // THE FIELDS LOCK WHILE THE MODEL WRITES. "i start typing and it will
+    // let me, then it will push that text to the end" — the race is gone:
+    // read-only from the first phase line to the parsed result, then yours.
+    shipDrafting = true;
+    msgEl.readOnly = true; notesEl.readOnly = true;
+    msgEl.classList.add("drafting"); notesEl.classList.add("drafting");
+    msgEl.value = ""; notesEl.value = "";
     btn.disabled = true;
     const was = btn.innerText;
-    btn.innerText = "reading the diff…";
+    btn.innerText = "drafting…";
     try {
         const d = await window.lcl.contribDraft();
         if (d && !d.error) {
@@ -5429,6 +5453,9 @@ async function shipDraft() {
             $("ship-state").innerText = "draft failed: " + ((d && d.error) || "unknown");
         }
     } catch { $("ship-state").innerText = "draft failed"; }
+    shipDrafting = false;
+    msgEl.readOnly = false; notesEl.readOnly = false;
+    msgEl.classList.remove("drafting"); notesEl.classList.remove("drafting");
     btn.disabled = false;
     btn.innerText = was;
 }

@@ -3836,6 +3836,10 @@ details.msg-tool.failed summary { color: #e9a2a2; }
     padding: var(--sp-2) var(--sp-3); font-family: var(--font);
     font-size: var(--fs-base); line-height: 1.5; outline: none; }
 .ship-field textarea:focus { border-color: var(--line-bright); }
+/* the model is writing — the field says so and takes no keystrokes */
+.ship-field textarea.drafting { color: var(--text-dim);
+    border-color: color-mix(in srgb, var(--attn) 35%, var(--line-strong));
+    cursor: progress; }
 #ship-steps { display: flex; flex-direction: column; gap: 4px; }
 .ship-step { border: 1px solid var(--line); border-radius: var(--radius-sm);
     background: rgba(255, 255, 255, 0.015); }

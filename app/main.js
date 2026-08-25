@@ -11583,20 +11583,26 @@ ipcMain.handle("lcl:contribStatus", guard(async () => {
             }
         }
     }
-    // THE IDENTITY IS READ, NOT TYPED: the checkout's own git config first,
-    // then the gh account's noreply address — the fields the operator used
-    // to paste by hand, populated from where they already live
+    // THE IDENTITY IS READ, NOT TYPED — and the EMAIL IS ALWAYS THE GH
+    // NOREPLY. The first cut preferred git config's email, which was the
+    // operator's private address: GitHub's email-privacy guard rejected the
+    // push with GH007 — twice — and the audit tail named it. A GitHub-bound
+    // commit gets the GitHub-safe address, full stop; config supplies only
+    // the display name (falling back to the login), and config email is the
+    // last resort for the no-gh case that cannot ship anyway.
     let name = null, email = null;
     if (repo) {
         const n = contribExec("git", ["config", "user.name"], repo);
-        const e2 = contribExec("git", ["config", "user.email"], repo);
         if (n.ok && n.out) name = n.out;
-        if (e2.ok && e2.out) email = e2.out;
     }
     if (!name && login) name = login;
-    if (!email && login) {
+    if (login) {
         const id = contribExec("gh", ["api", "user", "--jq", ".id"], repo || undefined);
         if (id.ok && /^\d+$/.test(id.out)) email = `${id.out}+${login}@users.noreply.github.com`;
+    }
+    if (!email && repo) {
+        const e2 = contribExec("git", ["config", "user.email"], repo);
+        if (e2.ok && e2.out) email = e2.out;
     }
     return { ok: missing.length === 0, repo, missing, remote,
              repoHow: found.how || null,
@@ -11689,8 +11695,22 @@ ipcMain.handle("lcl:contribDraft", guard(async () => {
             model: null
         };
     };
+    // THE DRAFT IS WATCHED, NOT WAITED ON. "reading the diff is INSANELY
+    // slow, and has absolutely no insight to what the fuck is going on" —
+    // every phase says itself, and the generation STREAMS token by token so
+    // the message writes itself on screen instead of appearing after a
+    // silent minute (the silence was mostly the model loading).
+    const draftSay = (line) => {
+        try { mainWindow.webContents.send("lcl:contribProgress",
+            { step: "draft", line }); } catch { }
+    };
     try {
+        const n = fileList.split(/\r?\n/).filter(Boolean).length;
+        draftSay(`diff read — ${n} file${n === 1 ? "" : "s"}, `
+            + `${(diffStat.split(/\r?\n/).slice(-1)[0] || "").trim() || "no stat"}`);
+        draftSay("loading the local model — the first draft after a boot takes the longest…");
         await engine.ensureLoaded("contrib-draft");
+        draftSay("drafting…");
         const res = await engine.generate([
             { role: "system", content:
                 "You write release copy for a software patch from its git diff. " +
@@ -11699,7 +11719,14 @@ ipcMain.handle("lcl:contribDraft", guard(async () => {
                 "NOTES: <one or two sentences for the release page, plain language, user-facing>" },
             { role: "user", content:
                 `Files changed:\n${fileList}\n\nDiff stat:\n${diffStat}\n\nDiff sample:\n${diffSample}` }
-        ], 320, null, null, { temperature: 0.4 });
+        ], 320, null, (t) => {
+            // the stream IS the visualization — the engine hands back the
+            // accumulated text each tick and the renderer paints it into the
+            // field, so the message writes itself on screen
+            try { mainWindow.webContents.send("lcl:contribProgress",
+                { step: "draft", draftText: String((t && t.text) || ""),
+                  draftTokens: (t && t.tokens) || 0 }); } catch { }
+        }, { temperature: 0.4 });
         const text = String((res && (res.text || res.content)) || "");
         const cm = (text.match(/COMMIT:\s*(.+)/i) || [])[1];
         const nt = (text.match(/NOTES:\s*([\s\S]+)/i) || [])[1];
