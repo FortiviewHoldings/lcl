@@ -5372,7 +5372,22 @@ function shipPaintSteps() {
         const t = document.createElement("span"); t.className = "ship-step-title";
         t.innerText = title;
         const note = document.createElement("span"); note.className = "ship-step-note";
-        head.append(dot, t, note);
+        // EVERY CONSOLE HAS A COPY BUTTON — "i want an actual copy button to
+        // click": the step's whole output, one click, ✓ said on the button
+        const copy = document.createElement("button");
+        copy.className = "icon-act icon-only ship-step-copy";
+        copy.title = "Copy this step's output";
+        copy.setAttribute("aria-label", "Copy this step's output");
+        copy.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" '
+            + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" '
+            + 'stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/>'
+            + '<path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+        copy.addEventListener("click", (e) => {
+            e.stopPropagation();          // copying must not toggle the console
+            const out2 = el.querySelector(".ship-step-out");
+            copyToClipboard(out2 ? out2.textContent : "", copy);
+        });
+        head.append(dot, t, note, copy);
         head.addEventListener("click", () => el.classList.toggle("open"));
         const out = document.createElement("pre"); out.className = "ship-step-out";
         el.append(head, out);

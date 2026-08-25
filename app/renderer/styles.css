@@ -3855,7 +3855,9 @@ details.msg-tool.failed summary { color: #e9a2a2; }
 .ship-step.skipped { opacity: 0.55; }
 .ship-step-title { flex: 1; }
 .ship-step-note { color: var(--text-faint); font-size: var(--fs-tiny);
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 50%; }
+.ship-step-copy { flex: none; opacity: 0.6; }
+.ship-step-copy:hover { opacity: 1; }
 .ship-step-out { display: none; margin: 0; padding: var(--sp-2) var(--sp-3);
     border-top: 1px solid var(--line); max-height: 200px; overflow-y: auto;
     font-family: var(--mono); font-size: var(--fs-tiny); line-height: 1.5;

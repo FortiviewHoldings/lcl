@@ -11898,8 +11898,14 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
         if (r.code !== 0) return fail("push", "git push exited " + r.code);
         emit("push", "done");
 
-        // 4 — the release gate and build (the long one; its output IS the show)
-        emit("gate", "running");
+        // 4 — the release gate and build (the long one; its output IS the show).
+        // THE APP'S OWN ENGINE STANDS DOWN FIRST: the gate's engine suite
+        // spawns a llama-server on the same fixed port this app's resident
+        // model holds — with the model loaded (the draft loads it!), the
+        // suite hit the app's server, got 401s, and refused the build. The
+        // gate gets the port and the RAM; the model reloads on next use.
+        emit("gate", "running", "releasing the local engine so the gate can use its port…");
+        try { if (engine.status().running) engine.unloadNow(); } catch { /* already down */ }
         r = await contribStep("gate", "node",
             [path.join(repo, "devtools", "release.js"), "--release"], repo);
         if (contribRunState.cancelled) return fail("gate", "cancelled");

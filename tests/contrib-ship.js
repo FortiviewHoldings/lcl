@@ -196,6 +196,26 @@ check("NO HIDDEN PROMPTS — spawned steps run with GIT_TERMINAL_PROMPT=0 and " 
     sec.includes('GIT_TERMINAL_PROMPT: "0"')
     && sec.includes('GCM_INTERACTIVE: "Never"'), null);
 
+check("THE APP'S ENGINE STANDS DOWN BEFORE THE GATE — the gate's engine " +
+      "suite needs the same fixed port the resident model holds (the draft " +
+      "loads it!): a loaded engine met 401s and a refused build, read from " +
+      "the audit tail. Unloaded first, said out loud, reloads on next use",
+    sec.includes("releasing the local engine so the gate can use its port")
+    && sec.includes("engine.unloadNow()")
+    && sec.indexOf("engine.unloadNow()")
+        < sec.indexOf('contribStep("gate", "node"'), null);
+
+check("EVERY STEP CONSOLE HAS A COPY BUTTON — one click takes the whole " +
+      "output, without toggling the console shut",
+    js.includes("ship-step-copy")
+    && js.includes("Copy this step's output")
+    && (() => {
+        const i = js.indexOf('copy.addEventListener("click"');
+        return i > 0 && js.slice(i, i + 200).includes("e.stopPropagation()")
+            && js.slice(i, i + 300).includes("copyToClipboard(");
+    })()
+    && css.includes(".ship-step-copy"), null);
+
 /* ---- the renderer side ---- */
 check("the Patch menu carries the entry and the action opens the panel",
     html.includes('data-action="ship-release"')

@@ -4385,6 +4385,13 @@ const SCENES = {
                 && gateEl.classList.contains("open");
             out.gateLines = gateEl.querySelector(".ship-step-out")
                 .textContent.includes("4591 checks passed");
+            // the copy button takes the console's text without closing it
+            const copyBtn = gateEl.querySelector(".ship-step-copy");
+            out.copyBtn = !!copyBtn;
+            gateEl.classList.add("open");
+            if (copyBtn) copyBtn.click();
+            await new Promise(r2 => setTimeout(r2, 80));
+            out.copyKeptOpen = gateEl.classList.contains("open");
             window.lcl.__fire("onContribProgress", { step: "gate", state: "done" });
             // the operator EDITS the drafted message — the edit must be what runs
             document.getElementById("ship-commit-msg").value =
@@ -4448,6 +4455,9 @@ const SCENES = {
         check("ship", "THE STREAM IS THE SHOW — a running step opens itself, its dot " +
             "pulses, and every output line lands in its own console",
             r.gateRunning === true && r.gateLines === true, r);
+        check("ship", "...and every console has a COPY BUTTON that takes the whole " +
+            "output without toggling the console shut",
+            r.copyBtn === true && r.copyKeptOpen === true, r);
         check("ship", "the run CONFIRMS first, then calls main with the operator's " +
             "EDITED message and the read identity — cancel offered while live, " +
             "and the finish is announced by version",
