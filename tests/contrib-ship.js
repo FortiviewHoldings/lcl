@@ -106,6 +106,39 @@ check("every failure and every ship lands in the audit log",
     sec.includes('kind: "contrib-ship-failed"')
     && sec.includes('kind: "contrib-ship"'), null);
 
+/* ---- THE FIRST FAILURE'S LESSONS (25 Aug: "git push exited 1" and nothing
+ * else survived — the exit code alone told us nothing, and reopening the
+ * panel wiped the one console that held the stderr) ---- */
+check("THE EVIDENCE SURVIVES — every step's output is kept in main (capped), " +
+      "the audit failure entry carries the step's last 25 lines, and a " +
+      "lastRun handler serves the whole record back",
+    sec.includes("let contribLastRun = null")
+    && sec.includes("contribRunState.transcript[step]")
+    && sec.includes(".slice(-25)")
+    && sec.includes('ipcMain.handle("lcl:contribLastRun"')
+    && pre.includes("contribLastRun: () => ipcRenderer.invoke"), null);
+
+check("...the panel REPLAYS the last run on open instead of wiping it — the " +
+      "failed step reopens with its output, the state line names it, and a " +
+      "resume skips the fresh draft that would bury the message",
+    js.includes("window.lcl.contribLastRun()")
+    && js.includes("previous run failed at ")
+    && js.includes("if (lastFailNote) {"), null);
+
+check("A RETRY RESUMES — an already-committed tree skips add and commit " +
+      "honestly ('already committed — resuming at push') instead of dying " +
+      "on 'nothing to commit', and the commit-message requirement applies " +
+      "only when there is something to commit",
+    sec.includes('"already committed — resuming at push"')
+    && sec.includes('if (!msg) return fail("commit", "a commit message is required")')
+    && js.includes('dataset.dirty !== "0"'), null);
+
+check("NO HIDDEN PROMPTS — spawned steps run with GIT_TERMINAL_PROMPT=0 and " +
+      "GCM_INTERACTIVE=Never, so a credential problem fails LOUD in the " +
+      "console instead of hanging a windowless process",
+    sec.includes('GIT_TERMINAL_PROMPT: "0"')
+    && sec.includes('GCM_INTERACTIVE: "Never"'), null);
+
 /* ---- the renderer side ---- */
 check("the Patch menu carries the entry and the action opens the panel",
     html.includes('data-action="ship-release"')

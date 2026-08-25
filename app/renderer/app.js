@@ -5436,7 +5436,30 @@ async function shipDraft() {
 async function openShipPanel() {
     $("ship-scrim").classList.remove("hidden");
     shipPaintSteps();
-    $("ship-state").innerText = "checking who you are…";
+    // THE LAST RUN'S EVIDENCE COMES BACK. Reopening used to wipe the consoles
+    // — the one place the failure's stderr lived. Main keeps the transcript;
+    // the panel replays it, so a failed push is read, not remembered.
+    let lastFailNote = "";
+    try {
+        const last = await window.lcl.contribLastRun();
+        if (last && last.at && !shipRunning) {
+            for (const [id, lines] of Object.entries(last.transcript || {})) {
+                const el = shipStepEl(id);
+                if (!el) continue;
+                const out = el.querySelector(".ship-step-out");
+                if (out) out.textContent = (lines || []).join("\n") + "\n";
+                const st = (last.states || {})[id];
+                if (st && st !== "running") el.classList.add(st);
+            }
+            if (!last.ok && last.failedStep) {
+                const el = shipStepEl(last.failedStep);
+                if (el) el.classList.add("open");
+                lastFailNote =
+                    `previous run failed at ${last.failedStep} — its output is preserved above`;
+            }
+        }
+    } catch { /* a fresh panel is still a working panel */ }
+    $("ship-state").innerText = lastFailNote || "checking who you are…";
     $("ship-run").disabled = true;
     $("ship-gate-note").classList.add("hidden");
     const st = await window.lcl.contribStatus();
@@ -5487,10 +5510,18 @@ async function openShipPanel() {
         $("ship-run").disabled = false;
         $("ship-run").dataset.identityName = st.identity.name || "";
         $("ship-run").dataset.identityEmail = st.identity.email || "";
-        $("ship-state").innerText = plan.dirtyCount
-            ? "" : "nothing is pending — the tree is clean";
-        // draft immediately: by the time the fields are read, they are full
-        shipDraft();
+        $("ship-run").dataset.dirty = String(plan.dirtyCount);
+        // a FAILED PREVIOUS RUN owns the state line and skips the auto-draft:
+        // the commit already exists, the fields already said what it says,
+        // and the fresh draft's note would bury the one message that matters
+        if (lastFailNote) {
+            $("ship-state").innerText = lastFailNote;
+        } else {
+            $("ship-state").innerText = plan.dirtyCount
+                ? "" : "nothing is pending — the tree is clean";
+            // draft immediately: by the time the fields are read, they are full
+            shipDraft();
+        }
     } else {
         $("ship-state").innerText = "could not read the checkout: "
             + ((plan && plan.error) || "unknown");
@@ -5515,7 +5546,11 @@ $("ship-cancel").addEventListener("click", async () => {
 $("ship-run").addEventListener("click", async () => {
     if (shipRunning) return;
     const msg = $("ship-commit-msg").value.trim();
-    if (!msg) { $("ship-state").innerText = "a commit message is required"; return; }
+    // an already-committed tree resumes without a fresh message — its words
+    // are in history; main enforces the same rule
+    if (!msg && $("ship-run").dataset.dirty !== "0") {
+        $("ship-state").innerText = "a commit message is required"; return;
+    }
     const sure = await modal({
         title: "Ship this release?",
         message: "This commits and pushes your checkout, runs the full release gate, " +

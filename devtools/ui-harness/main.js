@@ -4379,7 +4379,27 @@ const SCENES = {
             out.ranWith = ranOpts && { bump: ranOpts.bump, msg: ranOpts.commitMessage,
                 name: ranOpts.name, email: ranOpts.email };
             out.liveState = document.getElementById("ship-state").innerText;
-            for (const k of ["contribStatus", "contribPlan", "contribDraft", "contribRun"])
+
+            // THE LAST RUN'S EVIDENCE REPLAYS — close, reopen onto a recorded
+            // failure, and the failed step comes back open with its output
+            document.getElementById("ship-close").click();
+            window.__harness.FIXTURES.contribLastRun = () => ({
+                at: 1, ok: false, failedStep: "push", version: null,
+                states: { bump: "done", add: "done", commit: "done", push: "failed" },
+                transcript: { push: ["$ git push origin public:main",
+                    "error: failed to push some refs"] } });
+            await openShipPanel();
+            await new Promise(r2 => setTimeout(r2, 250));
+            const pushEl = document.querySelector('.ship-step[data-step="push"]');
+            out.replayFailed = pushEl.classList.contains("failed")
+                && pushEl.classList.contains("open")
+                && pushEl.querySelector(".ship-step-out")
+                    .textContent.includes("failed to push some refs");
+            out.replayNote = /previous run failed at push/.test(
+                document.getElementById("ship-state").innerText);
+
+            for (const k of ["contribStatus", "contribPlan", "contribDraft",
+                             "contribRun", "contribLastRun"])
                 delete window.__harness.FIXTURES[k];
             document.getElementById("ship-close").click();
             return out;
@@ -4408,6 +4428,10 @@ const SCENES = {
             && r.ranWith.bump === true
             && r.ranWith.name === "Contributor"
             && /v1\.0\.10 is live/.test(r.liveState || ""), r);
+        check("ship", "THE LAST RUN'S EVIDENCE REPLAYS ON REOPEN — the failed step " +
+            "comes back open with its own stderr and the state line names it " +
+            "(the first real failure left nothing but 'exited 1' behind)",
+            r.replayFailed === true && r.replayNote === true, r);
         await shoot(win, "ship");
     },
 

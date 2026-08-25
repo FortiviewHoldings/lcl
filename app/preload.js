@@ -241,6 +241,7 @@ contextBridge.exposeInMainWorld("lcl", {
     contribDraft: () => ipcRenderer.invoke("lcl:contribDraft"),
     contribRun: (opts) => ipcRenderer.invoke("lcl:contribRun", opts),
     contribCancel: () => ipcRenderer.invoke("lcl:contribCancel"),
+    contribLastRun: () => ipcRenderer.invoke("lcl:contribLastRun"),
     onContribProgress: (cb) => ipcRenderer.on("lcl:contribProgress", (_e, p) => cb(p)),
     knowledgeLibraries: () => ipcRenderer.invoke("lcl:knowledgeLibraries"),
     // the badge's number, cheap enough to ask at boot — never the inventory

@@ -11465,7 +11465,13 @@ ipcMain.handle("lcl:openWith", guard(async (_e, opener, folder) => {
  * the chain where it stands. Identity, versions, tag and artifact names are
  * READ from the checkout and from gh — never hardcoded.
  */
-let contribRunState = null;      // { cancelled, child } while a run is live
+let contribRunState = null;      // { cancelled, child, transcript } while a run is live
+// THE LAST RUN'S EVIDENCE SURVIVES — every step's output, its states, and
+// where it stopped. The first failed run recorded only "git push exited 1"
+// and reopening the panel wiped the consoles; the operator's standing rule
+// is that failures are debugged from logs, not from a prompt he has to
+// screenshot before it vanishes.
+let contribLastRun = null;
 
 function contribRepoRoot() {
     const p0 = paths.readSettings().contribRepoPath;
@@ -11641,14 +11647,23 @@ ipcMain.handle("lcl:contribDraft", guard(async () => {
 function contribStep(step, bin, args, cwd) {
     return new Promise((resolve) => {
         const send = (line) => {
+            const clean = String(line).replace(/\r?\n$/, "");
+            const t = contribRunState.transcript[step]
+                || (contribRunState.transcript[step] = []);
+            t.push(clean);
+            if (t.length > 400) t.splice(0, t.length - 400);
             try { mainWindow.webContents.send("lcl:contribProgress",
-                { step, line: String(line).replace(/\r?\n$/, "") }); } catch { }
+                { step, line: clean }); } catch { }
         };
         send(`$ ${bin} ${args.join(" ")}`);
         let child = null;
         try {
             child = spawn(bin, args, { cwd, windowsHide: true,
-                stdio: ["ignore", "pipe", "pipe"] });
+                stdio: ["ignore", "pipe", "pipe"],
+                // no hidden prompts: a credential problem must FAIL with its
+                // message in the console, never hang a windowless process
+                env: { ...process.env, GIT_TERMINAL_PROMPT: "0",
+                       GCM_INTERACTIVE: "Never" } });
         } catch (e) {
             send("could not start: " + String((e && e.message) || e));
             return resolve({ code: -1 });
@@ -11679,17 +11694,35 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
     const o = opts || {};
     const msg = String(o.commitMessage || "").trim();
     const notes = String(o.releaseNotes || "").trim();
-    if (!msg) return { error: "a commit message is required" };
+    // a message is required only when there is something to commit — a
+    // resume over an already-committed tree carries its message in history
     const name = String(o.name || "").trim(), email = String(o.email || "").trim();
     if (!name || !email) return { error: "no git identity — sign in with gh or set git config" };
-    contribRunState = { cancelled: false, child: null };
+    contribRunState = { cancelled: false, child: null, transcript: {} };
+    const states = {};
     const emit = (step, state, line) => {
+        if (state) states[step] = state;
+        if (line) {
+            const t = contribRunState.transcript[step]
+                || (contribRunState.transcript[step] = []);
+            t.push(line);
+        }
         try { mainWindow.webContents.send("lcl:contribProgress",
             { step, state, line }); } catch { }
     };
+    const record = (ok, failedStep, version) => {
+        contribLastRun = { at: Date.now(), ok, failedStep: failedStep || null,
+            version: version || null, states: { ...states },
+            transcript: Object.fromEntries(Object.entries(contribRunState.transcript)
+                .map(([k, v]) => [k, v.slice(-120)])) };
+    };
     const fail = (step, why) => {
         emit(step, "failed", why);
-        auditLog.write({ kind: "contrib-ship-failed", step, why, at: Date.now() });
+        // the audit entry carries the step's own last words — the exit code
+        // alone told us nothing the first time this fired
+        const tail = (contribRunState.transcript[step] || []).slice(-25);
+        auditLog.write({ kind: "contrib-ship-failed", step, why, tail, at: Date.now() });
+        record(false, step, null);
         contribRunState = null;
         return { ok: false, failedStep: step, error: why };
     };
@@ -11721,22 +11754,31 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
         } else emit("bump", "skipped");
         if (!version) return fail("bump", "could not read app/package.json version");
 
-        // 1 — stage everything
-        emit("add", "running");
-        let r = await contribStep("add", "git", ["add", "-A"], repo);
-        if (contribRunState.cancelled) return fail("add", "cancelled");
-        if (r.code !== 0) return fail("add", "git add exited " + r.code);
-        emit("add", "done");
+        // 1+2 — stage and commit. A RETRY AFTER A MID-CHAIN FAILURE finds the
+        // tree already committed (the first run died at push, exactly this) —
+        // that is not an error, it is work already done: say so, resume.
+        let r;
+        const dirty = contribExec("git", ["status", "--porcelain"], repo);
+        if (dirty.ok && !dirty.out.trim()) {
+            emit("add", "skipped", "tree already clean");
+            emit("commit", "skipped", "already committed — resuming at push");
+        } else {
+            if (!msg) return fail("commit", "a commit message is required");
+            emit("add", "running");
+            r = await contribStep("add", "git", ["add", "-A"], repo);
+            if (contribRunState.cancelled) return fail("add", "cancelled");
+            if (r.code !== 0) return fail("add", "git add exited " + r.code);
+            emit("add", "done");
 
-        // 2 — the commit, as the contributor, with the drafted message
-        emit("commit", "running");
-        r = await contribStep("commit", "git",
-            ["-c", `user.name=${name}`, "-c", `user.email=${email}`,
-             "commit", "-m", msg], repo);
-        if (contribRunState.cancelled) return fail("commit", "cancelled");
-        if (r.code !== 0) return fail("commit", "git commit exited " + r.code
-            + " (nothing to commit, or hooks refused)");
-        emit("commit", "done");
+            emit("commit", "running");
+            r = await contribStep("commit", "git",
+                ["-c", `user.name=${name}`, "-c", `user.email=${email}`,
+                 "commit", "-m", msg], repo);
+            if (contribRunState.cancelled) return fail("commit", "cancelled");
+            if (r.code !== 0) return fail("commit", "git commit exited " + r.code
+                + " (nothing to commit, or hooks refused)");
+            emit("commit", "done");
+        }
 
         // 3 — push the current branch onto main
         const br = contribExec("git", ["rev-parse", "--abbrev-ref", "HEAD"], repo);
@@ -11773,12 +11815,15 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
         emit("publish", "done", `v${version} is live — installs on the channel see it within a minute`);
 
         auditLog.write({ kind: "contrib-ship", version, at: Date.now() });
+        record(true, null, version);
         contribRunState = null;
         return { ok: true, version };
     } catch (e) {
         return fail("run", String((e && e.message) || e));
     }
 }));
+
+ipcMain.handle("lcl:contribLastRun", guard(async () => contribLastRun));
 
 ipcMain.handle("lcl:contribCancel", guard(async () => {
     if (!contribRunState) return { ok: false };
