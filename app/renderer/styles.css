@@ -7305,16 +7305,21 @@ button.small.icon-only {
    brain mark (cloned from the composer button so they never
    drift) over the audit prose, on the assistant side.
    ============================================================ */
-/* the Ancient Knowledge audit keeps its card — it is the overseer speaking,
-   not the flat reply */
-.msg-row.assistant.ancient { align-self: flex-start; align-items: flex-start; max-width: 82%; }
+/* THE AUDIT READS AS THOUGH THE USER SENT IT — the open list's ask,
+   verbatim: "It must read as though the user sent it: keep the brain SVG,
+   the title and the colour, but the bubble background matches a user
+   message." So the card sits on the USER'S side, in the user bubble's own
+   ground and geometry, with the brain head keeping its identity. */
+.msg-row.assistant.ancient { align-self: flex-end; align-items: flex-end; max-width: 76%; }
 .msg-ancient {
-    align-self: flex-start;
+    align-self: flex-end;
     padding: var(--sp-3) var(--sp-4);
-    border: 1px solid var(--card-border);
-    border-left: 2px solid var(--attn);
-    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-lg) var(--radius-xs);
-    background: var(--card-surface), linear-gradient(180deg, #16131b, #100d15);
+    /* the USER bubble's ground and frame, exactly */
+    background: linear-gradient(180deg, #1e1e22, #131316);
+    border: 1px solid var(--line-strong);
+    /* mirrored user-side geometry, the accent stripe on the outer edge */
+    border-right: 2px solid var(--attn);
+    border-radius: var(--radius-lg) var(--radius-lg) var(--radius-xs) var(--radius-lg);
     color: var(--text-dim);
     font-size: var(--fs-lg);
     line-height: 1.55;
@@ -7334,6 +7339,14 @@ button.small.icon-only {
        currentColor, so the mark and the label read as one unit */
     color: var(--attn);
 }
+/* "the brain's colour must match the reasoning-level colour mapped to that
+   SVG" — the same five colours the composer's #brain-btn wears, applied to
+   the head so mark and title shift together with the session's effort */
+.msg-ancient-head.effort-0 { color: #e0c98f; }
+.msg-ancient-head.effort-1 { color: #6fd98f; }
+.msg-ancient-head.effort-2 { color: #6fc5e8; }
+.msg-ancient-head.effort-3 { color: #b88fe0; }
+.msg-ancient-head.effort-4 { color: #5fe8e0; }
 .msg-ancient-head svg { flex: none; }
 .msg-ancient-body { color: var(--text); }
 .msg-ancient-body .msg-para:last-child,

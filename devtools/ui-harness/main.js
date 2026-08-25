@@ -4272,6 +4272,51 @@ const SCENES = {
             /\b4 files\b/.test(r.meta), r.meta);
         await shoot(win, "files-default-state");
     },
+    /* ANCIENT KNOWLEDGE, DRESSED AS THE USER — open list 7c #2, verbatim:
+     * "It must read as though the user sent it: keep the brain SVG, the
+     * title and the colour, but the bubble background matches a user
+     * message. The brain's colour must match the reasoning-level colour
+     * mapped to that SVG." Measured with computed styles, not class names. */
+    "ancient-look": async (win, js) => {
+        const r = await js(`(async () => { try {
+            const was = active.effortLevel;
+            active.effortLevel = 3;
+            const u = addMessageRow("user", "check my work", 90001);
+            const a = addMessageRow("assistant",
+                "**Ancient Knowledge Audit:** the build holds.", 90002,
+                { model: "ancient-knowledge" });
+            await new Promise(r2 => setTimeout(r2, 80));
+            const bubble = a.querySelector(".msg-ancient");
+            const userB = u.querySelector(".msg-user");
+            const head = a.querySelector(".msg-ancient-head");
+            const cs = getComputedStyle(bubble), cu = getComputedStyle(userB);
+            const out = {
+                userSide: getComputedStyle(a).alignSelf === "flex-end",
+                sameGround: cs.backgroundImage === cu.backgroundImage
+                    && cs.backgroundImage.includes("linear-gradient"),
+                brainKept: !!head.querySelector("svg")
+                    && /ancient knowledge/i.test(head.innerText),
+                effortClass: head.className.includes("effort-3"),
+                headColor: getComputedStyle(head).color,
+                stripped: !/\\*\\*Ancient Knowledge Audit:\\*\\*/.test(
+                    a.querySelector(".msg-ancient-body").innerText)
+            };
+            // #b88fe0 = effort-3, the composer brain's own violet
+            out.effortColour = out.headColor === "rgb(184, 143, 224)";
+            u.remove(); a.remove();
+            active.effortLevel = was;
+            return out;
+        } catch (e) { return { threw: String(e.stack).slice(0, 300) }; } })()`);
+        check("ancient-look", "THE AUDIT READS AS THE USER'S — right side, the user " +
+            "bubble's own painted ground (computed equal), the brain SVG and title " +
+            "kept, the redundant bold prefix stripped",
+            !r.threw && r.userSide && r.sameGround && r.brainKept && r.stripped, r);
+        check("ancient-look", "...and the brain wears the session's reasoning colour — " +
+            "effort 3 paints the head in the composer brain's own violet",
+            r.effortClass === true && r.effortColour === true, r);
+        await shoot(win, "ancient-look");
+    },
+
     /* CONTRIBUTOR SHIP — the release ritual in one panel, fixtures standing
      * in for gh/git: identity and versions painted from status/plan, the
      * fields drafted by the (stubbed) model, the stream landing in the

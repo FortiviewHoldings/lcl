@@ -274,9 +274,10 @@ check("the dark-ink icon override for the light bubble is deleted",
     !/\.msg-row\.assistant \.icon-btn \{ color: #6a6a70; \}/.test(cssSrc));
 
 check("the assistant row spans the transcript; the Ancient Knowledge card " +
-      "keeps its own frame",
+      "keeps its own frame — on the USER'S side now, per the open list: " +
+      "'it must read as though the user sent it'",
     /\.msg-row\.assistant \{ align-self: stretch; align-items: stretch; max-width: 100%; \}/.test(cssSrc)
-    && /\.msg-row\.assistant\.ancient \{ align-self: flex-start;/.test(cssSrc));
+    && /\.msg-row\.assistant\.ancient \{ align-self: flex-end;/.test(cssSrc));
 
 console.log(`\n${pass}/${pass + fail} step-transcript checks passed`);
 process.exit(fail ? 1 : 0);

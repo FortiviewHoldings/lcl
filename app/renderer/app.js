@@ -2080,7 +2080,12 @@ function addMessageRow(role, text, index, meta, attachments) {
         const note = document.createElement("div");
         note.className = "msg-ancient";
         const head = document.createElement("div");
-        head.className = "msg-ancient-head";
+        // THE BRAIN WEARS THE SESSION'S REASONING COLOUR — "the brain's
+        // colour must match the reasoning-level colour mapped to that SVG."
+        // Same classes, same palette as the composer's #brain-btn.effort-N.
+        const effortIdx = (active && typeof active.effortLevel === "number")
+            ? active.effortLevel : 0;
+        head.className = "msg-ancient-head effort-" + effortIdx;
         const srcSvg = document.querySelector("#brain-btn svg");
         if (srcSvg) {
             const svg = srcSvg.cloneNode(true);

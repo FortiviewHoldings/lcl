@@ -903,6 +903,47 @@ const CLARIFY = (q) => ({ content:
         return O.includes("allMessages.push(...r.stepMessages)") && /messages: allMessages/.test(O);})());
 }
 
+/* ---- THE PRESENTATION, from the open list (7c #2), verbatim: "It must
+ * read as though the USER sent it: keep the brain SVG, the title and the
+ * colour, but the bubble background matches a user message. The brain's
+ * colour must match the reasoning-level colour mapped to that SVG." ---- */
+{
+    const path2 = require("path");
+    const appSrc = fs.readFileSync(path2.join(__dirname, "..", "app", "renderer", "app.js"), "utf8");
+    const cssSrc = fs.readFileSync(path2.join(__dirname, "..", "app", "renderer", "styles.css"), "utf8");
+    check("the audit bubble WEARS THE USER MESSAGE'S GROUND — the same gradient, " +
+          "frame and user-side geometry as .msg-user, sitting on the user's side",
+        (() => {
+            const a = /\.msg-ancient \{[^}]*\}/s.exec(cssSrc);
+            return a && a[0].includes("linear-gradient(180deg, #1e1e22, #131316)")
+                && a[0].includes("border: 1px solid var(--line-strong)")
+                && a[0].includes("align-self: flex-end")
+                && /\.msg-row\.assistant\.ancient \{ align-self: flex-end;/.test(cssSrc);
+        })());
+    check("...the brain SVG and title stay — cloned from the composer button, " +
+          "labelled Ancient Knowledge, with the head's own rule",
+        appSrc.includes('document.querySelector("#brain-btn svg")')
+        && appSrc.includes('label.innerText = "Ancient Knowledge"'));
+    check("...and the brain wears the SESSION'S REASONING COLOUR — the head " +
+          "takes effort-N from the session's effortLevel (default 0) and the " +
+          "CSS maps the SAME five colours the composer's #brain-btn wears",
+        appSrc.includes('head.className = "msg-ancient-head effort-" + effortIdx')
+        && /typeof active\.effortLevel === "number"\)\s*\n?\s*\? active\.effortLevel : 0/.test(appSrc)
+        && [0, 1, 2, 3, 4].every(n =>
+            cssSrc.includes(`.msg-ancient-head.effort-${n} {`))
+        && (() => {
+            // the palette MATCHES the composer brain's, colour for colour
+            const pair = (sel, n) => {
+                const m = new RegExp(sel.replace(/[.#]/g, "\\$&")
+                    + "\\.effort-" + n + " \\{[^}]*color: (#[0-9a-f]+)", "i");
+                const r = m.exec(cssSrc);
+                return r && r[1].toLowerCase();
+            };
+            return [0, 1, 2, 3, 4].every(n =>
+                pair("#brain-btn", n) && pair("#brain-btn", n) === pair(".msg-ancient-head", n));
+        })());
+}
+
 console.log(`\n${pass}/${pass + fail} ancient-knowledge checks passed`);
 process.exit(fail ? 1 : 0);
 })().catch(e => { console.log("FAIL | suite crashed -", (e && e.stack) || e); process.exit(1); });
