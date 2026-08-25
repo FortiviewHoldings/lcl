@@ -233,6 +233,15 @@ contextBridge.exposeInMainWorld("lcl", {
     // never a document and openKnowledgeDoc refuses it by path. Without these
     // three the panel falls through to the older calls and an uninstalled source
     // can only be reported as "not on disk", which is the defect, not the state.
+    // CONTRIBUTOR SHIP — the release ritual from the Patch menu, contributors
+    // only; every step streamed back through onContribProgress
+    contribStatus: () => ipcRenderer.invoke("lcl:contribStatus"),
+    contribPickRepo: () => ipcRenderer.invoke("lcl:contribPickRepo"),
+    contribPlan: () => ipcRenderer.invoke("lcl:contribPlan"),
+    contribDraft: () => ipcRenderer.invoke("lcl:contribDraft"),
+    contribRun: (opts) => ipcRenderer.invoke("lcl:contribRun", opts),
+    contribCancel: () => ipcRenderer.invoke("lcl:contribCancel"),
+    onContribProgress: (cb) => ipcRenderer.on("lcl:contribProgress", (_e, p) => cb(p)),
     knowledgeLibraries: () => ipcRenderer.invoke("lcl:knowledgeLibraries"),
     // the badge's number, cheap enough to ask at boot — never the inventory
     knowledgeMissingCount: () => ipcRenderer.invoke("lcl:knowledgeMissingCount"),

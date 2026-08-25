@@ -643,6 +643,7 @@ const menuActions = {
     "knowledge": () => openKnowledge(),
     "code-shape": () => openCodeShape(),
     "patch-bay": () => openPatchBay(),
+    "ship-release": () => openShipPanel(),
     // "capabilities" left the menus with the Permissions dropdown — the
     // capability map stays reachable from the command palette and the approval
     // card's pointer; the menu action is gone with its menu
@@ -5328,23 +5329,246 @@ window.lcl.onSessionStatus((s) => paintSessionStatus(s.sessionId, s));
 // operator reads "Official #8 ready — you're on #7 · +2 local": what they will
 // move to, what they are on, and the customizations that ride along. The offer
 // names its source once a network channel exists. Build date is a tooltip.
+// =============================================================
+// CONTRIBUTOR SHIP — Patch › Ship a release…
+// -------------------------------------------------------------
+// The whole release ritual in one panel, for a CONTRIBUTOR: gh
+// authenticated, push rights on the checkout's remote. Steps run
+// SEQUENTIALLY in main — each one a spawned process awaited to exit,
+// its output streamed here line by line — because "these can not run
+// concurrently, so we have to know when one finished, so the next can
+// run." Identity and versions are read, never typed; the commit
+// message and release notes are drafted by the local model from the
+// real diff, and stay editable until the click.
+// =============================================================
+const SHIP_STEPS = [
+    ["bump", "Bump the version lanes"],
+    ["add", "Stage everything (git add -A)"],
+    ["commit", "Commit as you"],
+    ["push", "Push to main"],
+    ["gate", "Release gate + build (the long one)"],
+    ["publish", "Publish the release (gh)"]
+];
+let shipRunning = false;
+
+function shipStepEl(id) {
+    return document.querySelector(`#ship-steps .ship-step[data-step="${id}"]`);
+}
+function shipPaintSteps() {
+    const host = $("ship-steps");
+    host.innerHTML = "";
+    for (const [id, title] of SHIP_STEPS) {
+        const el = document.createElement("div");
+        el.className = "ship-step";
+        el.dataset.step = id;
+        const head = document.createElement("div");
+        head.className = "ship-step-head";
+        const dot = document.createElement("span"); dot.className = "ship-step-dot";
+        const t = document.createElement("span"); t.className = "ship-step-title";
+        t.innerText = title;
+        const note = document.createElement("span"); note.className = "ship-step-note";
+        head.append(dot, t, note);
+        head.addEventListener("click", () => el.classList.toggle("open"));
+        const out = document.createElement("pre"); out.className = "ship-step-out";
+        el.append(head, out);
+        host.appendChild(el);
+    }
+}
+
+/* the stream: every line lands in its step's console; state flips paint the
+ * dot and auto-open the step that is talking */
+if (window.lcl.onContribProgress) window.lcl.onContribProgress((p) => {
+    const el = shipStepEl(p.step);
+    if (!el) return;
+    if (p.state) {
+        el.classList.remove("running", "done", "failed", "skipped");
+        if (p.state !== "idle") el.classList.add(p.state);
+        if (p.state === "running") {
+            // one step talks at a time — sequential is the whole contract
+            for (const other of document.querySelectorAll("#ship-steps .ship-step.open")) {
+                if (other !== el) other.classList.remove("open");
+            }
+            el.classList.add("open");
+        }
+        if (p.line) {
+            const note = el.querySelector(".ship-step-note");
+            if (note) { note.innerText = p.line; note.title = p.line; }
+        }
+    }
+    if (p.line) {
+        const out = el.querySelector(".ship-step-out");
+        if (out) {
+            out.textContent += p.line + "\n";
+            // the log is a live console, capped against a runaway build
+            const lines = out.textContent.split("\n");
+            if (lines.length > 400) out.textContent = lines.slice(-400).join("\n");
+            out.scrollTop = out.scrollHeight;
+        }
+    }
+});
+
+async function shipDraft() {
+    const btn = $("ship-redraft");
+    btn.disabled = true;
+    const was = btn.innerText;
+    btn.innerText = "reading the diff…";
+    try {
+        const d = await window.lcl.contribDraft();
+        if (d && !d.error) {
+            $("ship-commit-msg").value = d.commitMessage || "";
+            $("ship-notes").value = d.releaseNotes || "";
+            $("ship-state").innerText = d.model
+                ? "drafted by the local model — edit anything before it runs"
+                : "model unavailable — heuristic draft, please edit";
+        } else {
+            $("ship-state").innerText = "draft failed: " + ((d && d.error) || "unknown");
+        }
+    } catch { $("ship-state").innerText = "draft failed"; }
+    btn.disabled = false;
+    btn.innerText = was;
+}
+
+async function openShipPanel() {
+    $("ship-scrim").classList.remove("hidden");
+    shipPaintSteps();
+    $("ship-state").innerText = "checking who you are…";
+    $("ship-run").disabled = true;
+    $("ship-gate-note").classList.add("hidden");
+    const st = await window.lcl.contribStatus();
+    if (!st || st.error) {
+        $("ship-state").innerText = "could not check: " + ((st && st.error) || "no answer");
+        return;
+    }
+    $("ship-identity").innerText = st.identity && st.identity.name
+        ? `as ${st.identity.name} <${st.identity.email || "?"}>` : "";
+    if (!st.ok) {
+        // NOT A CONTRIBUTOR (yet): say exactly what is missing, offer the
+        // one piece this app can supply — linking the checkout
+        const note = $("ship-gate-note");
+        note.classList.remove("hidden");
+        note.innerHTML = "";
+        const head = document.createElement("div");
+        head.innerText = "Shipping needs everything on this list:";
+        note.appendChild(head);
+        const ul = document.createElement("ul");
+        for (const m of st.missing) {
+            const li = document.createElement("li"); li.innerText = m;
+            ul.appendChild(li);
+        }
+        note.appendChild(ul);
+        const pick = document.createElement("button");
+        pick.className = "ghost small";
+        pick.innerText = "Choose checkout…";
+        pick.addEventListener("click", async () => {
+            const r = await window.lcl.contribPickRepo();
+            if (r && r.ok) openShipPanel();
+            else if (r && r.error) $("ship-state").innerText = r.error;
+        });
+        note.appendChild(pick);
+        $("ship-state").innerText = "";
+        return;
+    }
+    // the plan: what is pending, which lanes, whether a bump is due
+    const plan = await window.lcl.contribPlan();
+    if (plan && !plan.error) {
+        $("ship-versions").innerText =
+            `tree v${plan.version} · official #${plan.official}`
+            + (plan.latestTag ? ` — published ${plan.latestTag}` : "")
+            + ` — ${plan.dirtyCount} file${plan.dirtyCount === 1 ? "" : "s"} pending`;
+        $("ship-bump").checked = !!plan.bumpSuggested;
+        $("ship-bump-label").innerText = plan.nextVersion
+            ? `bump the lanes to v${plan.nextVersion} · official #${plan.nextOfficial}`
+            : "bump the version lanes";
+        $("ship-run").disabled = false;
+        $("ship-run").dataset.identityName = st.identity.name || "";
+        $("ship-run").dataset.identityEmail = st.identity.email || "";
+        $("ship-state").innerText = plan.dirtyCount
+            ? "" : "nothing is pending — the tree is clean";
+        // draft immediately: by the time the fields are read, they are full
+        shipDraft();
+    } else {
+        $("ship-state").innerText = "could not read the checkout: "
+            + ((plan && plan.error) || "unknown");
+    }
+}
+
+function closeShipPanel() {
+    // closing hides the VIEW — a live run keeps running in main and keeps
+    // streaming into these steps for when the panel reopens
+    $("ship-scrim").classList.add("hidden");
+}
+
+$("ship-close").addEventListener("click", closeShipPanel);
+$("ship-scrim").addEventListener("click", (e) => {
+    if (e.target === $("ship-scrim") && !shipRunning) closeShipPanel();
+});
+$("ship-redraft").addEventListener("click", shipDraft);
+$("ship-cancel").addEventListener("click", async () => {
+    await window.lcl.contribCancel();
+    $("ship-state").innerText = "cancelling after the current step…";
+});
+$("ship-run").addEventListener("click", async () => {
+    if (shipRunning) return;
+    const msg = $("ship-commit-msg").value.trim();
+    if (!msg) { $("ship-state").innerText = "a commit message is required"; return; }
+    const sure = await modal({
+        title: "Ship this release?",
+        message: "This commits and pushes your checkout, runs the full release gate, " +
+            "builds and signs the installer, and publishes it to the channel every " +
+            "install patches from. The gate takes several minutes.",
+        confirmLabel: "Ship it"
+    });
+    if (!sure) return;
+    shipRunning = true;
+    $("ship-run").disabled = true;
+    $("ship-cancel").classList.remove("hidden");
+    $("ship-state").innerText = "running — one step at a time";
+    const res = await window.lcl.contribRun({
+        bump: $("ship-bump").checked,
+        commitMessage: msg,
+        releaseNotes: $("ship-notes").value.trim(),
+        name: $("ship-run").dataset.identityName,
+        email: $("ship-run").dataset.identityEmail
+    });
+    shipRunning = false;
+    $("ship-cancel").classList.add("hidden");
+    if (res && res.ok) {
+        $("ship-state").innerText = `v${res.version} is live`;
+    } else {
+        $("ship-state").innerText = (res && res.error) || "the run failed";
+        $("ship-state").classList.add("bad");
+        setTimeout(() => $("ship-state").classList.remove("bad"), 4000);
+        $("ship-run").disabled = false;
+    }
+});
+
 function patchLabel(p) {
+    // THE VERSION LEADS. "i do not like the way the patch ready exposed the
+    // build number. i do not like not having the version. the version is the
+    // true number" — the official # is bookkeeping between installs (the
+    // lanes started before the public repo, so it runs two ahead) and it
+    // rides the tooltip now, never the label.
+    const vOf = (b) => (b && b.version) ? "v" + b.version : null;
+    const lv = vOf(p.latest), rv = vOf(p.running);
     const off = Number.isInteger(p.latestOfficial) ? p.latestOfficial : null;
-    const onOff = Number.isInteger(p.runningOfficial) ? p.runningOfficial : null;
     const local = Number.isInteger(p.runningLocal) ? p.runningLocal : 0;
     const from = p.source && p.source !== "local" ? ` from ${p.source}` : "";
-    // what the running copy is on: the base, plus any local divergence
-    const on = onOff !== null
-        ? ` — you're on #${onOff}${local > 0 ? ` · +${local} local` : ""}`
-        : "";
-    if (off === null) return `a new build is waiting${on}`;
-    return `Official #${off} ready${from}${on}`;
+    const tail = local > 0 ? ` · +${local} local` : "";
+    if (lv) return `${lv} ready${from}${rv ? ` — you're on ${rv}${tail}` : ""}`;
+    // an old channel entry with no version falls back to the lanes
+    if (off !== null) return `Official #${off} ready${from}`;
+    return `a new build is waiting`;
 }
 function showPatchBanner(p) {
     const existing = document.getElementById("patch-banner");
     if (!p || !p.available) { if (existing) existing.remove(); return; }
     const offer = (p.latest && p.latest.buildId) || "";
-    const when = p.builtAt ? "built " + new Date(p.builtAt).toLocaleString() : "";
+    // the official lane number and the build date live on the TOOLTIP —
+    // bookkeeping, not the headline
+    const when = [
+        Number.isInteger(p.latestOfficial) ? "Official #" + p.latestOfficial : "",
+        p.builtAt ? "built " + new Date(p.builtAt).toLocaleString() : ""
+    ].filter(Boolean).join(" · ");
     // A NEWER BUILD CAN LAND WHILE THE BANNER IS STILL UP. The first cut returned
     // here unconditionally, so the label froze at whatever build was in dist when
     // it first appeared — it read "Patch #5" long after #7 had replaced it. Now a
@@ -6293,9 +6517,14 @@ function sbLayout(gOverride) {
     host.style.gridTemplateColumns = tracks.join(" ");
 
     // rows: R content rows, ONE filler that soaks up the leftover panel,
-    // then the tray. Content rows are auto — a card is as tall as itself.
+    // then the tray. Content rows are MAX-CONTENT, not auto: an auto track's
+    // base is the item's MIN-content (≈ its 22px header, since the inner
+    // block scrolls), so a short panel compressed five 170px cards into
+    // 132px rows they painted straight past — "the card above overlaps the
+    // header of the card below it", measured. max-content rows hold the
+    // card's real (capped) height and the panel scrolls instead.
     const rows = [];
-    for (let i = 0; i < R; i++) rows.push("auto");
+    for (let i = 0; i < R; i++) rows.push("max-content");
     rows.push("minmax(0, 1fr)");
     for (const _ of minim) rows.push("auto");
     host.style.gridTemplateRows = rows.join(" ");

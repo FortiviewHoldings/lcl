@@ -11451,6 +11451,343 @@ ipcMain.handle("lcl:openWith", guard(async (_e, opener, folder) => {
     }
 }));
 
+// -------------------------------------------------------------
+// CONTRIBUTOR SHIP (Patch menu → Ship a release…)
+// -------------------------------------------------------------
+/**
+ * The operator's whole release ritual — add, commit, push, gate+build,
+ * publish — run from the app, for CONTRIBUTORS only: a person with the gh
+ * CLI authenticated and push rights on the repo their checkout points at.
+ * "these can not run concurrently, so we have to know when one finished, so
+ * the next can run. so we need to be measuring the output of the command and
+ * visualizing it." Every step is one spawned process, awaited to exit,
+ * stdout/stderr streamed to the renderer line by line; a non-zero exit stops
+ * the chain where it stands. Identity, versions, tag and artifact names are
+ * READ from the checkout and from gh — never hardcoded.
+ */
+let contribRunState = null;      // { cancelled, child } while a run is live
+
+function contribRepoRoot() {
+    const p0 = paths.readSettings().contribRepoPath;
+    if (!p0) return null;
+    try {
+        if (!fs.existsSync(path.join(p0, ".git"))) return null;
+        if (!fs.existsSync(path.join(p0, "devtools", "release.js"))) return null;
+        if (!fs.existsSync(path.join(p0, "app", "package.json"))) return null;
+        return p0;
+    } catch { return null; }
+}
+
+function contribExec(bin, args, cwd, timeoutMs = 20000) {
+    try {
+        return { ok: true, out: execFileSync(bin, args,
+            { cwd, encoding: "utf8", timeout: timeoutMs,
+              stdio: ["ignore", "pipe", "pipe"] }).trim() };
+    } catch (e) {
+        return { ok: false, out: String((e && (e.stdout || e.message)) || e).trim() };
+    }
+}
+
+/** owner/repo from the checkout's origin URL — https or ssh, either form. */
+function contribRemote(repo) {
+    const r = contribExec("git", ["remote", "get-url", "origin"], repo);
+    if (!r.ok) return null;
+    const m = r.out.match(/github\.com[:/]([^/]+)\/([^/.\s]+)/);
+    return m ? { owner: m[1], repo: m[2], url: r.out } : null;
+}
+
+ipcMain.handle("lcl:contribStatus", guard(async () => {
+    const repo = contribRepoRoot();
+    const missing = [];
+    if (!repo) missing.push("a linked .lcl checkout (Choose checkout…)");
+    const git = contribExec("git", ["--version"], repo || undefined);
+    if (!git.ok) missing.push("the git CLI on PATH");
+    const gh = contribExec("gh", ["--version"], repo || undefined);
+    if (!gh.ok) missing.push("the GitHub CLI (gh) on PATH");
+    let login = null, pushAllowed = false, remote = null;
+    if (gh.ok) {
+        const auth = contribExec("gh", ["auth", "status"], repo || undefined);
+        if (!auth.ok) missing.push("gh auth login (not signed in)");
+        const who = contribExec("gh", ["api", "user", "--jq", ".login"], repo || undefined);
+        if (who.ok) login = who.out;
+        if (repo) {
+            remote = contribRemote(repo);
+            if (!remote) missing.push("an origin remote on github.com");
+            else {
+                const perm = contribExec("gh",
+                    ["api", `repos/${remote.owner}/${remote.repo}`,
+                     "--jq", ".permissions.push"], repo);
+                pushAllowed = perm.ok && /true/.test(perm.out);
+                if (!pushAllowed) missing.push(
+                    `push access to ${remote.owner}/${remote.repo}`);
+            }
+        }
+    }
+    // THE IDENTITY IS READ, NOT TYPED: the checkout's own git config first,
+    // then the gh account's noreply address — the fields the operator used
+    // to paste by hand, populated from where they already live
+    let name = null, email = null;
+    if (repo) {
+        const n = contribExec("git", ["config", "user.name"], repo);
+        const e2 = contribExec("git", ["config", "user.email"], repo);
+        if (n.ok && n.out) name = n.out;
+        if (e2.ok && e2.out) email = e2.out;
+    }
+    if (!name && login) name = login;
+    if (!email && login) {
+        const id = contribExec("gh", ["api", "user", "--jq", ".id"], repo || undefined);
+        if (id.ok && /^\d+$/.test(id.out)) email = `${id.out}+${login}@users.noreply.github.com`;
+    }
+    return { ok: missing.length === 0, repo, missing, remote,
+             identity: { name, email, login },
+             running: !!contribRunState };
+}));
+
+ipcMain.handle("lcl:contribPickRepo", guard(async () => {
+    const picked = await dialog.showOpenDialog(mainWindow, {
+        title: "Where is your .lcl checkout?",
+        buttonLabel: "Use this checkout",
+        properties: ["openDirectory"]
+    });
+    if (picked.canceled || !picked.filePaths.length) return { ok: false };
+    const p0 = picked.filePaths[0];
+    if (!fs.existsSync(path.join(p0, ".git"))
+        || !fs.existsSync(path.join(p0, "devtools", "release.js"))) {
+        return { ok: false, error: "that folder is not a .lcl checkout (no .git or devtools/release.js)" };
+    }
+    paths.writeSettings({ contribRepoPath: p0 });
+    return { ok: true, repo: p0 };
+}));
+
+/** What is pending: dirty files, the version lanes, the last published tag. */
+ipcMain.handle("lcl:contribPlan", guard(async () => {
+    const repo = contribRepoRoot();
+    if (!repo) return { error: "no checkout linked" };
+    const st = contribExec("git", ["status", "--porcelain"], repo);
+    const files = st.ok ? st.out.split(/\r?\n/).filter(Boolean) : [];
+    let official = null, version = null;
+    try { official = JSON.parse(fs.readFileSync(
+        path.join(repo, "devtools", "RELEASE.json"), "utf8")).official; } catch { }
+    try { version = JSON.parse(fs.readFileSync(
+        path.join(repo, "app", "package.json"), "utf8")).version; } catch { }
+    let latestTag = null;
+    const remote = contribRemote(repo);
+    if (remote) {
+        const t = contribExec("gh",
+            ["api", `repos/${remote.owner}/${remote.repo}/releases/latest`,
+             "--jq", ".tag_name"], repo);
+        if (t.ok) latestTag = t.out;
+    }
+    // the lanes need a bump when the tree still carries the version that is
+    // already published — suggest the next patch step on both lanes
+    const bumpSuggested = !!(version && latestTag && ("v" + version) === latestTag);
+    const nextVersion = version
+        ? version.replace(/(\d+)$/, (n) => String(Number(n) + 1)) : null;
+    const nextOfficial = Number.isInteger(official) ? official + 1 : null;
+    const branch = contribExec("git", ["rev-parse", "--abbrev-ref", "HEAD"], repo);
+    return { repo, files: files.slice(0, 200), dirtyCount: files.length,
+             official, version, latestTag, bumpSuggested, nextVersion, nextOfficial,
+             branch: branch.ok ? branch.out : null };
+}));
+
+/**
+ * THE COMMIT MESSAGE AND RELEASE NOTES ARE DRAFTED BY A LOCAL MODEL reading
+ * the actual diff — "agentic and dynamic", editable before anything runs.
+ * When no model can answer, an honest heuristic from the file list stands in
+ * and says so.
+ */
+ipcMain.handle("lcl:contribDraft", guard(async () => {
+    const repo = contribRepoRoot();
+    if (!repo) return { error: "no checkout linked" };
+    const stat = contribExec("git", ["diff", "--stat", "HEAD"], repo, 30000);
+    const names = contribExec("git", ["diff", "--name-status", "HEAD"], repo, 30000);
+    const sample = contribExec("git", ["diff", "HEAD"], repo, 30000);
+    const diffStat = stat.ok ? stat.out.slice(0, 3000) : "";
+    const diffSample = sample.ok ? sample.out.slice(0, 9000) : "";
+    const fileList = names.ok ? names.out.slice(0, 2000) : "";
+    const fallback = () => {
+        const n = fileList.split(/\r?\n/).filter(Boolean).length;
+        return {
+            commitMessage: `Update ${n} file${n === 1 ? "" : "s"}`,
+            releaseNotes: (`Changes across ${n} file${n === 1 ? "" : "s"}.\n`
+                + (diffStat.split(/\r?\n/).slice(-1)[0] || "")).trim(),
+            model: null
+        };
+    };
+    try {
+        await engine.ensureLoaded("contrib-draft");
+        const res = await engine.generate([
+            { role: "system", content:
+                "You write release copy for a software patch from its git diff. " +
+                "Answer with EXACTLY two lines:\n" +
+                "COMMIT: <one sentence, present tense, what this patch does and why — no file lists>\n" +
+                "NOTES: <one or two sentences for the release page, plain language, user-facing>" },
+            { role: "user", content:
+                `Files changed:\n${fileList}\n\nDiff stat:\n${diffStat}\n\nDiff sample:\n${diffSample}` }
+        ], 320, null, null, { temperature: 0.4 });
+        const text = String((res && (res.text || res.content)) || "");
+        const cm = (text.match(/COMMIT:\s*(.+)/i) || [])[1];
+        const nt = (text.match(/NOTES:\s*([\s\S]+)/i) || [])[1];
+        if (cm && nt) {
+            return { commitMessage: cm.trim().slice(0, 300),
+                     releaseNotes: nt.trim().slice(0, 800),
+                     model: (res && res.model) || "local" };
+        }
+        return fallback();
+    } catch { return fallback(); }
+}));
+
+/** One spawned step: streamed, awaited, never overlapped with the next. */
+function contribStep(step, bin, args, cwd) {
+    return new Promise((resolve) => {
+        const send = (line) => {
+            try { mainWindow.webContents.send("lcl:contribProgress",
+                { step, line: String(line).replace(/\r?\n$/, "") }); } catch { }
+        };
+        send(`$ ${bin} ${args.join(" ")}`);
+        let child = null;
+        try {
+            child = spawn(bin, args, { cwd, windowsHide: true,
+                stdio: ["ignore", "pipe", "pipe"] });
+        } catch (e) {
+            send("could not start: " + String((e && e.message) || e));
+            return resolve({ code: -1 });
+        }
+        contribRunState.child = child;
+        let buf = "";
+        const feed = (d) => {
+            buf += d.toString("utf8");
+            let nl;
+            while ((nl = buf.indexOf("\n")) >= 0) {
+                send(buf.slice(0, nl)); buf = buf.slice(nl + 1);
+            }
+        };
+        child.stdout.on("data", feed);
+        child.stderr.on("data", feed);
+        child.on("close", (code) => {
+            if (buf.trim()) send(buf);
+            resolve({ code: code === null ? -1 : code });
+        });
+        child.on("error", (e) => { send(String(e.message || e)); resolve({ code: -1 }); });
+    });
+}
+
+ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
+    if (contribRunState) return { error: "a ship run is already in progress" };
+    const repo = contribRepoRoot();
+    if (!repo) return { error: "no checkout linked" };
+    const o = opts || {};
+    const msg = String(o.commitMessage || "").trim();
+    const notes = String(o.releaseNotes || "").trim();
+    if (!msg) return { error: "a commit message is required" };
+    const name = String(o.name || "").trim(), email = String(o.email || "").trim();
+    if (!name || !email) return { error: "no git identity — sign in with gh or set git config" };
+    contribRunState = { cancelled: false, child: null };
+    const emit = (step, state, line) => {
+        try { mainWindow.webContents.send("lcl:contribProgress",
+            { step, state, line }); } catch { }
+    };
+    const fail = (step, why) => {
+        emit(step, "failed", why);
+        auditLog.write({ kind: "contrib-ship-failed", step, why, at: Date.now() });
+        contribRunState = null;
+        return { ok: false, failedStep: step, error: why };
+    };
+    try {
+        // 0 — the lanes, bumped in the tree when asked (the step the ritual
+        //     always forgot): RELEASE.json official +1, both package.json
+        let version = null;
+        try { version = JSON.parse(fs.readFileSync(
+            path.join(repo, "app", "package.json"), "utf8")).version; } catch { }
+        if (o.bump) {
+            emit("bump", "running");
+            try {
+                const rj = path.join(repo, "devtools", "RELEASE.json");
+                const rel = JSON.parse(fs.readFileSync(rj, "utf8"));
+                rel.official = Number(rel.official) + 1;
+                fs.writeFileSync(rj, JSON.stringify(rel, null, 2) + "\n");
+                const bumpPkg = (pp) => {
+                    const j = JSON.parse(fs.readFileSync(pp, "utf8"));
+                    j.version = j.version.replace(/(\d+)$/, (n) => String(Number(n) + 1));
+                    fs.writeFileSync(pp, JSON.stringify(j, null, 2) + "\n");
+                    return j.version;
+                };
+                version = bumpPkg(path.join(repo, "app", "package.json"));
+                bumpPkg(path.join(repo, "devtools", "installer", "package.json"));
+                emit("bump", "done", `official #${rel.official} · v${version}`);
+            } catch (e) {
+                return fail("bump", "lane bump failed: " + String((e && e.message) || e));
+            }
+        } else emit("bump", "skipped");
+        if (!version) return fail("bump", "could not read app/package.json version");
+
+        // 1 — stage everything
+        emit("add", "running");
+        let r = await contribStep("add", "git", ["add", "-A"], repo);
+        if (contribRunState.cancelled) return fail("add", "cancelled");
+        if (r.code !== 0) return fail("add", "git add exited " + r.code);
+        emit("add", "done");
+
+        // 2 — the commit, as the contributor, with the drafted message
+        emit("commit", "running");
+        r = await contribStep("commit", "git",
+            ["-c", `user.name=${name}`, "-c", `user.email=${email}`,
+             "commit", "-m", msg], repo);
+        if (contribRunState.cancelled) return fail("commit", "cancelled");
+        if (r.code !== 0) return fail("commit", "git commit exited " + r.code
+            + " (nothing to commit, or hooks refused)");
+        emit("commit", "done");
+
+        // 3 — push the current branch onto main
+        const br = contribExec("git", ["rev-parse", "--abbrev-ref", "HEAD"], repo);
+        const refspec = `${br.ok ? br.out : "HEAD"}:main`;
+        emit("push", "running");
+        r = await contribStep("push", "git", ["push", "origin", refspec], repo);
+        if (contribRunState.cancelled) return fail("push", "cancelled");
+        if (r.code !== 0) return fail("push", "git push exited " + r.code);
+        emit("push", "done");
+
+        // 4 — the release gate and build (the long one; its output IS the show)
+        emit("gate", "running");
+        r = await contribStep("gate", "node",
+            [path.join(repo, "devtools", "release.js"), "--release"], repo);
+        if (contribRunState.cancelled) return fail("gate", "cancelled");
+        if (r.code !== 0) return fail("gate", "the release gate refused this build — read its output above");
+        emit("gate", "done");
+
+        // 5 — publish, with the artifacts PROVEN on disk first
+        const installer = path.join(repo, "dist", `lcl-Installer-${version}.exe`);
+        const info = path.join(repo, "dist", "build-info.json");
+        const sig = path.join(repo, "dist", "build-info.json.sig");
+        for (const f of [installer, info, sig]) {
+            if (!fs.existsSync(f)) {
+                return fail("publish", `missing artifact: ${path.basename(f)} — the build did not produce what the publish step needs`);
+            }
+        }
+        emit("publish", "running");
+        r = await contribStep("publish", "gh",
+            ["release", "create", `v${version}`, installer, info, sig,
+             "--title", `v${version}`, "--notes", notes || `v${version}`], repo);
+        if (contribRunState.cancelled) return fail("publish", "cancelled");
+        if (r.code !== 0) return fail("publish", "gh release create exited " + r.code);
+        emit("publish", "done", `v${version} is live — installs on the channel see it within a minute`);
+
+        auditLog.write({ kind: "contrib-ship", version, at: Date.now() });
+        contribRunState = null;
+        return { ok: true, version };
+    } catch (e) {
+        return fail("run", String((e && e.message) || e));
+    }
+}));
+
+ipcMain.handle("lcl:contribCancel", guard(async () => {
+    if (!contribRunState) return { ok: false };
+    contribRunState.cancelled = true;
+    try { if (contribRunState.child) contribRunState.child.kill(); } catch { }
+    return { ok: true };
+}));
+
+
 ipcMain.handle("lcl:pickOpenerApp", guard(async () => {
     const picked = await dialog.showOpenDialog(mainWindow, {
         title: "Choose an app to open the workspace with",

@@ -118,10 +118,17 @@ check("renderer shows a puzzle-piece 'Patch Ready' button and confirms before la
 check("renderer subscribes to patch-available and checks once on load",
     /window\.lcl\.onPatchAvailable\(showPatchBanner\)/.test(appjs)
     && /window\.lcl\.patchStatus\(\)\.then\(showPatchBanner\)/.test(appjs));
-check("the banner shows TWO LANES — the official base as identity, the local " +
-      "marker riding alongside, not a timestamp",
-    /function patchLabel\(p\)/.test(appjs) && /Official #\$\{off\}/.test(appjs)
-    && /you're on #\$\{onOff\}/.test(appjs) && /\+\$\{local\} local/.test(appjs));
+check("THE VERSION LEADS THE BANNER — 'the version is the true number': the " +
+      "label says v1.0.9 ready / you're on v1.0.8, the local marker rides " +
+      "alongside, and the official lane number is TOOLTIP bookkeeping (the " +
+      "lanes started before the public repo, so they run two ahead of the " +
+      "version and confuse as a headline)",
+    /function patchLabel\(p\)/.test(appjs)
+    && /\$\{lv\} ready\$\{from\}/.test(appjs)
+    && /you're on \$\{rv\}/.test(appjs)
+    && /\+\$\{local\} local/.test(appjs)
+    && /"Official #" \+ p\.latestOfficial/.test(appjs)
+    && /Official #\$\{off\} ready/.test(appjs) /* the no-version fallback */);
 check("a newer build landing while the banner is up REFRESHES the number in " +
       "place — it does not freeze at a stale one (the bug that showed an old " +
       "patch number after a rebuild)",

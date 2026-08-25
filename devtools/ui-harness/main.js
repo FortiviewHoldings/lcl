@@ -2414,6 +2414,49 @@ const SCENES = {
             && Math.abs(dragged.after.wscard - dragged.before.wscard) <= 2,
             dragged);
 
+        /* SHRUNK TO A STACK, THE CARDS NEVER OVERLAP — "the card above
+         * overlaps the header of the card below it" (reported on #11).
+         * Narrow the panel until everything stacks one column, then measure
+         * every pair of visible cards for intersection. */
+        const stacked = await js(`(async () => {
+            document.getElementById("body").style.setProperty("--ws-w", "320px");
+            sbApplySizes();
+            await new Promise(r => setTimeout(r, 300));
+            const cards = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+                .filter(m => getComputedStyle(m).display !== "none")
+                .map(m => ({ k: m.dataset.mod, r: m.getBoundingClientRect() }));
+            const overlaps = [];
+            for (let i = 0; i < cards.length; i++) {
+                for (let j = i + 1; j < cards.length; j++) {
+                    const a = cards[i].r, b = cards[j].r;
+                    const ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+                    const oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+                    if (ox > 1 && oy > 1) {
+                        overlaps.push(cards[i].k + "×" + cards[j].k + " " +
+                            Math.round(ox) + "x" + Math.round(oy));
+                    }
+                }
+            }
+            const host = document.getElementById("sb-mods");
+            return { n: cards.length,
+                     boxes: cards.map(c => c.k + "@" + Math.round(c.r.top) + ".." +
+                        Math.round(c.r.bottom)),
+                     rowsTpl: getComputedStyle(host).gridTemplateRows,
+                     colsTpl: getComputedStyle(host).gridTemplateColumns,
+                     place: [...document.querySelectorAll("#sb-mods > .sb-mod")]
+                        .filter(m => getComputedStyle(m).display !== "none")
+                        .map(m => m.dataset.mod + ":" + m.style.gridRow
+                             + "/" + m.style.gridColumn),
+                     singleColumn: cards.every(c => Math.round(c.r.left)
+                        === Math.round(cards[0].r.left)),
+                     overlaps };
+        })()`);
+        check("sidebar", "SHRUNK TO A STACK, THE CARDS NEVER OVERLAP — every visible " +
+            "card in the one-column layout owns its own band, no card's body over " +
+            "the next card's header",
+            stacked.n >= 4 && stacked.singleColumn && stacked.overlaps.length === 0,
+            stacked);
+
         await js(`(() => { delete active.repoPath; renderWorkspace();
                            closeFileViewer();
                            document.getElementById("body").style.removeProperty("--ws-w"); })()`);
@@ -4229,6 +4272,100 @@ const SCENES = {
             /\b4 files\b/.test(r.meta), r.meta);
         await shoot(win, "files-default-state");
     },
+    /* CONTRIBUTOR SHIP — the release ritual in one panel, fixtures standing
+     * in for gh/git: identity and versions painted from status/plan, the
+     * fields drafted by the (stubbed) model, the stream landing in the
+     * talking step, the run confirmed and called with the EDITED fields. */
+    ship: async (win, js) => {
+        const r = await js(`(async () => { try {
+            window.__harness.FIXTURES.contribStatus = () => ({ ok: true,
+                repo: "C:/checkout", missing: [],
+                remote: { owner: "Org", repo: "lcl" },
+                identity: { name: "Contributor",
+                            email: "1+c@users.noreply.github.com", login: "c" },
+                running: false });
+            window.__harness.FIXTURES.contribPlan = () => ({ repo: "C:/checkout",
+                files: ["M app/main.js"], dirtyCount: 12, official: 11,
+                version: "1.0.9", latestTag: "v1.0.9", bumpSuggested: true,
+                nextVersion: "1.0.10", nextOfficial: 12, branch: "public" });
+            window.__harness.FIXTURES.contribDraft = () => ({
+                commitMessage: "Fix the dock overlap",
+                releaseNotes: "Cards no longer overlap.", model: "qwen" });
+            let ranOpts = null;
+            window.__harness.FIXTURES.contribRun = (opts) => { ranOpts = opts;
+                return new Promise(res => setTimeout(
+                    () => res({ ok: true, version: "1.0.10" }), 300)); };
+            await openShipPanel();
+            await new Promise(r2 => setTimeout(r2, 250));
+            const out = {
+                identity: document.getElementById("ship-identity").innerText,
+                versions: document.getElementById("ship-versions").innerText,
+                bumpChecked: document.getElementById("ship-bump").checked,
+                bumpLabel: document.getElementById("ship-bump-label").innerText,
+                msg: document.getElementById("ship-commit-msg").value,
+                notes: document.getElementById("ship-notes").value,
+                steps: document.querySelectorAll("#ship-steps .ship-step").length,
+                runEnabled: !document.getElementById("ship-run").disabled
+            };
+            // the stream lands in the step that is talking, and opens it
+            window.lcl.__fire("onContribProgress", { step: "gate", state: "running" });
+            window.lcl.__fire("onContribProgress", { step: "gate", line: "1. Test suite" });
+            window.lcl.__fire("onContribProgress", { step: "gate", line: "4591 checks passed" });
+            await new Promise(r2 => setTimeout(r2, 60));
+            const gateEl = document.querySelector('.ship-step[data-step="gate"]');
+            out.gateRunning = gateEl.classList.contains("running")
+                && gateEl.classList.contains("open");
+            out.gateLines = gateEl.querySelector(".ship-step-out")
+                .textContent.includes("4591 checks passed");
+            window.lcl.__fire("onContribProgress", { step: "gate", state: "done" });
+            // the operator EDITS the drafted message — the edit must be what runs
+            document.getElementById("ship-commit-msg").value =
+                "Fix the dock overlap for real";
+            document.getElementById("ship-run").click();
+            await new Promise(r2 => setTimeout(r2, 150));
+            const confirm = [...document.querySelectorAll("#modal-scrim button")]
+                .find(b => /ship it/i.test(b.innerText));
+            out.confirmShown = !!confirm;
+            if (confirm) confirm.click();
+            await new Promise(r2 => setTimeout(r2, 120));
+            out.cancelVisibleWhileRunning =
+                !document.getElementById("ship-cancel").classList.contains("hidden");
+            await new Promise(r2 => setTimeout(r2, 350));
+            out.ranWith = ranOpts && { bump: ranOpts.bump, msg: ranOpts.commitMessage,
+                name: ranOpts.name, email: ranOpts.email };
+            out.liveState = document.getElementById("ship-state").innerText;
+            for (const k of ["contribStatus", "contribPlan", "contribDraft", "contribRun"])
+                delete window.__harness.FIXTURES[k];
+            document.getElementById("ship-close").click();
+            return out;
+        } catch (e) { return { threw: String(e.stack).slice(0, 300) }; } })()`);
+        check("ship", "THE PANEL KNOWS WHO AND WHAT WITHOUT TYPING — identity from " +
+            "gh/git config, the tree's lanes and the published tag from the plan, " +
+            "the bump pre-checked with the exact next numbers named",
+            !r.threw && /as Contributor <1\+c@users\.noreply\.github\.com>/.test(r.identity || "")
+            && /tree v1\.0\.9 · official #11/.test(r.versions || "")
+            && /published v1\.0\.9/.test(r.versions || "")
+            && r.bumpChecked === true
+            && /v1\.0\.10 · official #12/.test(r.bumpLabel || ""), r);
+        check("ship", "...the local model's draft fills both fields, editable, and all " +
+            "six steps stand ready with the run enabled",
+            r.msg === "Fix the dock overlap"
+            && /no longer overlap/.test(r.notes || "")
+            && r.steps === 6 && r.runEnabled === true, r);
+        check("ship", "THE STREAM IS THE SHOW — a running step opens itself, its dot " +
+            "pulses, and every output line lands in its own console",
+            r.gateRunning === true && r.gateLines === true, r);
+        check("ship", "the run CONFIRMS first, then calls main with the operator's " +
+            "EDITED message and the read identity — cancel offered while live, " +
+            "and the finish is announced by version",
+            r.confirmShown === true && r.cancelVisibleWhileRunning === true
+            && r.ranWith && r.ranWith.msg === "Fix the dock overlap for real"
+            && r.ranWith.bump === true
+            && r.ranWith.name === "Contributor"
+            && /v1\.0\.10 is live/.test(r.liveState || ""), r);
+        await shoot(win, "ship");
+    },
+
     /* THE STUCK APPROVAL, REPRODUCED FROM THE OPERATOR'S OWN SESSION.
      * "did not complete and prompted me for input, but the prompt never
      * appeared, it was waiting on something that it never asked me, but said

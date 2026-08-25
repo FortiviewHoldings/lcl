@@ -2049,6 +2049,11 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
           "an unsized card caps near half the panel with its inner block " +
           "scrolling, and a dragged card floors at 58px legibility",
         js.includes('rows.push("minmax(0, 1fr)");')
+        // MAX-CONTENT rows, not auto: an auto track's base is the item's
+        // MIN-content (≈ the 22px header), so a short panel compressed five
+        // 170px cards into 132px rows they painted straight past — "the card
+        // above overlaps the header of the card below it", measured
+        && js.includes('rows.push("max-content");')
         && js.includes("host.clientHeight * 0.48")
         && (() => { const i = css.indexOf("#sb-mods {");
                     return css.slice(i, i + 900).includes("align-items: start"); })()

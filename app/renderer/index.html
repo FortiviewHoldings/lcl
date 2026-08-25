@@ -184,6 +184,10 @@
                 <button class="menu-label">Patch</button>
                 <div class="menu-panel">
                     <button data-action="patch-bay">Patch .lcl itself…</button>
+                    <!-- contributors only: the whole release ritual — commit,
+                         push, gate, publish — sequential, streamed, with the
+                         message drafted by a local model from the diff -->
+                    <button data-action="ship-release">Ship a release…</button>
                 </div>
             </div>
 
@@ -1186,6 +1190,45 @@
                     <div id="kb-view" class="kb-view">
                         <div class="kb-empty">Pick a document to read it.</div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTRIBUTOR SHIP: the release ritual, sequential and streamed -->
+    <div id="ship-scrim" class="hidden">
+        <div id="ship-panel" role="dialog" aria-modal="true" aria-label="Ship a release">
+            <div class="panel-head">
+                <span>Ship a release</span>
+                <span id="ship-identity" class="ship-identity"></span>
+                <button id="ship-close" class="icon-btn" aria-label="Close">✕</button>
+            </div>
+            <div class="panel-body" id="ship-body">
+                <div id="ship-gate-note" class="ship-note hidden"></div>
+                <div id="ship-form">
+                    <div id="ship-versions" class="ship-versions"></div>
+                    <label class="ship-bump-row"><input type="checkbox" id="ship-bump">
+                        <span id="ship-bump-label">bump the version lanes</span></label>
+                    <div class="ship-field">
+                        <div class="ship-field-head">
+                            <span>Commit message</span>
+                            <button id="ship-redraft" class="ghost small"
+                                    title="Have the local model read the diff and draft both fields again">Draft from the diff</button>
+                        </div>
+                        <textarea id="ship-commit-msg" rows="2" spellcheck="false"
+                                  placeholder="what this patch does and why"></textarea>
+                    </div>
+                    <div class="ship-field">
+                        <div class="ship-field-head"><span>Release notes</span></div>
+                        <textarea id="ship-notes" rows="3" spellcheck="false"
+                                  placeholder="what the release page should say"></textarea>
+                    </div>
+                </div>
+                <div id="ship-steps"></div>
+                <div id="ship-actions">
+                    <span id="ship-state" class="ship-note"></span>
+                    <button id="ship-cancel" class="ghost small hidden">Cancel</button>
+                    <button id="ship-run" class="primary small" disabled>Ship it</button>
                 </div>
             </div>
         </div>
