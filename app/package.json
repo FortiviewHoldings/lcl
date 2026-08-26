@@ -1,7 +1,7 @@
 {
   "name": "lcl",
   "productName": ".lcl",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": ".lcl — local compute layer",
   "main": "main.js",
   "author": "PragOptics",

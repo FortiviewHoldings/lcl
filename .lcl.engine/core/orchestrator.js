@@ -10,6 +10,7 @@ const router = require("./router");
 const agent = require("./agent");
 const selfAudit = require("./selfAudit");
 const { parseToolJson } = require("./toolParse");
+const coverage = require("./coverage");
 
 /**
  * The orchestrator — .lcl's "mitochondria".
@@ -270,10 +271,16 @@ async function askForClarification(session, goal, cancelToken, sel) {
 }
 
 /** Ask the model for a plan; fall back to a single step if it will not plan. */
-async function makePlan(session, goal, cancelToken, sel) {
+async function makePlan(session, goal, cancelToken, sel, checklist) {
+    // THE PLAN LEARNS WHAT "FULLY" MEANS. When the workspace holds extracted
+    // source material, its own topic list rides with the goal — the measured
+    // failure was a plan that decomposed a whole chapter into three vague
+    // steps because nothing ever told it the chapter had thirteen sections.
+    const contract = checklist ? coverage.planBlock(checklist) : "";
     const messages = [
         { role: "system", content: PLAN_SYSTEM },
-        { role: "user", content: `GOAL: ${goal}\n\nThe folder ${session.repoPath} is linked.` }
+        { role: "user", content: `GOAL: ${goal}\n\nThe folder ${session.repoPath} is linked.`
+            + contract }
     ];
     // the PLANNER runs on this session's model too — planning on one model
     // and executing on another is two different minds on one job
@@ -446,7 +453,14 @@ async function runGoal(session, goal, opts = {}) {
     onTask({ id: planId, n: 0, total: 0, title: "Planning", status: "running",
              detail: "breaking the goal into steps" });
 
-    const planned = await makePlan(session, planningGoal, cancelToken, driveSel);
+    // the material's own contents, read once, before anything is planned
+    let checklist = null;
+    try { checklist = coverage.checklistFor(session.repoPath); } catch { /* no material */ }
+    if (checklist) {
+        onProgress({ phase: "planning", detail: {
+            note: `measuring against ${checklist.items.length} topics in ${checklist.source}` } });
+    }
+    const planned = await makePlan(session, planningGoal, cancelToken, driveSel, checklist);
     if (planned.error) return { ok: false, error: planned.error };
     if (cancelToken.cancelled) return { ok: false, error: "cancelled", cancelled: true };
 
@@ -677,8 +691,16 @@ async function runGoal(session, goal, opts = {}) {
     // (on a node/API) spend real money running four reviewers against a partial
     // build. This mirrors the Ancient Knowledge gate below, which already
     // requires stagedApprovals.size === 0 for exactly this reason.
+    // THE REVIEWERS ARE TOLD WHAT THE WHOLE JOB WAS. They judge completeness
+    // against the REQUEST, so the material's own topic list belongs in it —
+    // "did this cover the chapter" is a question only something that can read
+    // the artifacts can answer, which is exactly what these reviewers are and
+    // exactly what a grep is not (coverage.js records that measurement).
+    const auditGoal = checklist
+        ? planningGoal + "\n\n" + coverage.contractText(checklist)
+        : planningGoal;
     const audit = (reviewOn && stagedApprovals.size === 0) ? await runAuditPass(session, {
-        goal: planningGoal, changes: allChanges, width, cancelToken, selection: driveSel,
+        goal: auditGoal, changes: allChanges, width, cancelToken, selection: driveSel,
         onTask, onProgress, planId
     }) : { ran: false, rounds: [], remaining: [], contested: [], repaired: [],
            changes: [], repairChanges: [], pendingApprovals: [], stagedMessages: [],
@@ -726,6 +748,14 @@ async function runGoal(session, goal, opts = {}) {
         role: "assistant",
         content: summary,
         meta: { model: "orchestrator", planSteps: steps.length, files: built.length,
+                // THE CONTRACT THIS BUILD WAS MEASURED AGAINST, persisted with
+                // the run: what the whole job was, in the material's own words.
+                // No coverage NUMBER — see coverage.js on why every grep-scored
+                // one misled, including one that ranked the worse build higher.
+                coverage: checklist
+                    ? { source: checklist.source,
+                        topics: checklist.items.map(i => i.id + " " + i.title) }
+                    : undefined,
                 // THE PLAN ITSELF, PERSISTED. A 922-second build was forensically
                 // unreadable because all that survived of its plan was the count
                 // "6" — what the model decided to do had no durable home. Titles
