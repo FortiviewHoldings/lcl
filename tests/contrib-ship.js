@@ -251,6 +251,18 @@ check("the stream paints into the talking step, capped against a runaway " +
     && js.includes("lines.slice(-400)")
     && js.includes("Release this patch?"), null);
 
+check("THE PANEL LETS GO WHILE THE RUN RUNS — it is a full-screen modal and " +
+      "a release takes minutes; refusing to close during a run left the whole " +
+      "app unclickable behind the scrim ('the animations and clicks are all " +
+      "disabled still'). Scrim-click and Esc both close it mid-run",
+    (() => {
+        const i = js.indexOf('$("ship-scrim").addEventListener("click"');
+        const seg = js.slice(i, i + 260);
+        return i > 0 && seg.includes("closeShipPanel()")
+            && !seg.includes("!shipRunning");
+    })()
+    && js.includes('if (e.key === "Escape" && !$("ship-scrim").classList.contains("hidden"))'), null);
+
 check("closing the panel hides the VIEW only — a live run keeps running in " +
       "main (the same ownership rule the knowledge batch earned)",
     js.includes("closing hides the VIEW")
@@ -361,6 +373,24 @@ check("THE DRAFT BUTTON SITS BESIDE ITS LABEL and the draft's own status " +
     })()
     && js.includes("function shipDraftState(")
     && css.includes("#ship-draft-state { margin-left: auto;"), null);
+
+check("THE PANEL COMES BACK TO LIFE AFTER A RUN — the run button is never " +
+      "left disabled with nothing saying why ('the Release button locked ... " +
+      "the animations and clicks are all disabled still'): both outcomes " +
+      "re-read the checkout, so the versions, the bump note and the button " +
+      "state the NEW situation, and the badge repaints",
+    js.includes("await shipRefreshPlan();")
+    && js.includes("async function shipRefreshPlan()")
+    && (() => {
+        const i = js.indexOf('$("ship-run").addEventListener("click"');
+        const seg = js.slice(i, i + 2600);
+        return i > 0 && seg.indexOf('.disabled = false') === -1
+            && seg.includes("shipBadgeFromBoot();");
+    })()
+    && (() => {
+        const i = js.indexOf("async function shipRefreshPlan()");
+        return !js.slice(i, i + 1400).includes("shipPaintSteps");
+    })(), null);
 
 console.log(`\n${pass}/${pass + fail} contrib-ship checks passed`);
 process.exit(fail ? 1 : 0);

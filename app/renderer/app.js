@@ -5694,8 +5694,19 @@ function closeShipPanel() {
 }
 
 $("ship-close").addEventListener("click", closeShipPanel);
+// THE PANEL LETS GO WHILE THE RUN RUNS. It is a full-screen modal, and a
+// release takes minutes — refusing to close during a run left the WHOLE app
+// unclickable behind the scrim ("the animations and clicks are all disabled
+// still ... it trashed the ui"). Main owns the run and keeps streaming into
+// these steps, exactly as closing has always promised: the view goes away,
+// the work does not. Esc closes it too.
 $("ship-scrim").addEventListener("click", (e) => {
-    if (e.target === $("ship-scrim") && !shipRunning) closeShipPanel();
+    if (e.target === $("ship-scrim")) closeShipPanel();
+});
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("ship-scrim").classList.contains("hidden")) {
+        closeShipPanel();
+    }
 });
 $("ship-redraft").addEventListener("click", shipDraft);
 $("ship-cancel").addEventListener("click", async () => {
@@ -5731,14 +5742,46 @@ $("ship-run").addEventListener("click", async () => {
     shipRunning = false;
     $("ship-cancel").classList.add("hidden");
     if (res && res.ok) {
-        $("ship-state").innerText = `v${res.version} is live`;
+        shipState(`v${res.version} is live`);
     } else {
-        $("ship-state").innerText = (res && res.error) || "the run failed";
+        shipState((res && res.error) || "the run failed");
         $("ship-state").classList.add("bad");
         setTimeout(() => $("ship-state").classList.remove("bad"), 4000);
-        $("ship-run").disabled = false;
     }
+    // THE PANEL COMES BACK TO LIFE AFTER A RUN, EITHER WAY. It used to leave
+    // the button disabled with nothing saying why on success ("the Release
+    // button locked ... the animations and clicks are all disabled still"),
+    // over versions and a bump note describing the patch that just shipped.
+    // Re-read the checkout: the version line, the bump note and the button
+    // all state the NEW situation (usually "nothing to release - vX is live",
+    // which is a disabled button the panel explains). The finished steps stay
+    // as evidence; only the reading of the tree is refreshed.
+    await shipRefreshPlan();
+    shipBadgeFromBoot();
 });
+
+/* Re-read the checkout into the open panel WITHOUT wiping the step consoles:
+ * versions, bump note, and whether there is anything left to release. */
+async function shipRefreshPlan() {
+    if (shipRunning) return;
+    let plan = null;
+    try { plan = await window.lcl.contribPlan(); } catch { /* keep the last read */ }
+    if (!plan || plan.error) return;
+    $("ship-versions").classList.remove("ship-wait");
+    $("ship-versions").innerText =
+        `tree v${plan.version} · official #${plan.official}`
+        + (plan.latestTag ? ` — published ${plan.latestTag}` : "")
+        + ` — ${plan.dirtyCount} file${plan.dirtyCount === 1 ? "" : "s"} pending`;
+    $("ship-bump-note").innerText = plan.bumpNote || "";
+    $("ship-run").dataset.dirty = String(plan.dirtyCount);
+    const releasable = plan.releasable !== false;
+    $("ship-run").disabled = !releasable;
+    if (!releasable) {
+        shipState(plan.dirtyCount
+            ? "nothing to release — only the version-lane files differ (a previous run's residue)"
+            : `nothing to release — v${plan.version} is live and the tree is clean`);
+    }
+}
 
 function patchLabel(p) {
     // THE VERSION LEADS. "i do not like the way the patch ready exposed the
