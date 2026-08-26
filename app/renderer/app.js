@@ -5966,9 +5966,13 @@ function showPatchBanner(p) {
     later.title = "Dismiss — the button returns on the next check";
     later.addEventListener("click", () => el.remove());
     el.append(go, msg, later);
-    // ABOVE the New Session button, where the operator asked for it — not a
-    // floating top-center card. Falls back to the body if the button is absent.
-    const anchor = document.getElementById("new-session");
+    // ABOVE THE "SESSIONS" TITLE — the top of the panel, where something
+    // waiting on the operator belongs. It sat under the title (anchored to
+    // the New Session button), which read as one more session-list control
+    // rather than as news about the app itself. Falls back to the New Session
+    // button, then the body, so the offer is never lost to a missing element.
+    const anchor = document.getElementById("sidebar-head")
+        || document.getElementById("new-session");
     if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(el, anchor);
     else document.body.appendChild(el);
 }

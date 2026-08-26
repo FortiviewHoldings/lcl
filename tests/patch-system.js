@@ -194,5 +194,22 @@ check("running predates ALL numbers (buildId only) but a numbered build is " +
       "published => patch, via the buildId fallback",
     decide({ buildId: "a-1" }, { buildId: "b-2", official: 1 }, true) === true);
 
+check("THE PATCH CARD SITS ABOVE THE \"SESSIONS\" TITLE — the top of the " +
+      "panel, where something waiting on the operator belongs. Anchored to " +
+      "the New Session button it sat UNDER the title and read as one more " +
+      "session-list control instead of news about the app itself",
+    appjs.includes('document.getElementById("sidebar-head")')
+    && (() => {
+        const i = appjs.indexOf('ABOVE THE "SESSIONS" TITLE');
+        if (i < 0) return false;
+        const seg = appjs.slice(i, i + 600);
+        // the head is the anchor, with the old button kept only as a fallback
+        return seg.indexOf('getElementById("sidebar-head")')
+             < seg.indexOf('getElementById("new-session")')
+            && seg.includes("anchor.parentNode.insertBefore(el, anchor)");
+    })()
+    && fs.readFileSync(path.join(R, "app", "renderer", "index.html"), "utf8")
+        .includes('id="sidebar-head"'), null);
+
 console.log(`\n${pass}/${pass + fail} patch-system checks passed`);
 process.exit(fail ? 1 : 0);
