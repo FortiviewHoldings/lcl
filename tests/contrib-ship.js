@@ -264,10 +264,12 @@ check("the panel is styled — scrim, step dots, mono consoles",
  * shipped ... this is causing the ui to be stale"; "i told you i wanted to
  * see the waiting for the software to populate the ui"; "you have the mouse
  * cursor as the animation. i dont like that") ---- */
-check("A SHIPPED RUN IS HISTORY — only a FAILED run's evidence replays on " +
-      "open; a successful last patch never dresses a fresh panel in stale " +
-      "consoles while a new patch sits ready in the tree",
-    js.includes("if (last && last.at && !last.ok && !shipRunning)")
+check("A SHIPPED RUN IS HISTORY, AND SO IS A CLEANED-UP FAILURE — a failed " +
+      "run's evidence replays only while the plan says there is still " +
+      "something to resume ('it still showed stale data for the failed " +
+      "previous run'); a successful last patch never dresses a fresh panel",
+    js.includes("if (last && last.at && !last.ok && !shipRunning && stillRelevant)")
+    && js.includes("const stillRelevant = !plan || plan.error || plan.releasable !== false")
     && js.includes("A run that SHIPPED is"), null);
 
 check("THE PANEL POPULATES IN FRONT OF YOU — a fresh blank face, then the " +
@@ -332,6 +334,10 @@ check("READY-TO-CUT WEARS A BADGE — the Knowledge-badge shape on the Patch " +
     && html.includes('id="ship-badge"')
     && js.includes("function shipPaintBadge(")
     && js.includes("shipBadgeFromBoot()")
+    // LIVE, not click-to-refresh: "the notification badge doesnt show until
+    // you click the drop down" — a slow tick and window focus keep it honest
+    && js.includes("setInterval(shipBadgeFromBoot, 60_000)")
+    && js.includes('window.addEventListener("focus", shipBadgeFromBoot)')
     && pre.includes('contribReady: () => ipcRenderer.invoke("lcl:contribReady")')
     && (() => {
         const i = sec.indexOf('ipcMain.handle("lcl:contribReady"');
@@ -341,6 +347,20 @@ check("READY-TO-CUT WEARS A BADGE — the Knowledge-badge shape on the Patch " +
             && h.includes('"origin/main..HEAD"')
             && !h.includes('"gh"');
     })(), null);
+
+check("THE DRAFT BUTTON SITS BESIDE ITS LABEL and the draft's own status " +
+      "holds the far right of that row — 'put the button to the right of " +
+      "the Commit message, and the status icon you added, move it to where " +
+      "the button currently sits'",
+    html.includes('id="ship-draft-state"')
+    && (() => {   // label, then button, then status — in that DOM order
+        const i = html.indexOf("<span>Commit message</span>");
+        const seg = html.slice(i, i + 500);
+        return i > 0 && seg.indexOf('id="ship-redraft"') > -1
+            && seg.indexOf('id="ship-redraft"') < seg.indexOf('id="ship-draft-state"');
+    })()
+    && js.includes("function shipDraftState(")
+    && css.includes("#ship-draft-state { margin-left: auto;"), null);
 
 console.log(`\n${pass}/${pass + fail} contrib-ship checks passed`);
 process.exit(fail ? 1 : 0);

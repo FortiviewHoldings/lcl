@@ -3827,9 +3827,14 @@ details.msg-tool.failed summary { color: #e9a2a2; }
     color: var(--text-dim); }
 #ship-bump-note { font-size: var(--fs-base); color: var(--text-dim); }
 .ship-field { display: flex; flex-direction: column; gap: 4px; }
-.ship-field-head { display: flex; align-items: center; justify-content: space-between;
+/* label, then the draft button RIGHT BESIDE it; the draft's own status
+   holds the far right — where the button used to float */
+.ship-field-head { display: flex; align-items: center; gap: var(--sp-2);
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
     text-transform: uppercase; color: var(--text-faint); }
+#ship-draft-state { margin-left: auto; min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; text-transform: none;
+    letter-spacing: normal; font-size: var(--fs-tiny); }
 .ship-field textarea { width: 100%; resize: vertical;
     background: #0a0a0c; color: var(--text);
     border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
@@ -7709,26 +7714,41 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
 /* ============================================================ SB MODULES
    THE QUADRANT DOCK. "the right side bar should be a quadrant, like a true
    hero section card would be. right now all the borders touch, i would
-   rather them be their own containers, within that sidepanel." Each card is
-   its own container in a 2-wide grid — 1|2 over 3|4 in the saved order — an
-   own-column card is a full-height track beside the quadrant, and minimized
-   cards drop to the bottom as the tray. sbLayout() writes the tracks. */
+   rather them be their own containers, within that sidepanel." Each quadrant
+   card lives in one of two INDEPENDENT column wrappers (.sb-colwrap) — 1|2
+   over 3|4 in the saved order, but each column flows on its own: growing a
+   card moves only ITS column's cards ("the cards heights affect the cards
+   below, in the adjacent column" is structurally dead). An own-column card
+   is a full-height track beside the wrappers; minimized cards rise to the
+   tray at the TOP. sbLayout() writes the tracks. */
 #sb-mods {
     flex: 1;
     min-height: 0;
     display: grid;
-    gap: 6px;
+    gap: 8px;              /* real breathing room — "the borders touch" */
     padding: 6px;
     /* templates come from sbLayout(); this stands only for the first frame */
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-auto-rows: minmax(0, auto);
-    /* NOTHING STRETCHES TO FILL. A card is as tall as its content (or its
-       drag); a short card beside a tall one sits over open panel ground —
-       never inflated into a full-height column because a slot was empty */
-    align-items: start;
+    align-items: stretch;
     overflow-y: auto;
     overflow-x: hidden;
 }
+/* ONE COLUMN, ITS OWN FLOW. Cards stack with breathing room; the column
+   scrolls past its own overflow, so a card pushed down by a growing
+   neighbor moves into reach instead of being crushed illegible. NOTHING
+   stretches: a short stack sits over the column's open ground. */
+.sb-colwrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    align-items: stretch;
+}
+.sb-colwrap > .sb-mod { flex: none; }
 .sb-mod {
     position: relative;              /* anchors its own edge handles */
     display: flex;
@@ -7926,12 +7946,28 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
     content: ""; position: absolute; top: 0; bottom: 0; left: 3px;
     width: 1px; background: transparent;
 }
+.sb-h-right::after {
+    content: ""; position: absolute; top: 0; bottom: 0; right: 3px;
+    width: 1px; background: transparent;
+}
 .sb-h-bottom:hover::after, .sb-h-bottom.dragging::after {
     background: var(--line-bright); height: 2px; top: 2.5px;
 }
 .sb-h-side:hover::after, .sb-h-side.dragging::after,
 .sb-h-corner:hover ~ .sb-h-side::after {
     background: var(--line-bright); width: 2px;
+}
+.sb-h-right:hover::after, .sb-h-right.dragging::after,
+.sb-h-corner-r:hover ~ .sb-h-right::after {
+    background: var(--line-bright); width: 2px;
+}
+/* GRABBED = UNMISTAKABLE — "the drag does not show you actually grabbed a
+   handle": the held edge lights amber for the whole drag, on every edge */
+.sb-handle.dragging::after { background: var(--attn) !important; }
+.sb-h-bottom.dragging::after { height: 2px; }
+.sb-h-side.dragging::after, .sb-h-right.dragging::after { width: 2px; }
+.sb-mod:has(> .sb-handle.dragging) {
+    border-color: color-mix(in srgb, var(--attn) 45%, var(--line));
 }
 
 /* =============================================================== GO STRIP

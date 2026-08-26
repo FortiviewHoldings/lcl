@@ -1,7 +1,7 @@
 {
   "name": "lcl-setup",
   "productName": "lcl-Setup",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Install .lcl — Local Compute Layer",
   "main": "main.js",
   "author": "PragOptics",

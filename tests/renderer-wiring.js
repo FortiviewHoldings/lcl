@@ -2044,19 +2044,19 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
     check("...and the fixed info card gets no height handle — stretching an " +
           "info card only stretches whitespace",
         js.includes("if (!spec.fixed) {"), null);
-    check("CARDS OWN THEIR SIZE — content rows are auto over a filler that " +
-          "absorbs the slack, NOTHING stretches to fill (align-items: start), " +
-          "an unsized card caps near half the panel with its inner block " +
-          "scrolling, and a dragged card floors at 58px legibility",
+    check("CARDS OWN THEIR SIZE, COLUMNS OWN THEIR FLOW — each quadrant " +
+          "column is an INDEPENDENT flex stack (.sb-colwrap) that scrolls " +
+          "past its own overflow ('the cards heights affect the cards below, " +
+          "in the adjacent column' is structurally dead), an unsized card " +
+          "caps near half the panel with its inner block scrolling, and a " +
+          "dragged card floors at 58px legibility",
         js.includes('rows.push("minmax(0, 1fr)");')
-        // MAX-CONTENT rows, not auto: an auto track's base is the item's
-        // MIN-content (≈ the 22px header), so a short panel compressed five
-        // 170px cards into 132px rows they painted straight past — "the card
-        // above overlaps the header of the card below it", measured
-        && js.includes('rows.push("max-content");')
+        && js.includes("function sbWrap(")
         && js.includes("host.clientHeight * 0.48")
-        && (() => { const i = css.indexOf("#sb-mods {");
-                    return css.slice(i, i + 900).includes("align-items: start"); })()
+        && (() => { const i = css.indexOf(".sb-colwrap {");
+                    const b = css.slice(i, i + 400);
+                    return b.includes("flex-direction: column")
+                        && b.includes("overflow-y: auto"); })()
         && /\.sb-mod-inner \{[^}]*overflow: auto;/.test(css), null);
     check("EVERY COLUMN EARNS ITS WIDTH OR IT DOES NOT EXIST — no card column " +
           "below SB_CARD_MIN_W (the 470px panel squished file names into " +
@@ -2095,38 +2095,41 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
           "instead of bands whose borders touch",
         (() => { const i = css.indexOf("#sb-mods {");
                  return css.slice(i, i + 600).includes("display: grid")
-                     && css.slice(i, i + 600).includes("gap: 6px"); })()
+                     // real breathing room — "the borders touch" was reported
+                     && css.slice(i, i + 600).includes("gap: 8px"); })()
         && (() => { const i = css.indexOf(".sb-mod {");
                  const b = css.slice(i, i + 700);
                  return b.includes("border: 1px solid var(--line)")
                      && b.includes("border-radius: var(--radius-sm)"); })(), null);
     check("...the DEFAULT ORDER is the operator's numbering — tasks, wscard, " +
-          "activity, files, row-major into 1|2 over 3|4 — and placement is " +
-          "computed from DOM order offset below the tray, so the saved order " +
-          "IS the quadrant",
+          "activity, files into 1|2 over 3|4 — saved as THE COLUMNS " +
+          "THEMSELVES ({c1,c2,rest}), a card already dropped in a column " +
+          "KEEPS it, and a newcomer takes ITS saved slot, never 'the " +
+          "emptier column' (arrival order must not reshape the quadrant)",
         js.includes('["tasks", "wscard", "activity", "files", "preview"]')
-        && js.includes("String((i % 2) + 1)")
-        && js.includes("Math.floor(i / 2) + 1")
-        && js.includes("String(trayN"), null);
+        && js.includes('{ c1: ["tasks", "activity"], c2: ["wscard", "files"] }')
+        && js.includes("const slotOf = (m)")
+        && js.includes("JSON.stringify({ c1, c2, rest })")
+        && js.includes("if (inWrap(m)) continue;"), null);
     check("...OWN COLUMN is a real mode: a header button toggles it, the card " +
-          "becomes a full-height track beside the quadrant (starting BELOW " +
-          "the tray, never covering a minimized bar), the choice persists, " +
-          "and Preview is born a column — 'position 5, being Preview and it " +
-          "being its own third column, when active'",
+          "becomes a full-height track beside the columns (in the content " +
+          "row BELOW the tray, never covering a minimized bar), the choice " +
+          "persists, and Preview is born a column — 'position 5, being " +
+          "Preview and it being its own third column, when active'",
         js.includes("function sbToggleCol")
         && js.includes('"sb-colbtn"')
-        && js.includes('(trayN + 1) + " / " + (trayN + R + 2)')
+        && js.includes("String(trayN + 1)")
         && js.includes("SB_COL_DEFAULT = { preview: true }"), null);
     check("...MINIMIZED CARDS RISE TO THE TRAY AT THE TOP of the sidebar " +
           "container — 'the cards minimize to the bottom of the page, not " +
           "the top of the sidebar container. its you being backwards' — " +
-          "tray rows FIRST, then content rows, then the filler",
+          "tray rows FIRST, then the single content row the columns fill",
         js.includes('m.style.gridColumn = "1 / -1";')
         && js.includes("String(i + 1)")
         && (() => { const i = js.indexOf("const rows = [];");
                  const b = js.slice(i, i + 300);
                  return b.indexOf('rows.push("auto")') > -1
-                     && b.indexOf('rows.push("auto")') < b.indexOf('rows.push("max-content")'); })(), null);
+                     && b.indexOf('rows.push("auto")') < b.indexOf('rows.push("minmax(0, 1fr)")'); })(), null);
     check("...A FLOATING CARD'S CONTROLS TELL THE TRUTH: the pop-out and " +
           "column buttons vanish while popped, and the minimize button is " +
           "the way home — 'we dont need the pop out button when popped out, " +
@@ -2141,8 +2144,12 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
           "Y across rows, and every mid-drag reorder RE-LAYS the grid so the " +
           "cards follow the pointer instead of freezing until release",
         js.includes("ev.clientX < r.left + r.width / 2")
-        && js.includes("other.before(mod); sbLayout(); break;")
-        && js.includes("other.after(mod); sbLayout(); break;"), null);
+        && js.includes("other.before(mod); sbLayout(); placed = true; break;")
+        && js.includes("other.after(mod); sbLayout(); placed = true; break;")
+        // crossing into the other column moves the card INTO that column,
+        // and a column's open ground below its cards is a drop target too
+        && js.includes("const cross = other.parentElement !== mod.parentElement")
+        && js.includes("w.appendChild(mod); sbLayout();"), null);
     check("...and the layout pass keeps its era-crossing guards: the rAF " +
           "debounce under the sbFillSlack name every caller still speaks, " +
           "the observer stop, the zero-size bail (a collapsed panel keeps " +

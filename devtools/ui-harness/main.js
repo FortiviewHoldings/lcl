@@ -2346,7 +2346,7 @@ const SCENES = {
             const host = document.getElementById("sb-mods");
             const hr = host.getBoundingClientRect();
             const mods = {};
-            for (const el of host.querySelectorAll(":scope > .sb-mod")) {
+            for (const el of host.querySelectorAll(".sb-mod")) {
                 const b = el.getBoundingClientRect();
                 mods[el.dataset.mod] = {
                     h: Math.round(b.height), w: Math.round(b.width),
@@ -2366,14 +2366,18 @@ const SCENES = {
             "convenient subset",
             open.length === 5 && open.every(k => M[k].h > 0), m);
         check("sidebar", "THE QUADRANT IS REAL — tasks top-left, workspace top-right, " +
-            "activity bottom-left, files bottom-right: the operator's 1|2 over 3|4, " +
-            "by default, from DOM order alone",
+            "activity bottom-left, files bottom-right: the operator's 1|2 over 3|4 " +
+            "— and the columns flow INDEPENDENTLY, so the bottom row is not " +
+            "required to align across columns (each card sits under its own " +
+            "column-mate, at ITS column's height)",
             M.tasks && M.wscard && M.activity && M.files
             && M.tasks.left < M.wscard.left
             && Math.abs(M.tasks.top - M.wscard.top) < 8
             && M.activity.top > M.tasks.bottom - 4
             && M.activity.left < M.files.left
-            && Math.abs(M.activity.top - M.files.top) < 8, M);
+            && Math.abs(M.activity.left - M.tasks.left) < 4
+            && Math.abs(M.files.left - M.wscard.left) < 4
+            && M.files.top > M.wscard.bottom - 4, M);
         check("sidebar", "...PREVIEW IS ITS OWN COLUMN — position 5, full height beside " +
             "the quadrant, born that way when a document opens",
             M.preview
@@ -2422,7 +2426,7 @@ const SCENES = {
             document.getElementById("body").style.setProperty("--ws-w", "320px");
             sbApplySizes();
             await new Promise(r => setTimeout(r, 300));
-            const cards = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+            const cards = [...document.querySelectorAll("#sb-mods .sb-mod")]
                 .filter(m => getComputedStyle(m).display !== "none")
                 .map(m => ({ k: m.dataset.mod, r: m.getBoundingClientRect() }));
             const overlaps = [];
@@ -2443,7 +2447,7 @@ const SCENES = {
                         Math.round(c.r.bottom)),
                      rowsTpl: getComputedStyle(host).gridTemplateRows,
                      colsTpl: getComputedStyle(host).gridTemplateColumns,
-                     place: [...document.querySelectorAll("#sb-mods > .sb-mod")]
+                     place: [...document.querySelectorAll("#sb-mods .sb-mod")]
                         .filter(m => getComputedStyle(m).display !== "none")
                         .map(m => m.dataset.mod + ":" + m.style.gridRow
                              + "/" + m.style.gridColumn),
@@ -3456,7 +3460,7 @@ const SCENES = {
             openFileViewer("file-3.md");
             await new Promise(r => setTimeout(r, 350));
 
-            const modOf = (k) => [...document.querySelectorAll("#sb-mods > .sb-mod")]
+            const modOf = (k) => [...document.querySelectorAll("#sb-mods .sb-mod")]
                 .find(m => m.dataset.mod === k);
             const preview = modOf("preview"), files = modOf("files"),
                   wscard = modOf("wscard"), tasks = modOf("tasks");
@@ -3531,7 +3535,7 @@ const SCENES = {
                 { bubbles: true, clientX: wR.left + wR.width * 0.7,
                   clientY: wR.top + 10, pointerId: 22 }));
             await new Promise(r2 => setTimeout(r2, 80));
-            const orderMid = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+            const orderMid = [...document.querySelectorAll("#sb-mods .sb-mod")]
                 .map(m => m.dataset.mod);
             const liveReorder = orderMid.indexOf("wscard") < orderMid.indexOf("tasks")
                 && tasks.classList.contains("sb-lifting");
@@ -3579,7 +3583,7 @@ const SCENES = {
                 && localStorage.getItem("lcl-sb-col-tasks") === "0";
 
             // pick and place still works with handles in the way
-            const beforeOrder = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+            const beforeOrder = [...document.querySelectorAll("#sb-mods .sb-mod")]
                 .map(m => m.dataset.mod).join(",");
             const grip = files.querySelector(".sb-mod-grip");
             const g0 = grip.getBoundingClientRect();
@@ -3592,7 +3596,7 @@ const SCENES = {
                 go(w0.left + 10, w0.top + 4)));
             await new Promise(r => setTimeout(r, 150));
             out.orderBefore = beforeOrder;
-            out.orderAfter = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+            out.orderAfter = [...document.querySelectorAll("#sb-mods .sb-mod")]
                 .map(m => m.dataset.mod).join(",");
             out.orderSaved = (localStorage.getItem("lcl-sb-order") || "");
 
@@ -4438,11 +4442,18 @@ const SCENES = {
             window.lcl.__fire("onContribProgress",
                 { step: "draft", draftText: "COMMIT: half-written", draftTokens: 7 });
             await new Promise(r2 => setTimeout(r2, 40));
+            // the draft's status lives at the far right of the Commit
+            // message row now — "the status icon you added, move it to
+            // where the button currently sits"
             out.draftStreamed =
                 document.getElementById("ship-commit-msg").value.includes("half-written")
                 && /drafting — 7 tokens/.test(
-                    document.getElementById("ship-state").innerText);
-            await new Promise(r2 => setTimeout(r2, 280));
+                    document.getElementById("ship-draft-state").innerText)
+                && document.getElementById("ship-draft-state")
+                    .classList.contains("working");
+            // 400ms against the stub's 260ms resolve — the old 280ms left a
+            // 20-60ms margin that flaked once under event-loop jitter
+            await new Promise(r2 => setTimeout(r2, 400));
             out.draftParsed =
                 document.getElementById("ship-commit-msg").value === "Streamed final"
                 && document.getElementById("ship-commit-msg").readOnly === false;
@@ -4731,7 +4742,7 @@ const SCENES = {
             header.querySelector(".sb-mod-btn.sb-min").click();
             await new Promise(r => setTimeout(r, 120));
             const tRect = tasks.getBoundingClientRect();
-            const others = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+            const others = [...document.querySelectorAll("#sb-mods .sb-mod")]
                 .filter(m => m !== tasks && getComputedStyle(m).display !== "none");
             const minimized = tasks.classList.contains("sb-minimized")
                 && Math.round(tRect.height) <= 26;
@@ -4760,7 +4771,10 @@ const SCENES = {
             tasks.querySelector(".sb-mod-btn.sb-min").click();   // the way home
             await new Promise(r => setTimeout(r, 100));
             const docked = !tasks.classList.contains("sb-popped")
-                && tasks.parentElement.id === "sb-mods"
+                // docked = back in the dock: at host level or inside one of
+                // the dock's own column wrappers
+                && (tasks.parentElement.id === "sb-mods"
+                    || tasks.parentElement.classList.contains("sb-colwrap"))
                 && !tasks.classList.contains("sb-minimized");
 
             // triple-dot → hide the activity section's VIEW

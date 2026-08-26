@@ -5440,10 +5440,10 @@ if (window.lcl.onContribProgress) window.lcl.onContribProgress((p) => {
     // insight and the progress ARE the text appearing.
     if (p.step === "draft") {
         if (!shipDrafting) return;              // a stale stream paints nothing
-        if (p.line) shipState(p.line, true);
+        if (p.line) shipDraftState(p.line, true);
         if (p.draftText !== undefined) {
             $("ship-commit-msg").value = p.draftText;
-            shipState(`drafting — ${p.draftTokens || 0} tokens…`, true);
+            shipDraftState(`drafting — ${p.draftTokens || 0} tokens…`, true);
         }
         return;
     }
@@ -5495,13 +5495,13 @@ async function shipDraft() {
         if (d && !d.error) {
             $("ship-commit-msg").value = d.commitMessage || "";
             $("ship-notes").value = d.releaseNotes || "";
-            shipState(d.model
-                ? "drafted by the local model — edit anything before it runs"
+            shipDraftState(d.model
+                ? "drafted by the local model — edit anything"
                 : "model unavailable — heuristic draft, please edit");
         } else {
-            shipState("draft failed: " + ((d && d.error) || "unknown"));
+            shipDraftState("draft failed: " + ((d && d.error) || "unknown"));
         }
-    } catch { shipState("draft failed"); }
+    } catch { shipDraftState("draft failed"); }
     shipDrafting = false;
     msgEl.readOnly = false; notesEl.readOnly = false;
     msgEl.classList.remove("drafting"); notesEl.classList.remove("drafting");
@@ -5514,6 +5514,16 @@ async function shipDraft() {
 function shipState(text, working) {
     const el = $("ship-state");
     el.innerText = text || "";
+    el.classList.toggle("working", !!working);
+}
+/* the DRAFT'S own status lives beside the Commit message label, at the far
+ * right of that row — "put the button to the right of the Commit message,
+ * and the status icon you added, move it to where the button currently sits" */
+function shipDraftState(text, working) {
+    const el = $("ship-draft-state");
+    if (!el) return;
+    el.innerText = text || "";
+    el.title = text || "";
     el.classList.toggle("working", !!working);
 }
 
@@ -5538,35 +5548,39 @@ async function openShipPanel() {
     }
     $("ship-versions").classList.add("ship-wait");
     $("ship-identity").classList.add("ship-wait");
-    // ONLY A FAILED RUN'S EVIDENCE COMES BACK — that is the resume case, and
-    // its stderr is the one thing worth holding onto. A run that SHIPPED is
-    // history: replaying its consoles left the panel wearing the last patch
-    // while a new one sat ready in the tree, stale until it updated.
-    let lastFailNote = "";
-    try {
-        const last = await window.lcl.contribLastRun();
-        if (last && last.at && !last.ok && !shipRunning) {
-            for (const [id, lines] of Object.entries(last.transcript || {})) {
-                const el = shipStepEl(id);
-                if (!el) continue;
-                const out = el.querySelector(".ship-step-out");
-                if (out) out.textContent = (lines || []).join("\n") + "\n";
-                const st = (last.states || {})[id];
-                if (st && st !== "running") el.classList.add(st);
-            }
-            if (last.failedStep) {
-                const el = shipStepEl(last.failedStep);
-                if (el) el.classList.add("open");
-                lastFailNote =
-                    `previous run failed at ${last.failedStep} — its output is preserved above`;
-            }
-        }
-    } catch { /* a fresh panel is still a working panel */ }
+    // the last run is FETCHED here but painted only after the plan says the
+    // failure is still the live situation — see below
+    let last = null;
+    try { last = await window.lcl.contribLastRun(); } catch { /* fresh panel */ }
 
     // STAGE 1 — the relevant patch, first: versions, lanes, what is pending
     shipState("reading the checkout…", true);
     const plan = await window.lcl.contribPlan();
     $("ship-versions").classList.remove("ship-wait");
+
+    // ONLY A FAILED RUN'S EVIDENCE COMES BACK, AND ONLY WHILE IT IS STILL
+    // THE SITUATION. A run that SHIPPED is history; and a failure whose
+    // residue has since been cleaned up (nothing releasable now) is history
+    // too — "it still showed stale data for the failed previous run": stale
+    // evidence must never dress a panel that has nothing to resume.
+    let lastFailNote = "";
+    const stillRelevant = !plan || plan.error || plan.releasable !== false;
+    if (last && last.at && !last.ok && !shipRunning && stillRelevant) {
+        for (const [id, lines] of Object.entries(last.transcript || {})) {
+            const el = shipStepEl(id);
+            if (!el) continue;
+            const out = el.querySelector(".ship-step-out");
+            if (out) out.textContent = (lines || []).join("\n") + "\n";
+            const st = (last.states || {})[id];
+            if (st && st !== "running") el.classList.add(st);
+        }
+        if (last.failedStep) {
+            const el = shipStepEl(last.failedStep);
+            if (el) el.classList.add("open");
+            lastFailNote =
+                `previous run failed at ${last.failedStep} — its output is preserved above`;
+        }
+    }
     if (plan && !plan.error) {
         $("ship-versions").innerText =
             `tree v${plan.version} · official #${plan.official}`
@@ -6534,9 +6548,21 @@ const SB_MIN_W = 140;
 // rows become vertical noodles of single characters (measured, reported)
 const SB_CARD_MIN_W = 200;
 
-const sbModEls = () => [...$("sb-mods").querySelectorAll(":scope > .sb-mod")];
+// descendant, not child: quadrant cards live inside their column wrappers now
+const sbModEls = () => [...$("sb-mods").querySelectorAll(".sb-mod")];
 const sbVisibleMods = () =>
-    sbModEls().filter(m => getComputedStyle(m).display !== "none");
+    sbModEls().filter(m => {
+        if (m.classList.contains("sb-hidden-view")) return false;
+        if (m.style.display === "none") return false;
+        // a card inside a column wrapper is judged by ITS OWN state, never
+        // the wrapper's: the wrapper hides only because the layout hid it,
+        // and judging members by their hidden wrapper would deadlock an
+        // all-hidden dock — nothing visible -> wrapper stays hidden ->
+        // nothing ever reads as visible again
+        const w = m.parentElement;
+        if (w && w.classList.contains("sb-colwrap")) return true;
+        return getComputedStyle(m).display !== "none";
+    });
 const sbKey = (m) => m.dataset.mod;
 
 function sbApplyOrder() {
@@ -6545,12 +6571,25 @@ function sbApplyOrder() {
     // THE DEFAULT QUADRANT, in the operator's own numbering: "top left =
     // position 1, top right = 2, bottom left = 3, bottom right = 4 ...
     // 1 = Tasks, 2 = Workspace, 3 = Activity, 4 = Files" — with Preview as
-    // its own column when active. Grid placement is DOM order, row-major, so
-    // the order array IS the quadrant. A saved order still wins: positions
-    // are "the suggested default by me", not a cage.
-    if (!Array.isArray(order)) order = ["tasks", "wscard", "activity", "files", "preview"];
+    // its own column when active. The saved record is {c1, c2, rest} (the
+    // columns themselves); a legacy flat array reads as the row-major zip.
+    // This pass just parks every card at host level in reading order — the
+    // layout's dealer places each into ITS saved column slot.
+    let seq;
+    if (order && Array.isArray(order.c1) && Array.isArray(order.c2)) {
+        seq = [];
+        for (let i = 0; i < Math.max(order.c1.length, order.c2.length); i++) {
+            if (order.c1[i]) seq.push(order.c1[i]);
+            if (order.c2[i]) seq.push(order.c2[i]);
+        }
+        seq.push(...(Array.isArray(order.rest) ? order.rest : []));
+    } else if (Array.isArray(order)) {
+        seq = order;
+    } else {
+        seq = ["tasks", "wscard", "activity", "files", "preview"];
+    }
     const host = $("sb-mods");
-    for (const key of order) {
+    for (const key of seq) {
         const el = sbModEls().find(m => sbKey(m) === key);
         if (el) host.appendChild(el);
     }
@@ -6639,15 +6678,44 @@ function sbFillSlack() {
 
 function sbFillSlackNow() { sbLayout(); }
 
+/* THE TWO QUADRANT COLUMNS — each an INDEPENDENT container. "each slot is
+ * not its own invisible container with independency ... the cards heights
+ * affect the cards below, in the adjacent column": in one shared-row grid
+ * that coupling is structural — a row is as tall as its tallest card, so
+ * growing 1 moved 2 and 4. Each column is its own flex stack now: growing a
+ * card moves only ITS column's cards, and a column that runs out of room
+ * scrolls — the card below is pushed, never crushed illegible. */
+function sbWrap(n) {
+    const host = $("sb-mods");
+    let w = host.querySelector(':scope > .sb-colwrap[data-col="' + n + '"]');
+    if (!w) {
+        w = document.createElement("div");
+        w.className = "sb-colwrap";
+        w.dataset.col = String(n);
+        host.appendChild(w);
+    }
+    return w;
+}
+/* row-major reading of the two columns — the operator's 1|2 / 3|4 */
+function sbZipWrapKeys(w1, w2) {
+    const modsOf = (w) => [...w.children].filter(c =>
+        c.classList.contains("sb-mod") || c.classList.contains("sb-mod-placeholder"));
+    const a = modsOf(w1), b = modsOf(w2), seq = [];
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+        if (a[i]) seq.push(a[i]);
+        if (b[i]) seq.push(b[i]);
+    }
+    return seq;
+}
+
 /**
- * THE GRID, laid — CARDS OWN THEIR SIZE. Rows are content-sized (auto), a
- * filler row absorbs the leftover panel, and NOTHING stretches to fill:
- * two lonely cards are two tidy cards over open ground, never two skinny
- * full-height columns. An unsized card opens at natural height capped to
- * ~half the panel (its inner block scrolls); a dragged height (g.cardH)
- * belongs to THAT card alone. Own-column cards span down to the filler's
- * end, so they are full-height without inflating anyone's content rows.
- * A panel too narrow for two legible columns stacks everything in one.
+ * THE DOCK, laid — CARDS OWN THEIR SIZE, COLUMNS OWN THEIR FLOW. The host
+ * grid holds the tray (top), then ONE content row carrying the two column
+ * wrappers and any own-column cards as full-height tracks. Inside a wrapper,
+ * cards stack with real breathing room and the column scrolls past its own
+ * overflow. An unsized card opens at natural height capped to ~half the
+ * panel (its inner block scrolls); a dragged height (g.cardH) belongs to
+ * THAT card alone. A panel too narrow for two legible columns stacks one.
  */
 function sbLayout(gOverride) {
     const host = document.getElementById("sb-mods");
@@ -6666,7 +6734,7 @@ function sbLayout(gOverride) {
      * SB_CARD_MIN_W: own-column cards FOLD back into the flow (least
      * valuable first, Preview last) until what remains fits, and a panel
      * that cannot afford two readable quadrant columns stacks ONE. */
-    const pad = 12, gap = 6;
+    const pad = 12, gap = 8;
     const fitW = (tracksN) => tracksN < 1 ? Infinity
         : (host.clientWidth - pad - gap * (tracksN - 1)) / tracksN;
     let cols = live.filter(m => m.classList.contains("sb-col"));
@@ -6678,8 +6746,64 @@ function sbLayout(gOverride) {
         quad.push(cols.pop());
     }
     const twoCol = quad.length > 1 && fitW(2 + cols.length) >= SB_CARD_MIN_W;
-    const R = twoCol ? Math.ceil(quad.length / 2) : quad.length;
     const quadCols = quad.length ? (twoCol ? 2 : 1) : 0;
+
+    // ---- MEMBERSHIP. A card already living in a wrapper KEEPS its column —
+    // the operator's drop is the truth. A newcomer (first boot, un-popped,
+    // folded-back, just-revealed) takes THE SLOT ITS KEY HOLDS in the saved
+    // record — never "the emptier column", which made the quadrant depend on
+    // what order cards happened to appear (Tasks hidden for one layout pass
+    // shifted every card a slot). Non-quad cards live at host level.
+    const w1 = sbWrap(1), w2 = sbWrap(2);
+    const inWrap = (m) => m.parentElement === w1 || m.parentElement === w2;
+    const saved = (() => {
+        try {
+            const o = JSON.parse(localStorage.getItem(SB_ORDER_KEY) || "null");
+            if (o && Array.isArray(o.c1) && Array.isArray(o.c2)) return o;
+            if (Array.isArray(o)) {
+                // legacy flat order = the row-major zip: even slots left col
+                return { c1: o.filter((_, i) => i % 2 === 0),
+                         c2: o.filter((_, i) => i % 2 === 1) };
+            }
+        } catch { }
+        return { c1: ["tasks", "activity"], c2: ["wscard", "files"] };
+    })();
+    const slotOf = (m) => {
+        const k = sbKey(m);
+        if (saved.c1.includes(k)) return { w: w1, i: saved.c1.indexOf(k), list: saved.c1 };
+        if (saved.c2.includes(k)) return { w: w2, i: saved.c2.indexOf(k), list: saved.c2 };
+        // unknown key: the shorter column's end
+        const w = w1.children.length <= w2.children.length ? w1 : w2;
+        return { w, i: Infinity, list: null };
+    };
+    for (const m of vis) {
+        if (!quad.includes(m) && inWrap(m)) host.appendChild(m);
+    }
+    if (twoCol) {
+        if (host.dataset.sbStacked === "1") {
+            // leaving forced single-column: everyone re-places by the record
+            delete host.dataset.sbStacked;
+            for (const c of [...w1.children, ...w2.children]) {
+                if (quad.includes(c)) host.appendChild(c);
+            }
+        }
+        for (const m of quad) {
+            if (inWrap(m)) continue;
+            const s = slotOf(m);
+            const before = s.list && [...s.w.children].find(c =>
+                c.classList.contains("sb-mod") && s.list.includes(sbKey(c))
+                && s.list.indexOf(sbKey(c)) > s.i);
+            if (before) s.w.insertBefore(m, before); else s.w.appendChild(m);
+        }
+    } else {
+        // ONE readable column: gather row-major so the reading order holds
+        const seq = sbZipWrapKeys(w1, w2).filter(c => quad.includes(c));
+        for (const m of seq) w1.appendChild(m);
+        for (const m of quad) if (!inWrap(m)) w1.appendChild(m);
+        host.dataset.sbStacked = "1";
+    }
+    w1.style.display = quad.length ? "" : "none";
+    w2.style.display = twoCol ? "" : "none";
 
     const tracks = [];
     if (quad.length) {
@@ -6713,30 +6837,27 @@ function sbLayout(gOverride) {
     // rows: the TRAY first — "the cards minimize to the bottom of the page,
     // not the top of the sidebar container" was backwards: a minimized card
     // docks to the TOP of the panel, where a collapsed thing waits in reach —
-    // then R content rows, then ONE filler that soaks up the leftover panel.
-    // Content rows are MAX-CONTENT, not auto: an auto track's
-    // base is the item's MIN-content (≈ its 22px header, since the inner
-    // block scrolls), so a short panel compressed five 170px cards into
-    // 132px rows they painted straight past — "the card above overlaps the
-    // header of the card below it", measured. max-content rows hold the
-    // card's real (capped) height and the panel scrolls instead.
+    // then ONE content row carrying the wrappers and the own-column tracks.
+    const trayN = minim.length;
     const rows = [];
     for (const _ of minim) rows.push("auto");
-    for (let i = 0; i < R; i++) rows.push("max-content");
     rows.push("minmax(0, 1fr)");
     host.style.gridTemplateRows = rows.join(" ");
-    const trayN = minim.length;
+
+    w1.style.gridColumn = "1";
+    w2.style.gridColumn = "2";
+    w1.style.gridRow = w2.style.gridRow = String(trayN + 1);
 
     const capPx = Math.round(host.clientHeight * 0.48);
-    quad.forEach((m, i) => {
-        m.style.gridColumn = twoCol ? String((i % 2) + 1) : "1";
-        m.style.gridRow = String(trayN
-            + (twoCol ? Math.floor(i / 2) + 1 : i + 1));
-        m.style.alignSelf = "";
+    quad.forEach((m) => {
+        // the wrapper's flex flow owns the position — no grid coords here
+        m.style.gridColumn = ""; m.style.gridRow = ""; m.style.alignSelf = "";
         const spec = SB_MODS[sbKey(m)] || {};
         const h = Number(g.cardH[sbKey(m)]);
         if (!spec.fixed && Number.isFinite(h) && h >= 58) {
-            // a dragged height is THIS card's height — nobody else moves
+            // a dragged height is THIS card's height — nobody else moves,
+            // and nobody in the NEXT column moves either: the columns flow
+            // independently now
             m.style.height = Math.min(h, Math.round(host.clientHeight * 0.9)) + "px";
             m.style.maxHeight = "none";
             m.classList.add("sb-hset");
@@ -6750,11 +6871,9 @@ function sbLayout(gOverride) {
     });
     cols.forEach((m, i) => {
         m.style.gridColumn = String(quadCols + i + 1);
-        // span the content rows AND the filler — full height, without
-        // inflating any content row (the filler absorbs the demand). The
-        // span starts BELOW the tray: a full-height column never covers a
-        // minimized card's bar.
-        m.style.gridRow = (trayN + 1) + " / " + (trayN + R + 2);
+        // full height in the content row, BELOW the tray: a full-height
+        // column never covers a minimized card's bar
+        m.style.gridRow = String(trayN + 1);
         m.style.alignSelf = "stretch";
         m.style.height = ""; m.style.maxHeight = "";
         m.classList.remove("sb-hset");
@@ -6832,8 +6951,18 @@ function sbAttachHandles(mod) {
         sbDragG = gLive;
         const move = (ev) => {
             const host = $("sb-mods");
-            const hr = host.getBoundingClientRect();
+            let hr = host.getBoundingClientRect();
             if (!hr.width || !hr.height) return;
+            // THE PARENT FOLLOWS THE DRAG — "you are forced to increase the
+            // sidebar size, before you can increase the width of an item.
+            // instead of it auto expanding the parent container like it
+            // should": a width drag pushed past the panel's inner edge grows
+            // the PANEL by the overshoot (up to its own ceiling), and the
+            // clamps below re-read the grown width in the same move
+            if (wSign && ev.clientX < hr.left + 2) {
+                setWorkspaceWidth(window.innerWidth - ev.clientX);
+                hr = host.getBoundingClientRect();
+            }
             if (wantH) {
                 // THIS card's height, alone — floor for legibility, ceiling
                 // so one card cannot swallow the panel
@@ -6900,26 +7029,60 @@ function sbGripDrag(e, mod) {
         // can change the stack height mid-drag, and the scrollbar appearing
         // shrinks clientWidth enough that a stale value misclassifies every
         // full-width module as a shared-row target
-        const panelW = $("sb-mods").clientWidth;
-        for (const other of sbVisibleMods()) {
-            if (other === mod) continue;
+        const hostEl = $("sb-mods");
+        const panelW = hostEl.clientWidth;
+        let placed = false;
+        // THE CARD UNDER THE POINTER WINS. Two cards share a row band across
+        // the columns; walking document order used to hand the drop to the
+        // left column's card while the pointer sat squarely on the right's.
+        // First pass: targets the pointer is horizontally INSIDE; second:
+        // band-only, for drops beside a card.
+        const candidates = sbVisibleMods().filter(o => o !== mod);
+        const inBand = candidates.filter(o => {
+            const r = o.getBoundingClientRect();
+            return ev.clientY >= r.top && ev.clientY <= r.bottom;
+        });
+        const underPointer = inBand.filter(o => {
+            const r = o.getBoundingClientRect();
+            return ev.clientX >= r.left && ev.clientX <= r.right;
+        });
+        for (const other of (underPointer.length ? underPointer : inBand)) {
             const r = other.getBoundingClientRect();
-            // only a module whose row band the pointer is inside can be the
-            // drop target — no leaping over distant sections
-            if (ev.clientY < r.top || ev.clientY > r.bottom) continue;
-            // side-by-side rows exist now: within a shared row the X axis
-            // decides before/after; a full-width row still splits on Y
+            // a quadrant card never docks beside an own-column track — a
+            // column card is a TRACK, not a slot (the col button owns that)
+            if (other.parentElement === hostEl
+                && mod.parentElement !== hostEl) continue;
+            // side-by-side columns: within a shared band the X axis decides
+            // before/after; a full-width row still splits on Y. before/after
+            // are SIBLING inserts, so crossing into the other column's card
+            // moves this card into THAT column — drag Files anywhere.
             const shared = r.width < panelW - 12;
             const before = shared
                 ? ev.clientX < r.left + r.width / 2
                 : ev.clientY < r.top + r.height / 2;
-            if (before
-                && mod.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_PRECEDING) {
-                other.before(mod); sbLayout(); break;
+            const cross = other.parentElement !== mod.parentElement;
+            if (before && (cross
+                || mod.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_PRECEDING)) {
+                other.before(mod); sbLayout(); placed = true; break;
             }
-            if (!before
-                && mod.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING) {
-                other.after(mod); sbLayout(); break;
+            if (!before && (cross
+                || mod.compareDocumentPosition(other) & Node.DOCUMENT_POSITION_FOLLOWING)) {
+                other.after(mod); sbLayout(); placed = true; break;
+            }
+            placed = true; break;   // inside a band with nothing to change
+        }
+        if (!placed) {
+            // open ground in a column is a target too — a card dropped onto
+            // the empty space below a column's cards joins that column's end
+            for (const w of hostEl.querySelectorAll(":scope > .sb-colwrap")) {
+                if (w.style.display === "none") continue;
+                const r = w.getBoundingClientRect();
+                if (ev.clientX < r.left || ev.clientX > r.right
+                    || ev.clientY < r.top || ev.clientY > r.bottom) continue;
+                if (mod.parentElement !== w || w.lastElementChild !== mod) {
+                    w.appendChild(mod); sbLayout();
+                }
+                break;
             }
         }
     };
@@ -6930,14 +7093,18 @@ function sbGripDrag(e, mod) {
         grip.removeEventListener("pointerup", up);
         try {
             // a POPPED module holds its dock spot via its placeholder — the
-            // saved order walks the dock's children and reads a placeholder as
-            // the module it stands for, so floating a section never drops it
-            // from the layout it returns to
-            const orderNow = [...$("sb-mods").children]
-                .map(el => el.classList.contains("sb-mod-placeholder")
-                    ? el.dataset.for : (el.dataset.mod || null))
-                .filter(Boolean);
-            localStorage.setItem(SB_ORDER_KEY, JSON.stringify(orderNow));
+            // saved order reads a placeholder as the module it stands for,
+            // so floating a section never drops it from the layout it
+            // returns to. The record is THE COLUMNS THEMSELVES ({c1, c2,
+            // rest}) — an exact save of where the operator put things, so a
+            // reload (or a card that was hidden for a pass) lands every card
+            // back in ITS slot, never a reconstruction.
+            const keyOf = (el) => el.classList.contains("sb-mod-placeholder")
+                ? el.dataset.for : (el.dataset.mod || null);
+            const c1 = [...sbWrap(1).children].map(keyOf).filter(Boolean);
+            const c2 = [...sbWrap(2).children].map(keyOf).filter(Boolean);
+            const rest = [...$("sb-mods").children].map(keyOf).filter(Boolean);
+            localStorage.setItem(SB_ORDER_KEY, JSON.stringify({ c1, c2, rest }));
         } catch { }
         sbApplySizes();
     };
@@ -18324,9 +18491,15 @@ async function openEscalation() {
     // the knowledge badge: shipped sources not yet on this machine, known at
     // boot without opening anything — the count is ~64 stats, not the inventory
     kbBadgeFromBoot();
-    // the patch badge: something ready to cut in the linked checkout, known
-    // the same way — at boot, refreshed whenever the Patch menu opens
+    // the patch badge: something ready to release in the linked checkout,
+    // known the same way — at boot, then LIVE: the checkout changes while
+    // the app sits open (a contributor is working in it), and a badge that
+    // waits for a menu click to be right is not a notification. A slow tick
+    // plus window focus keeps it honest; the menu click stays as the
+    // freshest read.
     shipBadgeFromBoot();
+    setInterval(shipBadgeFromBoot, 60_000);
+    window.addEventListener("focus", shipBadgeFromBoot);
     const patchLabel = document.querySelector('.menu[data-menu="patch"] .menu-label');
     if (patchLabel) patchLabel.addEventListener("click", shipBadgeFromBoot);
 
