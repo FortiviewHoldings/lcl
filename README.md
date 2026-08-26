@@ -438,4 +438,7 @@ day you switch every one of those off, it still works.
 
 ## License
 
-MIT © PragOptics. See [LICENSE](LICENSE).
+MIT © Bridges Industrial LLC. See [LICENSE](LICENSE).
+
+Contributions require a signed-off commit (`git commit -s`) — see
+[CONTRIBUTING.md](CONTRIBUTING.md) for the contributor terms.
