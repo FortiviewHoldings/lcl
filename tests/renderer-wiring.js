@@ -2400,6 +2400,64 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
         && /CAP_ORDER = \[[^\]]*"device\.write"/.test(capSrc.replace(/\n/g, " ")));
 }
 
+check("NO PILLS, AND A PILL IS GEOMETRY — the base radius (11px) on a ~22px " +
+      "small button is half its height: fully rounded ends, the shape the " +
+      "house rule forbids. Small controls carry the small radius so they " +
+      "read as rounded rectangles at their own size",
+    (() => {
+        const i = css.indexOf("button.ghost.small,");
+        const seg = css.slice(i, i + 700);
+        return i > 0 && seg.includes("border-radius: var(--radius-xs)")
+            && seg.includes("A PILL IS GEOMETRY");
+    })()
+    // and nothing anywhere reintroduces the literal pill
+    && !/border-radius:\s*9{3,}px/.test(css), null);
+
+check("THE WORKSPACE CARD SPEAKS IN GLYPHS — 'change' is a folder with an " +
+      "arrow, 'unlink' is a BROKEN LINK, both real SVGs on the icon-button " +
+      "treatment, neither a word-shaped button",
+    (() => {
+        const i = html.indexOf('id="ws-change"');
+        const seg = html.slice(i, i + 900);
+        return i > 0 && /class="icon-btn"/.test(seg) && seg.includes("<svg")
+            && !/>Change/.test(seg);
+    })()
+    && (() => {
+        const i = html.indexOf('id="ws-unlink"');
+        const seg = html.slice(i, i + 900);
+        return i > 0 && seg.includes("icon-btn") && seg.includes("<svg")
+            && !/>Unlink/.test(seg);
+    })()
+    // the click wiring survives the change of clothes
+    && js.includes('$("ws-change").addEventListener("click", () => linkRepo())')
+    && js.includes('$("ws-unlink").addEventListener("click", () => unlinkRepo())'), null);
+
+check("THE GLASS ICON BUTTON — no container is drawn around a glyph at rest; " +
+      "the pane appears only under the pointer, in white over whatever ground " +
+      "the button sits on (so it is the SAME COLOUR AS THE BACKGROUND), lit " +
+      "at 145deg on hover and flipped to 325deg while pressed so it pops out " +
+      "and then sinks in",
+    (() => {
+        const i = css.indexOf("THE GLASS ICON BUTTON");
+        if (i < 0) return false;
+        const seg = css.slice(i, i + 2200);
+        return seg.includes("border: 1px solid transparent")
+            && seg.includes("background: transparent")
+            && seg.includes("linear-gradient(145deg")
+            && seg.includes("linear-gradient(325deg")
+            && seg.includes("transform: translateY(-1px)")
+            && seg.includes("inset 0 2px 5px");
+    })()
+    // every square icon control shares it — sidebar cards and step copies too
+    && (() => {
+        const i = css.indexOf("THE GLASS ICON BUTTON");
+        const seg = css.slice(i, i + 900);
+        return seg.includes(".sb-mod-btn") && seg.includes(".ship-step-copy")
+            && seg.includes(".icon-act.icon-only");
+    })()
+    // ...and the destructive glyph keeps its warning colour on that glass
+    && css.includes(".icon-btn.danger-text:hover:not(:disabled)"), null);
+
 console.log(`\n${pass}/${pass + fail} renderer wiring checks passed`);
     process.exit(fail ? 1 : 0);
 })();

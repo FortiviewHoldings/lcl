@@ -5502,6 +5502,8 @@ async function shipDraft() {
             shipDraftState("draft failed: " + ((d && d.error) || "unknown"));
         }
     } catch { shipDraftState("draft failed"); }
+    // the transient is over — the bottom line goes back to being the panel
+    shipRestoreStanding();
     shipDrafting = false;
     msgEl.readOnly = false; notesEl.readOnly = false;
     msgEl.classList.remove("drafting"); notesEl.classList.remove("drafting");
@@ -5516,6 +5518,17 @@ function shipState(text, working) {
     el.innerText = text || "";
     el.classList.toggle("working", !!working);
 }
+/* THE BOTTOM LINE ALWAYS RESOLVES TO WHAT THE PANEL IS. When the draft's
+ * status moved up beside the Commit message label, the bottom line was left
+ * holding "drafting from the diff…" — the draft now reports upstairs, so
+ * nothing ever cleared it and it pulsed there forever ("you just moved it
+ * and left a stale piece behind"). The bottom line owns PANEL state only:
+ * what is pending, where the checkout came from, how a run ended. It is
+ * restored whenever a transient (the draft) finishes. */
+let shipStanding = "";
+function shipSetStanding(text) { shipStanding = text || ""; shipState(shipStanding); }
+function shipRestoreStanding() { if (!shipRunning) shipState(shipStanding); }
+
 /* the DRAFT'S own status lives beside the Commit message label, at the far
  * right of that row — "put the button to the right of the Commit message,
  * and the status icon you added, move it to where the button currently sits" */
@@ -5646,18 +5659,19 @@ async function openShipPanel() {
     // already said what it says, and a fresh draft's note would bury the one
     // message that matters.
     if (lastFailNote) {
-        shipState(lastFailNote);
+        shipSetStanding(lastFailNote);
     } else if (!releasable) {
-        shipState(plan.dirtyCount
+        shipSetStanding(plan.dirtyCount
             ? "nothing to release — only the version-lane files differ (a previous run's residue)"
             : `nothing to release — v${plan.version} is live and the tree is clean`);
     } else if (!plan.dirtyCount) {
-        shipState("resuming — the committed work is not published yet");
+        shipSetStanding("resuming — the committed work is not published yet");
     } else {
-        // an auto-found checkout says so once — nothing was asked for
-        shipState(st.repoHow === "discovered"
+        // an auto-found checkout says so once — nothing was asked for; the
+        // DRAFT's progress belongs to the draft's own status, upstairs
+        shipSetStanding(st.repoHow === "discovered"
             ? `checkout found from your sessions: ${st.repo}`
-            : "drafting from the diff…", true);
+            : `${plan.dirtyCount} file${plan.dirtyCount === 1 ? "" : "s"} pending — review and release`);
         shipDraft();
     }
 }
@@ -5757,6 +5771,12 @@ $("ship-run").addEventListener("click", async () => {
     // which is a disabled button the panel explains). The finished steps stay
     // as evidence; only the reading of the tree is refreshed.
     await shipRefreshPlan();
+    // the outcome leads the standing line the refresh just wrote — what
+    // happened, then what the checkout is now
+    if (res && res.ok) {
+        shipSetStanding(`v${res.version} is live`
+            + (shipStanding ? ` — ${shipStanding}` : ""));
+    }
     shipBadgeFromBoot();
 });
 
@@ -5777,9 +5797,11 @@ async function shipRefreshPlan() {
     const releasable = plan.releasable !== false;
     $("ship-run").disabled = !releasable;
     if (!releasable) {
-        shipState(plan.dirtyCount
+        shipSetStanding(plan.dirtyCount
             ? "nothing to release — only the version-lane files differ (a previous run's residue)"
             : `nothing to release — v${plan.version} is live and the tree is clean`);
+    } else {
+        shipSetStanding(`${plan.dirtyCount} file${plan.dirtyCount === 1 ? "" : "s"} pending — review and release`);
     }
 }
 

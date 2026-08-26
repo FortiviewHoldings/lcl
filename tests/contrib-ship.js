@@ -392,5 +392,23 @@ check("THE PANEL COMES BACK TO LIFE AFTER A RUN — the run button is never " +
         return !js.slice(i, i + 1400).includes("shipPaintSteps");
     })(), null);
 
+check("NO STALE STATUS LEFT BEHIND BY THE MOVE — the bottom line owns PANEL " +
+      "state only (what is pending, where the checkout came from, how a run " +
+      "ended) and is RESTORED when a transient finishes; the draft's own " +
+      "progress reports upstairs, so 'drafting from the diff...' can never " +
+      "be left pulsing at the bottom forever",
+    js.includes("let shipStanding = \"\";")
+    && js.includes("function shipSetStanding(")
+    && js.includes("function shipRestoreStanding()")
+    // the draft restores the panel's line when it finishes, win or lose
+    && (() => {
+        const i = js.indexOf("async function shipDraft()");
+        const seg = js.slice(i, i + 1600);
+        return seg.includes("shipRestoreStanding();");
+    })()
+    // ...and no shipState call carries draft text (the phrase survives only
+    // in the comment that explains why it must not)
+    && !/shipState\([^)]*drafting/.test(js), null);
+
 console.log(`\n${pass}/${pass + fail} contrib-ship checks passed`);
 process.exit(fail ? 1 : 0);

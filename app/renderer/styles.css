@@ -1592,6 +1592,12 @@ button.ghost.small,
 button.primary.small {
     padding: var(--sp-1) var(--sp-2);
     font-size: var(--fs-sm);
+    /* NO PILLS — AND A PILL IS GEOMETRY, NOT A TOKEN. The base --radius is
+       11px, which on a ~22px-tall small button is exactly half its height:
+       fully rounded ends, a lozenge, the shape the house rule forbids. The
+       token was never the problem; the ratio was. A small control gets the
+       small radius so it reads as a rounded RECTANGLE at its own size. */
+    border-radius: var(--radius-xs);
 }
 
 /* ---- danger stays a tinted outline, never a fill ---- */
@@ -6792,20 +6798,77 @@ button.small.icon-only {
 }
 
 /* the header control that remains acts on the WINDOW, so it is an icon */
+/* ================================================== THE GLASS ICON BUTTON
+   "the svg by itself, then having a glass like border that is the same color
+   as the background, just a different gradient degree so it looks like it
+   pops out a little when hovered over or clicked."
+
+   AT REST THERE IS NO CONTAINER — the glyph alone. The pane only appears
+   under the pointer: white overlays over whatever ground the button sits on,
+   so it is always the SAME COLOUR AS THE BACKGROUND, lit at a different
+   angle. Hover lifts it (145deg, top-light, a shadow beneath); pressing
+   flips the gradient the other way (325deg) and sinks the shadow inward, so
+   the same pane reads as pushed in. Every square icon control in the app
+   shares this — no boxes drawn around glyphs. */
+.icon-btn,
+.sb-mod-btn,
+.icon-act.icon-only,
+.ship-step-copy {
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    box-shadow: none;
+    transition: color 120ms ease, background 160ms ease,
+                border-color 160ms ease, box-shadow 160ms ease,
+                transform 120ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+    .icon-btn:hover:not(:disabled),
+    .sb-mod-btn:hover:not(:disabled),
+    .icon-act.icon-only:hover:not(:disabled),
+    .ship-step-copy:hover:not(:disabled) {
+        color: var(--text);
+        background: linear-gradient(145deg,
+            rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.018));
+        border-color: rgba(255, 255, 255, 0.13);
+        box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.10);
+        transform: translateY(-1px);
+    }
+}
+.icon-btn:active:not(:disabled),
+.sb-mod-btn:active:not(:disabled),
+.icon-act.icon-only:active:not(:disabled),
+.ship-step-copy:active:not(:disabled) {
+    background: linear-gradient(325deg,
+        rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.012));
+    border-color: rgba(255, 255, 255, 0.16);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45);
+    transform: translateY(0);
+}
 .icon-btn {
     display: grid;
     place-items: center;
     width: 28px;
     height: 28px;
-    border: 1px solid var(--line);
-    border-radius: var(--radius-sm);
-    background: none;
     color: var(--text-dim);
     cursor: pointer;
-    transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
-.icon-btn:hover { color: var(--text); background: rgba(255,255,255,0.06); border-color: var(--line-strong); }
-.icon-btn.on { color: var(--text); border-color: var(--line-strong); background: rgba(255,255,255,0.08); }
+.icon-btn.on {
+    color: var(--text);
+    background: linear-gradient(145deg,
+        rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
+    border-color: rgba(255, 255, 255, 0.13);
+}
+/* the destructive glyph keeps its warning colour ON the glass — the pane is
+   the same, only the light through it is red */
+.icon-btn.danger-text:hover:not(:disabled),
+.sb-mod-btn.danger-text:hover:not(:disabled) {
+    color: var(--danger);
+    border-color: rgba(199, 92, 106, 0.34);
+    box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42),
+                inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
 
 /* the script boundary, one line: state at a glance, the essay behind a click */
 .perm-boundary {
