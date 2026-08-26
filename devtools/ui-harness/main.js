@@ -4447,10 +4447,21 @@ const SCENES = {
             // where the button currently sits"
             out.draftStreamed =
                 document.getElementById("ship-commit-msg").value.includes("half-written")
-                && /drafting — 7 tokens/.test(
+                && /drafting the commit — 7 tokens/.test(
                     document.getElementById("ship-draft-state").innerText)
                 && document.getElementById("ship-draft-state")
                     .classList.contains("working");
+            // ...and when NOTES: arrives the stream MOVES: the notes text
+            // lands in the notes field, never trailing into the commit box
+            window.lcl.__fire("onContribProgress",
+                { step: "draft", draftTokens: 19,
+                  draftText: "COMMIT: half-written line" + String.fromCharCode(10) + "NOTES: the notes half" });
+            await new Promise(r2 => setTimeout(r2, 40));
+            out.draftMovedOn =
+                document.getElementById("ship-commit-msg").value === "half-written line"
+                && document.getElementById("ship-notes").value === "the notes half"
+                && /drafting the notes/.test(
+                    document.getElementById("ship-draft-state").innerText);
             // 400ms against the stub's 260ms resolve — the old 280ms left a
             // 20-60ms margin that flaked once under event-loop jitter
             await new Promise(r2 => setTimeout(r2, 400));
@@ -4534,11 +4545,15 @@ const SCENES = {
             window.__harness.FIXTURES.contribReady = () =>
                 ({ ready: true, dirty: 12, ahead: 1 });
             await shipBadgeFromBoot();
+            // ONE PATCH IS ONE — the badge says 1, never a file count; the
+            // sizing lives in the tooltip where it cannot be mistaken for
+            // "13 patches waiting"
             out.badgeOn =
                 !document.getElementById("patch-badge").classList.contains("hidden")
-                && document.getElementById("patch-badge").innerText === "13"
+                && document.getElementById("patch-badge").innerText === "1"
+                && /12 files changed/.test(document.getElementById("patch-badge").title)
                 && !document.getElementById("ship-badge").classList.contains("hidden")
-                && document.getElementById("ship-badge").innerText === "13";
+                && document.getElementById("ship-badge").innerText === "1";
             window.__harness.FIXTURES.contribReady = () => ({ ready: false });
             await shipBadgeFromBoot();
             out.badgeOff =
@@ -4568,6 +4583,7 @@ const SCENES = {
             "model's text paints in live with a token count, and only the parsed " +
             "result hands the fields back",
             r.draftLocked === true && r.draftStreamed === true
+            && r.draftMovedOn === true
             && r.draftParsed === true, r);
         check("ship", "THE STREAM IS THE SHOW — a running step opens itself, its dot " +
             "pulses, and every output line lands in its own console",
@@ -4594,7 +4610,8 @@ const SCENES = {
             r.waitShimmer === true && r.stateWorking === true
             && r.stagedOrder === true, r);
         check("ship", "READY-TO-CUT WEARS A BADGE — the Knowledge-badge shape on the " +
-            "Patch menu label AND on the Release Patch item, counting dirty+ahead; " +
+            "Patch menu label AND on the Release Patch item, saying ONE (a patch " +
+            "is one patch, whatever its size — the counts live in the tooltip); " +
             "nothing pending takes both away",
             r.badgeOn === true && r.badgeOff === true, r);
         check("ship", "NO PATCH, NO RUN — a clean, fully-released tree disarms the " +

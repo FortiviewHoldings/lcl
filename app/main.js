@@ -12031,8 +12031,14 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
     // resume over an already-committed tree carries its message in history
     const name = String(o.name || "").trim(), email = String(o.email || "").trim();
     if (!name || !email) return { error: "no git identity — sign in with gh or set git config" };
-    contribRunState = { cancelled: false, child: null, transcript: {} };
-    const states = {};
+    // THE LIVE RUN IS READABLE FROM OUTSIDE. Its step states used to live in
+    // a local const, so a panel reopened mid-run could not know a run was
+    // happening at all — "i have no clue if it is actually running still as
+    // the ui is showing that it is not running". They live on the run state
+    // now, beside the transcript, and lcl:contribLastRun serves them live.
+    contribRunState = { cancelled: false, child: null, transcript: {},
+                        states: {}, startedAt: Date.now() };
+    const states = contribRunState.states;
     const emit = (step, state, line) => {
         if (state) states[step] = state;
         if (line) {
@@ -12205,7 +12211,20 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
     }
 }));
 
-ipcMain.handle("lcl:contribLastRun", guard(async () => contribLastRun));
+ipcMain.handle("lcl:contribLastRun", guard(async () => {
+    // A RUN IN FLIGHT ANSWERS FIRST — the panel reopens onto the run that is
+    // actually happening, with its consoles and step states, instead of the
+    // record of some previous one.
+    if (contribRunState) {
+        return { at: contribRunState.startedAt, running: true, ok: false,
+                 failedStep: null, version: null,
+                 states: { ...contribRunState.states },
+                 transcript: Object.fromEntries(
+                     Object.entries(contribRunState.transcript)
+                         .map(([k, v]) => [k, v.slice(-120)])) };
+    }
+    return contribLastRun;
+}));
 
 ipcMain.handle("lcl:contribCancel", guard(async () => {
     if (!contribRunState) return { ok: false };

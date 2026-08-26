@@ -5442,8 +5442,25 @@ if (window.lcl.onContribProgress) window.lcl.onContribProgress((p) => {
         if (!shipDrafting) return;              // a stale stream paints nothing
         if (p.line) shipDraftState(p.line, true);
         if (p.draftText !== undefined) {
-            $("ship-commit-msg").value = p.draftText;
-            shipDraftState(`drafting — ${p.draftTokens || 0} tokens…`, true);
+            // THE STREAM LANDS IN THE FIELD IT IS WRITING. The raw generation
+            // is one text carrying both answers (COMMIT: … NOTES: …), and
+            // painting all of it into the commit box meant the operator
+            // watched the release notes being typed into the commit message:
+            // "it writes it all in the commit while the model is thinking,
+            // instead of writing the commit, then moving to the notes".
+            // Split on the same markers main parses, live: everything before
+            // NOTES: is the commit, everything after is the notes — so the
+            // model is seen finishing one field and moving to the next.
+            const raw = String(p.draftText);
+            const cut = raw.search(/NOTES:/i);
+            const head = (cut >= 0 ? raw.slice(0, cut) : raw)
+                .replace(/^[\s\S]*?COMMIT:\s*/i, "");
+            $("ship-commit-msg").value = head.trim();
+            if (cut >= 0) {
+                $("ship-notes").value = raw.slice(cut).replace(/^\s*NOTES:\s*/i, "").trim();
+            }
+            shipDraftState(`drafting the ${cut >= 0 ? "notes" : "commit"} — `
+                + `${p.draftTokens || 0} tokens…`, true);
         }
         return;
     }
@@ -5555,19 +5572,49 @@ async function openShipPanel() {
     $("ship-identity").innerText = "";
     $("ship-gate-note").classList.add("hidden");
     $("ship-run").disabled = true;
+    $("ship-versions").classList.add("ship-wait");
+    $("ship-identity").classList.add("ship-wait");
+    // the last run is FETCHED FIRST — because a run IN FLIGHT answers here,
+    // and a live run owns the panel from the first frame
+    let last = null;
+    try { last = await window.lcl.contribLastRun(); } catch { /* fresh panel */ }
+
+    /* A LIVE RUN OWNS THE REOPENED PANEL. Closing hides the view and the run
+     * carries on in main — but the reopened panel used to come back blank and
+     * idle over a release that was still going: "i minimized that release
+     * patch window, and it did not resume or update the ui with the current
+     * running release ... i have no clue if it is actually running". Main
+     * serves the live states and consoles; they are painted back here, the
+     * run controls return to their running posture, and the stream keeps
+     * landing in the same steps. Survives an app restart too, because the
+     * truth is main's, not this renderer's. */
+    const liveRun = !!(last && last.running);
+    if (liveRun) {
+        shipRunning = true;
+        const NL = String.fromCharCode(10);
+        for (const [id, lines] of Object.entries(last.transcript || {})) {
+            const el = shipStepEl(id);
+            if (!el) continue;
+            const out = el.querySelector(".ship-step-out");
+            if (out) { out.textContent = (lines || []).join(NL) + NL; out.scrollTop = out.scrollHeight; }
+        }
+        for (const [id, st] of Object.entries(last.states || {})) {
+            const el = shipStepEl(id);
+            if (!el) continue;
+            el.classList.remove("running", "done", "failed", "skipped");
+            el.classList.add(st);
+            if (st === "running") el.classList.add("open");
+        }
+        $("ship-cancel").classList.remove("hidden");
+        shipState("running — one step at a time", true);
+    }
     if (!shipRunning && !shipDrafting) {
         $("ship-commit-msg").value = "";
         $("ship-notes").value = "";
     }
-    $("ship-versions").classList.add("ship-wait");
-    $("ship-identity").classList.add("ship-wait");
-    // the last run is FETCHED here but painted only after the plan says the
-    // failure is still the live situation — see below
-    let last = null;
-    try { last = await window.lcl.contribLastRun(); } catch { /* fresh panel */ }
 
     // STAGE 1 — the relevant patch, first: versions, lanes, what is pending
-    shipState("reading the checkout…", true);
+    if (!liveRun) shipState("reading the checkout…", true);
     const plan = await window.lcl.contribPlan();
     $("ship-versions").classList.remove("ship-wait");
 
@@ -5604,7 +5651,7 @@ async function openShipPanel() {
     }
 
     // STAGE 2 — who is cutting it
-    shipState(lastFailNote || "checking who you are…", !lastFailNote);
+    if (!liveRun) shipState(lastFailNote || "checking who you are…", !lastFailNote);
     const st = await window.lcl.contribStatus();
     $("ship-identity").classList.remove("ship-wait");
     if (!st || st.error) {
@@ -5650,7 +5697,7 @@ async function openShipPanel() {
     // plan states the fact (content beyond the lane files, unpushed commits,
     // or a resumable failed publish); the button obeys it.
     const releasable = plan.releasable !== false;
-    $("ship-run").disabled = !releasable;
+    $("ship-run").disabled = !releasable || liveRun;
     $("ship-run").dataset.identityName = st.identity.name || "";
     $("ship-run").dataset.identityEmail = st.identity.email || "";
     $("ship-run").dataset.dirty = String(plan.dirtyCount);
@@ -5658,7 +5705,9 @@ async function openShipPanel() {
     // the state line and skips it: the commit already exists, the fields
     // already said what it says, and a fresh draft's note would bury the one
     // message that matters.
-    if (lastFailNote) {
+    if (liveRun) {
+        // the run is talking; nothing here may speak over it or re-draft
+    } else if (lastFailNote) {
         shipSetStanding(lastFailNote);
     } else if (!releasable) {
         shipSetStanding(plan.dirtyCount
@@ -5680,17 +5729,23 @@ async function openShipPanel() {
  * cut (dirty files or unpushed commits in the linked checkout), said at the
  * menu level AND on the line item it belongs to, without opening anything. */
 function shipPaintBadge(r) {
-    const n = r && r.ready ? (Number(r.dirty) || 0) + (Number(r.ahead) || 0) : 0;
+    // ONE PATCH IS ONE. "im still not a fan of the 5. it is one patch,
+    // regardless of the amount being patched. insight to the patch should
+    // come from the diff read." The badge counts PATCHES — there is either
+    // one waiting or there is not; what is IN it is the diff's job to say
+    // (the panel's drafted message reads the diff and describes it). The
+    // file and commit counts survive only in the tooltip, as sizing.
+    const ready = !!(r && r.ready);
     for (const id of ["patch-badge", "ship-badge"]) {
         const b = $(id);
         if (!b) continue;
-        b.innerText = n > 99 ? "99+" : String(n);
-        b.title = n
-            ? `${r.dirty || 0} file${r.dirty === 1 ? "" : "s"} changed`
-              + (r.ahead ? ` · ${r.ahead} commit${r.ahead === 1 ? "" : "s"} not on origin` : "")
-              + " — ready to cut a patch"
+        b.innerText = "1";
+        b.title = ready
+            ? "a patch is ready to release — "
+              + `${r.dirty || 0} file${r.dirty === 1 ? "" : "s"} changed`
+              + (r.ahead ? `, ${r.ahead} commit${r.ahead === 1 ? "" : "s"} not on origin` : "")
             : "";
-        b.classList.toggle("hidden", n <= 0);
+        b.classList.toggle("hidden", !ready);
     }
 }
 async function shipBadgeFromBoot() {

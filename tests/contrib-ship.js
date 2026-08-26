@@ -75,7 +75,9 @@ check("THE DRAFT IS WATCHED, NOT WAITED ON — every phase says itself (diff " +
     && sec.includes("loading the local model")
     && sec.includes("draftText: String((t && t.text)")
     && js.includes("p.draftText !== undefined")
-    && js.includes("drafting — ${p.draftTokens || 0} tokens"), null);
+    // the status names the FIELD being written, not just a token count
+    && js.includes("${p.draftTokens || 0} tokens")
+    && js.includes('drafting the ${cut >= 0 ? "notes" : "commit"}'), null);
 
 check("...and the FIELDS LOCK while the model writes — read-only from the " +
       "first phase line to the parsed result, a stale stream paints " +
@@ -365,14 +367,16 @@ check("THE DRAFT BUTTON SITS BESIDE ITS LABEL and the draft's own status " +
       "the Commit message, and the status icon you added, move it to where " +
       "the button currently sits'",
     html.includes('id="ship-draft-state"')
-    && (() => {   // label, then button, then status — in that DOM order
+    && (() => {   // label, then STATUS, then the button — in that DOM order
         const i = html.indexOf("<span>Commit message</span>");
-        const seg = html.slice(i, i + 500);
-        return i > 0 && seg.indexOf('id="ship-redraft"') > -1
-            && seg.indexOf('id="ship-redraft"') < seg.indexOf('id="ship-draft-state"');
+        const seg = html.slice(i, i + 600);
+        return i > 0 && seg.indexOf('id="ship-draft-state"') > -1
+            && seg.indexOf('id="ship-draft-state"') < seg.indexOf('id="ship-redraft"');
     })()
     && js.includes("function shipDraftState(")
-    && css.includes("#ship-draft-state { margin-left: auto;"), null);
+    // the BUTTON holds the far right now
+    && css.includes("#ship-redraft { margin-left: auto;")
+    && !css.includes("#ship-draft-state { margin-left: auto;"), null);
 
 check("THE PANEL COMES BACK TO LIFE AFTER A RUN — the run button is never " +
       "left disabled with nothing saying why ('the Release button locked ... " +
@@ -409,6 +413,58 @@ check("NO STALE STATUS LEFT BEHIND BY THE MOVE — the bottom line owns PANEL " 
     // ...and no shipState call carries draft text (the phrase survives only
     // in the comment that explains why it must not)
     && !/shipState\([^)]*drafting/.test(js), null);
+
+check("A LIVE RUN OWNS THE REOPENED PANEL — main keeps the run's step states " +
+      "beside its transcript and serves them while the run is in flight, so " +
+      "reopening paints the consoles, the running step and the cancel button " +
+      "back ('i minimized that release patch window, and it did not resume ... " +
+      "i have no clue if it is actually running')",
+    sec.includes("states: {}, startedAt: Date.now()")
+    && sec.includes("const states = contribRunState.states;")
+    && (() => {
+        const i = sec.indexOf('ipcMain.handle("lcl:contribLastRun"');
+        const seg = sec.slice(i, i + 800);
+        return i > 0 && seg.includes("if (contribRunState)") && seg.includes("running: true");
+    })()
+    && js.includes("const liveRun = !!(last && last.running);")
+    && (() => {
+        const i = js.indexOf("const liveRun = !!(last && last.running);");
+        const seg = js.slice(i, i + 1200);
+        return seg.includes("shipRunning = true;")
+            && seg.includes('$("ship-cancel").classList.remove("hidden")')
+            && seg.includes('el.classList.add("open")');
+    })()
+    // ...and nothing in the open sequence speaks over the run or re-drafts
+    && js.includes('if (!liveRun) shipState("reading the checkout')
+    && js.includes('$("ship-run").disabled = !releasable || liveRun;')
+    && js.includes("the run is talking; nothing here may speak over it"), null);
+
+check("ONE PATCH IS ONE — the badge says 1 whatever the size of the change " +
+      "('it is one patch, regardless of the amount being patched'); the file " +
+      "and commit counts survive only as tooltip sizing, and insight into " +
+      "what is in it comes from the drafted diff read",
+    (() => {
+        const i = js.indexOf("function shipPaintBadge(");
+        const seg = js.slice(i, i + 1200);
+        return i > 0 && seg.includes('b.innerText = "1";')
+            && seg.includes("a patch is ready to release")
+            && !/\+ \(Number\(r\.ahead\)/.test(seg);
+    })(), null);
+
+check("THE DRAFT WRITES ONE FIELD AT A TIME — the generation carries both " +
+      "answers in one text, and painting all of it into the commit box meant " +
+      "watching the release notes typed into the commit message. The stream " +
+      "splits on the same COMMIT:/NOTES: markers main parses, so the commit " +
+      "fills, then the model moves to the notes and the status says which",
+    (() => {
+        const i = js.indexOf("THE STREAM LANDS IN THE FIELD IT IS WRITING");
+        if (i < 0) return false;
+        const seg = js.slice(i, i + 1400);
+        return seg.includes("const cut = raw.search(/NOTES:/i);")
+            && seg.includes('$("ship-commit-msg").value = head.trim();')
+            && seg.includes('$("ship-notes").value = raw.slice(cut)')
+            && seg.includes('drafting the ${cut >= 0 ? "notes" : "commit"}');
+    })(), null);
 
 console.log(`\n${pass}/${pass + fail} contrib-ship checks passed`);
 process.exit(fail ? 1 : 0);

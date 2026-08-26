@@ -1249,14 +1249,14 @@
                          skip a number; the line states what will happen -->
                     <div id="ship-bump-note" class="ship-note"></div>
                     <div class="ship-field">
-                        <!-- the draft button sits BESIDE the label; the far
-                             right belongs to the draft's own status (the
-                             pulsing state that used to live at the bottom) -->
+                        <!-- the STATUS sits next to the title (it describes
+                             what is happening to this field); the button that
+                             starts the diff read holds the far right -->
                         <div class="ship-field-head">
                             <span>Commit message</span>
+                            <span id="ship-draft-state" class="ship-note"></span>
                             <button id="ship-redraft" class="ghost small"
                                     title="Have the local model read the diff and draft both fields again">Draft from the diff</button>
-                            <span id="ship-draft-state" class="ship-note"></span>
                         </div>
                         <textarea id="ship-commit-msg" rows="2" spellcheck="false"
                                   placeholder="what this patch does and why"></textarea>

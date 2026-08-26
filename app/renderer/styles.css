@@ -3833,14 +3833,16 @@ details.msg-tool.failed summary { color: #e9a2a2; }
     color: var(--text-dim); }
 #ship-bump-note { font-size: var(--fs-base); color: var(--text-dim); }
 .ship-field { display: flex; flex-direction: column; gap: 4px; }
-/* label, then the draft button RIGHT BESIDE it; the draft's own status
-   holds the far right — where the button used to float */
+/* label, then the draft's STATUS right beside it — it is describing this
+   field, so it reads as part of the title; the button that starts the diff
+   read holds the far right */
 .ship-field-head { display: flex; align-items: center; gap: var(--sp-2);
     font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
     text-transform: uppercase; color: var(--text-faint); }
-#ship-draft-state { margin-left: auto; min-width: 0; overflow: hidden;
+#ship-draft-state { min-width: 0; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; text-transform: none;
     letter-spacing: normal; font-size: var(--fs-tiny); }
+#ship-redraft { margin-left: auto; flex: none; }
 .ship-field textarea { width: 100%; resize: vertical;
     background: #0a0a0c; color: var(--text);
     border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
