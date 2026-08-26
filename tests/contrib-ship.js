@@ -296,6 +296,35 @@ check("...with a VISIBLE waiting treatment: shimmering placeholders on the " +
         return i > 0 && !css.slice(i, i + 500).includes("cursor: progress");
     })(), null);
 
+/* "it allowed me to release without any patch. the notification badges also
+ * appeared, which is not correct, they referred to the logs, not whether
+ * there was an available patch or not only" — a second run on a clean,
+ * fully-released tree bumped the lanes over NOTHING, and the residue lit
+ * the badge. */
+check("LANE FILES ARE BOOKKEEPING, NOT CONTENT — one shared filter names the " +
+      "bump's three files, and the ready badge counts only content beyond them",
+    sec.includes("const CONTRIB_LANE_FILES = new Set([")
+    && sec.includes('"app/package.json", "devtools/RELEASE.json", "devtools/installer/package.json"')
+    && sec.includes("function contribContentFiles(")
+    && (() => {
+        const i = sec.indexOf('ipcMain.handle("lcl:contribReady"');
+        return i > 0 && sec.slice(i, i + 700).includes("contribContentFiles(");
+    })(), null);
+
+check("NO PATCH, NO RUN — the plan states releasable as a fact (content, " +
+      "unpushed commits, or a FULLY-CLEAN unpublished resume; lane-only " +
+      "residue is none of those), the button obeys it, and the run itself " +
+      "REFUSES an empty release before the bump can write anything",
+    sec.includes("const releasable = contentCount > 0 || ahead > 0")
+    && sec.includes("(!tagTaken && files.length === 0)")
+    && sec.includes("bump residue); revert ")
+    && sec.includes("is already `\n                        + \"live and the tree is clean\"")
+    && sec.indexOf("NOTHING TO RELEASE IS A REFUSAL") < sec.indexOf("if (mustBump) {")
+    && js.includes("const releasable = plan.releasable !== false")
+    && js.includes('$("ship-run").disabled = !releasable')
+    && js.includes("nothing to release — only the version-lane files differ")
+    && js.includes("is live and the tree is clean"), null);
+
 check("READY-TO-CUT WEARS A BADGE — the Knowledge-badge shape on the Patch " +
       "menu label AND on the Release Patch line item, painted at boot and on " +
       "menu open, fed by a git-only handler that never spawns gh",

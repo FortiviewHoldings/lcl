@@ -7746,7 +7746,12 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
 /* the inner block scrolls past the card's cap or dragged height — content is
    never squeezed illegible to fit; it scrolls at full size */
 .sb-mod-inner { flex: 1; min-height: 0; overflow: auto; }
-.sb-mod.sb-lifting { opacity: 0.75; outline: 1px dashed var(--line-bright); }
+/* LIFTED = VISIBLY IN HAND. The card scales up over a real shadow while the
+   reorder tracks the pointer live — dragging is never blind. transition:none
+   so the lift obeys the hand, not an easing curve. */
+.sb-mod.sb-lifting { opacity: 0.92; outline: 1px dashed var(--line-bright);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+    transform: scale(1.012); z-index: 5; transition: none; }
 
 /* ---- the per-section HEADER BAR: grip · title · pop-out · minimize ---- */
 .sb-mod-head {
@@ -7758,6 +7763,9 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
     padding: 0 4px;
     background: rgba(255, 255, 255, 0.02);
     border-bottom: 1px solid var(--line);
+    /* the WHOLE header is the drag handle — the glyph is the hint, not the
+       only 12px that works */
+    cursor: grab;
     user-select: none;
 }
 .sb-mod-grip {

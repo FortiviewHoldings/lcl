@@ -3504,10 +3504,51 @@ const SCENES = {
             await new Promise(r => setTimeout(r, 150));
             const t2 = tasks.getBoundingClientRect();
 
+            // THE DRAG IS NEVER BLIND — mid-drag, pointer still DOWN, the
+            // card tracks the hand even after the observer's rAF pass runs
+            // (the pass that used to stomp live paints with stale storage:
+            // "until it is moved, i dont see it moved", reproduced and closed)
+            const bh = tasks.querySelector(".sb-h-bottom");
+            const b0 = tasks.getBoundingClientRect();
+            const oEv = (x, y) => ({ bubbles: true, clientX: x, clientY: y, pointerId: 21 });
+            bh.dispatchEvent(new PointerEvent("pointerdown", oEv(b0.left + 3, b0.bottom - 2)));
+            bh.dispatchEvent(new PointerEvent("pointermove", oEv(b0.left + 3, b0.bottom + 46)));
+            await new Promise(r2 => setTimeout(r2, 120));
+            const midH = tasks.getBoundingClientRect().height;
+            bh.dispatchEvent(new PointerEvent("pointerup", oEv(b0.left + 3, b0.bottom + 46)));
+            await new Promise(r2 => setTimeout(r2, 80));
+            const liveDrag = midH >= b0.height + 30;
+
+            // THE WHOLE HEADER DRAGS THE CARD — grab Tasks by its TITLE, not
+            // the glyph, carry it into Workspace's half, and the swap happens
+            // WHILE dragging, wearing the lifted look
+            const headEl = tasks.querySelector(":scope > .sb-mod-head");
+            const hR = headEl.getBoundingClientRect();
+            const wR = wscard.getBoundingClientRect();
+            headEl.dispatchEvent(new PointerEvent("pointerdown",
+                { bubbles: true, clientX: hR.left + 60, clientY: hR.top + 8, pointerId: 22 }));
+            headEl.dispatchEvent(new PointerEvent("pointermove",
+                { bubbles: true, clientX: wR.left + wR.width * 0.7,
+                  clientY: wR.top + 10, pointerId: 22 }));
+            await new Promise(r2 => setTimeout(r2, 80));
+            const orderMid = [...document.querySelectorAll("#sb-mods > .sb-mod")]
+                .map(m => m.dataset.mod);
+            const liveReorder = orderMid.indexOf("wscard") < orderMid.indexOf("tasks")
+                && tasks.classList.contains("sb-lifting");
+            headEl.dispatchEvent(new PointerEvent("pointerup",
+                { bubbles: true, clientX: wR.left + wR.width * 0.7,
+                  clientY: wR.top + 10, pointerId: 22 }));
+            await new Promise(r2 => setTimeout(r2, 80));
+            // restore the default order so later scenes read a known layout
+            localStorage.removeItem("lcl-sb-order");
+            sbApplyOrder(); sbFillSlack();
+            await new Promise(r2 => setTimeout(r2, 100));
+
             let saved = {};
             try { saved = JSON.parse(localStorage.getItem("lcl-sb-grid") || "{}"); } catch {}
 
             const out = {
+                liveDrag, liveReorder,
                 bornColumn,
                 panelH: Math.round(hr.height),
                 colNarrowedBy: Math.round(p0.width - p1.width),
@@ -3582,6 +3623,16 @@ const SCENES = {
             "pointer, AND ITS ROW NEIGHBOR HOLDS STILL: 'one container " +
             "affects another' is dead",
             ws.rowGrewTo > ws.rowWas + 40 && ws.neighborHeld, ws);
+        check("workspace", "THE DRAG IS NEVER BLIND — with the pointer still " +
+            "down, the card is already at the dragged size AFTER the " +
+            "observer's layout pass has run ('until it is moved, i dont see " +
+            "it moved' — the stale-storage stomp, reproduced and closed)",
+            ws.liveDrag === true, ws);
+        check("workspace", "THE WHOLE HEADER DRAGS THE CARD to another slot — " +
+            "grabbed by the title, the swap happens WHILE dragging, wearing " +
+            "the lifted look ('i can not click files and drag it to another " +
+            "column' — the 12px-glyph-only grab is dead)",
+            ws.liveReorder === true, ws);
         check("workspace", "...and a crush attempt stops at the card's own " +
             "58px reading floor — no card is ever dragged out of legibility",
             ws.flooredAt >= 50 && ws.flooredAt <= 140, ws.flooredAt);
@@ -4449,6 +4500,24 @@ const SCENES = {
             out.replayNote = /previous run failed at push/.test(
                 document.getElementById("ship-state").innerText);
 
+            // NO PATCH, NO RUN — a clean, fully-released tree DISARMS the
+            // button and says why. Reproduced from the live report: "it
+            // allowed me to release without any patch."
+            document.getElementById("ship-close").click();
+            window.__harness.FIXTURES.contribLastRun = () => ({});
+            window.__harness.FIXTURES.contribPlan = () => ({ repo: "C:/checkout",
+                files: [], dirtyCount: 0, contentCount: 0, ahead: 0,
+                releasable: false, official: 12, version: "1.0.10",
+                latestTag: "v1.0.10", willBump: true,
+                bumpNote: "v1.0.10 is already published — this ship bumps to v1.0.11 · official #13",
+                nextVersion: "1.0.11", nextOfficial: 13, branch: "public" });
+            await openShipPanel();
+            await new Promise(r2 => setTimeout(r2, 60));
+            out.cleanDisarmed =
+                document.getElementById("ship-run").disabled === true
+                && document.getElementById("ship-state").innerText
+                    .includes("nothing to release — v1.0.10 is live");
+
             // READY-TO-CUT WEARS THE BADGE — on the menu label AND the item,
             // counting what is cuttable; nothing pending takes both away
             window.__harness.FIXTURES.contribReady = () =>
@@ -4517,6 +4586,10 @@ const SCENES = {
             "Patch menu label AND on the Release Patch item, counting dirty+ahead; " +
             "nothing pending takes both away",
             r.badgeOn === true && r.badgeOff === true, r);
+        check("ship", "NO PATCH, NO RUN — a clean, fully-released tree disarms the " +
+            "run button and the state line says why ('it allowed me to release " +
+            "without any patch', reproduced and closed)",
+            r.cleanDisarmed === true, r);
         await shoot(win, "ship");
     },
 
@@ -4650,8 +4723,11 @@ const SCENES = {
             const hasPop = !!(header && header.querySelector(".sb-mod-btn.sb-pop"));
             const hasTitle = !!(header && header.querySelector(".sb-mod-title"));
 
-            // minimize → collapses to the header AND drops to the TRAY: a
-            // full-width bar at the bottom of the panel, not a half-empty cell
+            // minimize → collapses to the header AND rises to the TRAY: a
+            // full-width bar at the TOP of the sidebar container — "the
+            // cards minimize to the bottom of the page, not the top of the
+            // sidebar container. its you being backwards": a collapsed thing
+            // waits within reach, above the live cards, never under them
             header.querySelector(".sb-mod-btn.sb-min").click();
             await new Promise(r => setTimeout(r, 120));
             const tRect = tasks.getBoundingClientRect();
@@ -4660,7 +4736,7 @@ const SCENES = {
             const minimized = tasks.classList.contains("sb-minimized")
                 && Math.round(tRect.height) <= 26;
             const inTray = tasks.style.gridColumn === "1 / -1"
-                && others.every(m => tRect.top >= m.getBoundingClientRect().top - 1);
+                && others.every(m => tRect.top <= m.getBoundingClientRect().top + 1);
 
             // pop out STRAIGHT FROM THE TRAY → floats expanded, and the
             // minimized KEY clears with the class — the desync here booted a
@@ -4710,7 +4786,7 @@ const SCENES = {
             "column, minimize and pop-out — and driving it throws nothing",
             r.hasTitle && r.hasMin && r.hasPop && r.errs.length === 0, r);
         check("sidebar-modular", "MINIMIZE collapses a section to its header AND " +
-            "drops it to the TRAY — a full-width bar at the bottom of the " +
+            "raises it to the TRAY — a full-width bar at the TOP of the " +
             "panel, below every live card, never a half-empty quadrant cell",
             r.minimized && r.inTray, r);
         check("sidebar-modular", "POP-OUT floats the card on the body (leaving a " +

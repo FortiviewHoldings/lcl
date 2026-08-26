@@ -11668,6 +11668,18 @@ let contribRunState = null;      // { cancelled, child, transcript } while a run
 // screenshot before it vanishes.
 let contribLastRun = null;
 
+// THE THREE FILES THE BUMP ITSELF EDITS. Lane bookkeeping is never patch
+// content: a run's own residue (a bump that never got committed) must not
+// light the ready badge, arm the run button, or count as "an available
+// patch" — the operator's rule, verbatim: the badge is about "whether there
+// was an available patch or not only".
+const CONTRIB_LANE_FILES = new Set([
+    "app/package.json", "devtools/RELEASE.json", "devtools/installer/package.json"]);
+function contribContentFiles(porcelainOut) {
+    return String(porcelainOut || "").split(/\r?\n/).filter(l => l.trim())
+        .filter(l => !CONTRIB_LANE_FILES.has(l.slice(3).trim().replace(/\\/g, "/")));
+}
+
 function contribRepoRoot() {
     const p0 = paths.readSettings().contribRepoPath;
     if (!p0) return null;
@@ -11757,7 +11769,8 @@ ipcMain.handle("lcl:contribReady", guard(async () => {
     const repo = contribRepoRoot();
     if (!repo) return { ready: false };
     const st = contribExec("git", ["status", "--porcelain"], repo, 8000);
-    const dirty = st.ok ? st.out.split(/\r?\n/).filter(l => l.trim()).length : 0;
+    // CONTENT only — lane-file residue is bookkeeping, not an available patch
+    const dirty = st.ok ? contribContentFiles(st.out).length : 0;
     let ahead = 0;
     const ah = contribExec("git", ["rev-list", "--count", "origin/main..HEAD"], repo, 8000);
     if (ah.ok) ahead = Number(ah.out) || 0;
@@ -11876,7 +11889,20 @@ ipcMain.handle("lcl:contribPlan", guard(async () => {
             ? `v${version} is already published — this ship bumps to v${nextVersion} · official #${nextOfficial}`
             : `v${version} is unpublished — this ship releases it as-is`;
     const branch = contribExec("git", ["rev-parse", "--abbrev-ref", "HEAD"], repo);
+    // RELEASABLE IS A FACT THE PANEL OBEYS. Content changes (beyond the lane
+    // trio), unpushed commits, or a FULLY-CLEAN tree whose version was never
+    // published (a failed publish being resumed) = something real to release.
+    // A clean-and-live tree is NOT — and neither is lane-only residue, whose
+    // bumped version numbers would otherwise read as "unpublished" and reopen
+    // the exact empty-release hole this line closes.
+    const contentCount = contribContentFiles(st.ok ? st.out : "").length;
+    let ahead = 0;
+    const ah = contribExec("git", ["rev-list", "--count", "origin/main..HEAD"], repo);
+    if (ah.ok) ahead = Number(ah.out) || 0;
+    const releasable = contentCount > 0 || ahead > 0
+        || (!tagTaken && files.length === 0);
     return { repo, files: files.slice(0, 200), dirtyCount: files.length,
+             contentCount, ahead, releasable,
              official, version, latestTag, willBump, bumpNote,
              nextVersion, nextOfficial,
              branch: branch.ok ? branch.out : null };
@@ -12049,6 +12075,36 @@ ipcMain.handle("lcl:contribRun", guard(async (_e, opts) => {
                     ["api", `repos/${remote.owner}/${remote.repo}/releases/tags/v${version}`,
                      "--jq", ".tag_name"], repo);
                 mustBump = tt.ok && tt.out === `v${version}`;
+            }
+        }
+        // NOTHING TO RELEASE IS A REFUSAL, NOT A RUN. Watched live: a clean,
+        // fully-released tree let a second run start — its bump fired FIRST
+        // and stranded the lanes a version ahead with no content behind them.
+        // Re-derived here independently of the renderer, before anything can
+        // write: content = changes beyond the lane trio; lane-only dirt is a
+        // previous bump's residue; a fully clean, not-ahead, unpublished tree
+        // is the one legitimate empty case (resuming a failed publish).
+        {
+            const st0 = contribExec("git", ["status", "--porcelain"], repo);
+            const dirtyAll = st0.ok
+                ? st0.out.split(/\r?\n/).filter(l => l.trim()) : [];
+            const content = contribContentFiles(st0.ok ? st0.out : "");
+            const ah0 = contribExec("git",
+                ["rev-list", "--count", "origin/main..HEAD"], repo);
+            const ahead = ah0.ok ? (Number(ah0.out) || 0) : 0;
+            if (!content.length && ahead === 0) {
+                if (dirtyAll.length) {
+                    contribRunState = null;
+                    return { error: "nothing to release — only the version-lane "
+                        + "files differ (a previous run's bump residue); revert "
+                        + "them or make real changes first" };
+                }
+                if (mustBump) {
+                    contribRunState = null;
+                    return { error: `nothing to release — v${version} is already `
+                        + "live and the tree is clean" };
+                }
+                // clean, not ahead, unpublished: resume the failed publish
             }
         }
         if (mustBump) {

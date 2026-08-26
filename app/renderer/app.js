@@ -5618,7 +5618,12 @@ async function openShipPanel() {
             + ((plan && plan.error) || "unknown"));
         return;
     }
-    $("ship-run").disabled = false;
+    // NO PATCH, NO RUN. Watched live: a clean, fully-released tree left the
+    // button armed and a second run bumped the lanes over nothing. main's
+    // plan states the fact (content beyond the lane files, unpushed commits,
+    // or a resumable failed publish); the button obeys it.
+    const releasable = plan.releasable !== false;
+    $("ship-run").disabled = !releasable;
     $("ship-run").dataset.identityName = st.identity.name || "";
     $("ship-run").dataset.identityEmail = st.identity.email || "";
     $("ship-run").dataset.dirty = String(plan.dirtyCount);
@@ -5628,8 +5633,12 @@ async function openShipPanel() {
     // message that matters.
     if (lastFailNote) {
         shipState(lastFailNote);
+    } else if (!releasable) {
+        shipState(plan.dirtyCount
+            ? "nothing to release — only the version-lane files differ (a previous run's residue)"
+            : `nothing to release — v${plan.version} is live and the tree is clean`);
     } else if (!plan.dirtyCount) {
-        shipState("nothing is pending — the tree is clean");
+        shipState("resuming — the committed work is not published yet");
     } else {
         // an auto-found checkout says so once — nothing was asked for
         shipState(st.repoHow === "discovered"
@@ -6606,6 +6615,16 @@ function sbApplySizes() {
  * caller and observer still speaks it. */
 let sbFillPending = false;
 let sbApplying = false;           // true while the layout pass writes style
+// THE HAND ON THE HANDLE IS THE AUTHORITY. While a resize drag is live, this
+// holds its in-flight grid — and EVERY layout pass obeys it. Without this,
+// the drag was blind: the drag's own class flips (dragging, sb-hset) woke
+// the MutationObserver, whose rAF pass re-laid the dock from SAVED storage —
+// where the drag's values do not exist until pointerup — stomping every live
+// paint within a frame. ("i can not see that i am dragging it ... until it
+// is moved, i dont see it moved.") The sbApplying guard could never stop it:
+// observer callbacks deliver as microtasks AFTER the guarded block resets
+// the flag.
+let sbDragG = null;
 
 
 function sbFillSlack() {
@@ -6637,7 +6656,7 @@ function sbLayout(gOverride) {
     if (!host || !host.clientHeight || !host.clientWidth) return;
     const vis = sbVisibleMods().filter(m => !m.classList.contains("sb-popped"));
     if (!vis.length) return;
-    const g = gOverride || sbGrid();
+    const g = gOverride || sbDragG || sbGrid();
     const minim = vis.filter(m => m.classList.contains("sb-minimized"));
     const live = vis.filter(m => !m.classList.contains("sb-minimized"));
 
@@ -6691,23 +6710,28 @@ function sbLayout(gOverride) {
     }
     host.style.gridTemplateColumns = tracks.join(" ");
 
-    // rows: R content rows, ONE filler that soaks up the leftover panel,
-    // then the tray. Content rows are MAX-CONTENT, not auto: an auto track's
+    // rows: the TRAY first — "the cards minimize to the bottom of the page,
+    // not the top of the sidebar container" was backwards: a minimized card
+    // docks to the TOP of the panel, where a collapsed thing waits in reach —
+    // then R content rows, then ONE filler that soaks up the leftover panel.
+    // Content rows are MAX-CONTENT, not auto: an auto track's
     // base is the item's MIN-content (≈ its 22px header, since the inner
     // block scrolls), so a short panel compressed five 170px cards into
     // 132px rows they painted straight past — "the card above overlaps the
     // header of the card below it", measured. max-content rows hold the
     // card's real (capped) height and the panel scrolls instead.
     const rows = [];
+    for (const _ of minim) rows.push("auto");
     for (let i = 0; i < R; i++) rows.push("max-content");
     rows.push("minmax(0, 1fr)");
-    for (const _ of minim) rows.push("auto");
     host.style.gridTemplateRows = rows.join(" ");
+    const trayN = minim.length;
 
     const capPx = Math.round(host.clientHeight * 0.48);
     quad.forEach((m, i) => {
         m.style.gridColumn = twoCol ? String((i % 2) + 1) : "1";
-        m.style.gridRow = twoCol ? String(Math.floor(i / 2) + 1) : String(i + 1);
+        m.style.gridRow = String(trayN
+            + (twoCol ? Math.floor(i / 2) + 1 : i + 1));
         m.style.alignSelf = "";
         const spec = SB_MODS[sbKey(m)] || {};
         const h = Number(g.cardH[sbKey(m)]);
@@ -6727,15 +6751,17 @@ function sbLayout(gOverride) {
     cols.forEach((m, i) => {
         m.style.gridColumn = String(quadCols + i + 1);
         // span the content rows AND the filler — full height, without
-        // inflating any content row (the filler absorbs the demand)
-        m.style.gridRow = "1 / " + (R + 2);
+        // inflating any content row (the filler absorbs the demand). The
+        // span starts BELOW the tray: a full-height column never covers a
+        // minimized card's bar.
+        m.style.gridRow = (trayN + 1) + " / " + (trayN + R + 2);
         m.style.alignSelf = "stretch";
         m.style.height = ""; m.style.maxHeight = "";
         m.classList.remove("sb-hset");
     });
     minim.forEach((m, i) => {
         m.style.gridColumn = "1 / -1";
-        m.style.gridRow = String(R + 2 + i);
+        m.style.gridRow = String(i + 1);
         m.style.alignSelf = "";
         m.style.width = ""; m.style.maxHeight = "";
     });
@@ -6801,6 +6827,9 @@ function sbAttachHandles(mod) {
             }
             return { w: R - L };
         })();
+        // every layout pass during this drag — including the observer's —
+        // obeys the live grid, so the card MOVES WITH THE HAND
+        sbDragG = gLive;
         const move = (ev) => {
             const host = $("sb-mods");
             const hr = host.getBoundingClientRect();
@@ -6833,7 +6862,8 @@ function sbAttachHandles(mod) {
             handle.classList.remove("dragging");
             handle.removeEventListener("pointermove", move);
             handle.removeEventListener("pointerup", up);
-            sbSaveGrid(gLive);
+            sbSaveGrid(gLive);      // saved FIRST, so the pass after the
+            sbDragG = null;         // authority lifts reads the same truth
             sbFillSlack();
         };
         handle.addEventListener("pointermove", move);
@@ -6948,8 +6978,16 @@ function sbBuildHeader(mod) {
     grip.className = "sb-mod-grip";
     grip.title = "Drag to move this section";
     grip.innerText = "⠿";
-    grip.addEventListener("pointerdown", (e) => sbGripDrag(e, mod));
     head.appendChild(grip);
+    // THE WHOLE HEADER IS THE HANDLE — "i can not click files and drag it to
+    // another column": the operator grabs the card, not a 12px glyph. The
+    // glyph stays as the affordance; the buttons still win their own clicks;
+    // a POPPED card's header keeps its move-the-float drag (sbGripDrag
+    // refuses popped cards itself).
+    head.addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".sb-mod-btn")) return;
+        sbGripDrag(e, mod);
+    });
 
     const title = document.createElement("span");
     title.className = "sb-mod-title";

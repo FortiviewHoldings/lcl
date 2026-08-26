@@ -2102,23 +2102,31 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
                      && b.includes("border-radius: var(--radius-sm)"); })(), null);
     check("...the DEFAULT ORDER is the operator's numbering — tasks, wscard, " +
           "activity, files, row-major into 1|2 over 3|4 — and placement is " +
-          "computed from DOM order, so the saved order IS the quadrant",
+          "computed from DOM order offset below the tray, so the saved order " +
+          "IS the quadrant",
         js.includes('["tasks", "wscard", "activity", "files", "preview"]')
         && js.includes("String((i % 2) + 1)")
-        && js.includes("String(Math.floor(i / 2) + 1)"), null);
+        && js.includes("Math.floor(i / 2) + 1")
+        && js.includes("String(trayN"), null);
     check("...OWN COLUMN is a real mode: a header button toggles it, the card " +
-          "becomes a full-height track beside the quadrant, the choice " +
-          "persists, and Preview is born a column — 'position 5, being " +
-          "Preview and it being its own third column, when active'",
+          "becomes a full-height track beside the quadrant (starting BELOW " +
+          "the tray, never covering a minimized bar), the choice persists, " +
+          "and Preview is born a column — 'position 5, being Preview and it " +
+          "being its own third column, when active'",
         js.includes("function sbToggleCol")
         && js.includes('"sb-colbtn"')
-        && js.includes('"1 / " + (R + 2)')
+        && js.includes('(trayN + 1) + " / " + (trayN + R + 2)')
         && js.includes("SB_COL_DEFAULT = { preview: true }"), null);
-    check("...MINIMIZED CARDS DROP TO THE TRAY — full-width header bars below " +
-          "the live rows, and when EVERYTHING is minimized the tray starts at " +
-          "the top instead of floating under an empty stretch",
+    check("...MINIMIZED CARDS RISE TO THE TRAY AT THE TOP of the sidebar " +
+          "container — 'the cards minimize to the bottom of the page, not " +
+          "the top of the sidebar container. its you being backwards' — " +
+          "tray rows FIRST, then content rows, then the filler",
         js.includes('m.style.gridColumn = "1 / -1";')
-        && js.includes("String(R + 2 + i)"), null);
+        && js.includes("String(i + 1)")
+        && (() => { const i = js.indexOf("const rows = [];");
+                 const b = js.slice(i, i + 300);
+                 return b.indexOf('rows.push("auto")') > -1
+                     && b.indexOf('rows.push("auto")') < b.indexOf('rows.push("max-content")'); })(), null);
     check("...A FLOATING CARD'S CONTROLS TELL THE TRUTH: the pop-out and " +
           "column buttons vanish while popped, and the minimize button is " +
           "the way home — 'we dont need the pop out button when popped out, " +
