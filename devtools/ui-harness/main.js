@@ -5533,6 +5533,102 @@ const SCENES = {
         await js(`document.querySelector('[data-session-id="s1"] .session-bell').click(); true;`);
         await wait(150);
     },
+
+    /* ANCIENT KNOWLEDGE, WATCHED LIVE (§7c #3 / §8b). The audit used to appear
+     * only as a finished wall when the turn returned; now the auditor's words
+     * stream into a live bubble as it reads. Driven through the REAL onProgress
+     * handler with the phases the engine now emits — DOM from events, no layout
+     * timing, so it holds under the gate's software renderer too. */
+    ancientLive: async (win, js) => {
+        const setup = await js(`(() => {
+            active = active || (window.__harness && window.__harness.SESSIONS && window.__harness.SESSIONS[0]);
+            if (!active) return false;
+            active.effortLevel = 3;                    // violet head — prove the effort colour
+            const typing = addTyping();                // a turn in flight, as sendText sets up
+            startProgress(typing);
+            return !!(active.id && liveBubble);
+        })()`);
+        check("ancientLive", "an active session and a live turn exist to receive the audit",
+            setup === true, null);
+
+        // round 1: the auditor starts, then its words stream in
+        await js(`window.lcl.__fire("onProgress", { sessionId: active.id, phase: "audit",
+            detail: { phase: "ancient-knowledge", round: 1, of: 2 } });
+            window.lcl.__fire("onProgress", { sessionId: active.id, phase: "ak-generating",
+            detail: { phase: "ancient-knowledge", round: 1, of: 2,
+                preview: "Checking the answer against the ask — file X was never written." } });
+            true;`);
+        await wait(200);
+        const live = await js(`(() => {
+            const b = chat.querySelector(".msg-ancient.live");
+            if (!b) return null;
+            const head = b.querySelector(".msg-ancient-head");
+            return { hasBrain: !!(head && head.querySelector("svg")),
+                effort: head ? ([...head.classList].find(c => /^effort-/.test(c)) || "") : "",
+                round: (b.querySelector(".msg-ancient-round") || {}).innerText || "",
+                body: (b.querySelector(".msg-ancient-body") || {}).innerText || "" };
+        })()`);
+        check("ancientLive", "THE AUDIT IS WATCHED LIVE — a .msg-ancient.live bubble appears " +
+            "while the auditor reads, with the cloned brain and the round it is on",
+            !!(live && live.hasBrain && /round 1 of 2/.test(live.round)), live);
+        check("ancientLive", "…the auditor's streamed words fill the body as they arrive",
+            !!(live && /file X was never written/.test(live.body)), live && live.body);
+        check("ancientLive", "…and the head wears the session's reasoning colour (effort-3), " +
+            "the same mapping as the persisted audit",
+            !!(live && live.effort === "effort-3"), live && live.effort);
+        await shoot(win, "ancient-live");
+
+        // gaps found → the bubble flips to correcting the model
+        await js(`window.lcl.__fire("onProgress", { sessionId: active.id, phase: "audit-done",
+            detail: { phase: "ancient-knowledge", round: 1, forcing: true } }); true;`);
+        await wait(120);
+        const correcting = await js(`!!chat.querySelector(".msg-ancient.correcting")`);
+        check("ancientLive", "a forced round flips the bubble to CORRECTING — gaps found, " +
+            "the model is being sent back to act", correcting === true, null);
+
+        // round 2 streams into the SAME bubble, not a second one
+        await js(`window.lcl.__fire("onProgress", { sessionId: active.id, phase: "audit",
+            detail: { phase: "ancient-knowledge", round: 2, of: 2 } });
+            window.lcl.__fire("onProgress", { sessionId: active.id, phase: "ak-generating",
+            detail: { phase: "ancient-knowledge", round: 2, of: 2,
+                preview: "Re-checking: file X now exists with the answer." } }); true;`);
+        await wait(150);
+        const r2 = await js(`(() => {
+            const all = chat.querySelectorAll(".msg-ancient.live");
+            const b = chat.querySelector(".msg-ancient.live");
+            return { count: all.length,
+                round: (b && (b.querySelector(".msg-ancient-round") || {}).innerText) || "",
+                body: (b && (b.querySelector(".msg-ancient-body") || {}).innerText) || "" };
+        })()`);
+        check("ancientLive", "ONE live bubble, reused across rounds — round 2 replaces round 1 " +
+            "in place instead of stacking a second bubble",
+            r2.count === 1 && /round 2 of 2/.test(r2.round) && /file X now exists/.test(r2.body), r2);
+
+        // the self-review panel's audit (status, NO phase) must never open this bubble
+        await js(`akLiveClear();
+            window.lcl.__fire("onProgress", { sessionId: active.id, phase: "audit",
+                detail: { status: "reviewed", round: 1, found: 0 } }); true;`);
+        await wait(80);
+        const notSelfReview = await js(`!chat.querySelector(".msg-ancient.live")`);
+        check("ancientLive", "the SELF-REVIEW panel's audit (status, no phase) never opens the " +
+            "AK live bubble — only Ancient Knowledge does", notSelfReview === true, null);
+
+        // teardown removes an in-flight bubble, so the persisted wall is the single truth
+        await js(`window.lcl.__fire("onProgress", { sessionId: active.id, phase: "ak-generating",
+            detail: { phase: "ancient-knowledge", round: 1, of: 2, preview: "one more look…" } }); true;`);
+        await wait(80);
+        const back = await js(`!!chat.querySelector(".msg-ancient.live")`);
+        check("ancientLive", "…and the bubble is back for a fresh audit", back === true, null);
+        await js(`stopProgress(); true;`);
+        await wait(80);
+        const gone = await js(`!chat.querySelector(".msg-ancient.live")`);
+        check("ancientLive", "stopProgress tears the live audit bubble down, so the persisted " +
+            "wall renders as the single source of truth after the turn", gone === true, null);
+
+        // leave the chat clean for anything downstream
+        await js(`chat.querySelectorAll(".msg-row.ancient, .msg-typing, .msg-ancient").forEach(e => e.remove());
+            akLiveClear(); stopProgress(); true;`);
+    },
 };
 
 /* ---------------------------------------------------------------- plumbing */

@@ -3658,6 +3658,53 @@ function addTyping() {
 }
 
 /**
+ * THE AUDIT, WATCHED LIVE. Ancient Knowledge used to appear only as a finished
+ * wall when the turn returned; this is the same bubble (§7c #3 / §8b) but it
+ * FORMS while the auditor reads — a second model inspecting the first, in the
+ * open. Built to mirror the persisted `.msg-ancient` exactly (user side, cloned
+ * brain, the session's effort colour), plus a live round line and a shimmer, so
+ * when the turn resolves the persisted wall drops into the same place with no
+ * visual jump.
+ */
+function addAncientLive() {
+    const row = document.createElement("div");
+    row.className = "msg-row assistant ancient";
+    const note = document.createElement("div");
+    note.className = "msg-ancient live";
+    const head = document.createElement("div");
+    const effortIdx = (active && typeof active.effortLevel === "number") ? active.effortLevel : 0;
+    head.className = "msg-ancient-head effort-" + effortIdx;
+    const srcSvg = document.querySelector("#brain-btn svg");
+    if (srcSvg) {
+        const svg = srcSvg.cloneNode(true);
+        svg.setAttribute("width", "17"); svg.setAttribute("height", "17");
+        head.appendChild(svg);
+    }
+    const label = document.createElement("span");
+    label.innerText = "Ancient Knowledge";
+    head.appendChild(label);
+    const round = document.createElement("span");
+    round.className = "msg-ancient-round";
+    head.appendChild(round);
+    const body = document.createElement("div");
+    body.className = "msg-ancient-body";
+    note.appendChild(head); note.appendChild(body);
+    row.appendChild(note);
+    chat.appendChild(row);
+    row._note = note; row._round = round; row._body = body;
+    return row;
+}
+// Created on the first audit event of a turn and reused across rounds; a stale
+// node (session switched, chat re-rendered) is replaced on next use.
+function akLiveEnsure() {
+    if (!akLive || !akLive.isConnected) akLive = addAncientLive();
+    return akLive;
+}
+function akLiveClear() {
+    if (akLive) { try { akLive.remove(); } catch { /* already gone */ } akLive = null; }
+}
+
+/**
  * Append one line to the live step log (or update the last, for progress
  * ticks). `bar` is {pct} | {indeterminate: true} | null — a row with a bar
  * renders a real progress track under its label and updates IN PLACE, so a
@@ -3971,6 +4018,7 @@ applyMotion();
 let progressTimer = null;
 let progressStart = 0;
 let liveBubble = null;      // the status bubble for the in-flight turn
+let akLive = null;          // the LIVE Ancient Knowledge bubble — the audit forming in the open
 
 /**
  * ONE WORDING PER STEP, EVERYWHERE. The live status bubble, the mid-turn
@@ -4074,6 +4122,7 @@ const PHASE_TEXT = {
     // read the work is legible instead of a silent stretch of "writing"
     "audit": "reviewing its own work",
     "audit-reviewer": "reviewing its own work",
+    "ak-generating": "reviewing its own work",
     "audit-done": "audit finished",
     "done": "finishing up"
 };
@@ -4127,6 +4176,7 @@ function stopProgress() {
         clearInterval(liveBubble._waitTimer);
         liveBubble._waitTimer = null;
     }
+    akLiveClear();   // a cancelled or failed turn drops the live audit bubble too
     liveBubble = null;
 }
 
@@ -4668,6 +4718,33 @@ window.lcl.onProgress((info) => {
                     (d.preview.length >= 240 ? "…" : "") + d.preview;
             }
             break;
+        case "audit":
+            // ANCIENT KNOWLEDGE, WATCHED LIVE. Only AK sets d.phase; the
+            // self-review panel's "audit" carries d.status instead and must not
+            // open this bubble. A new round starts the audit body fresh.
+            if (d.phase === "ancient-knowledge") {
+                const b = akLiveEnsure();
+                b._note.classList.add("live");
+                b._note.classList.remove("correcting");
+                b._round.innerText = "· inspecting round " + (d.round || 1)
+                    + (d.of ? " of " + d.of : "");
+                b._body.innerText = "";
+            }
+            break;
+        case "ak-generating": {
+            // the auditor's own words forming in real time — the second model's
+            // read of the first's work, streamed exactly like the driver preview
+            const b = akLiveEnsure();
+            b._note.classList.add("live");
+            if (d.round) b._round.innerText = "· inspecting round " + d.round
+                + (d.of ? " of " + d.of : "");
+            if (typeof d.preview === "string" && d.preview) {
+                const txt = (d.preview.length >= 240 ? "…" : "") + d.preview;
+                if (window.lclSyntax) window.lclSyntax.renderMessageBody(b._body, txt, { markdown: true });
+                else b._body.innerText = txt;
+            }
+            break;
+        }
         case "tool": {
             liveBubble._detail.innerText = `· ${d.tool}`;
             const l = stepLine("tool", d);
@@ -4751,10 +4828,30 @@ window.lcl.onProgress((info) => {
         case "spin-warned":
         case "spin-stopped":
         case "step-limit":
-        case "fabricated-tool-result":
-        case "audit-done": {
+        case "fabricated-tool-result": {
             const l = stepLine(info.phase, d);
             if (l) pushActivity(liveBubble, l.kind, l.text);
+            break;
+        }
+        case "audit-done": {
+            const l = stepLine("audit-done", d);
+            if (l) pushActivity(liveBubble, l.kind, l.text);
+            // the live AK bubble reflects the round's outcome: forcing → it is
+            // now correcting the model (the driver re-answers, streaming in the
+            // typing bubble); a terminal stop → the cycle is done and the
+            // persisted wall renders when the turn resolves.
+            if (akLive && akLive.isConnected) {
+                if (d.forcing) {
+                    akLive._note.classList.remove("live");
+                    akLive._note.classList.add("correcting");
+                    akLive._round.innerText = "· round " + (d.round || 1)
+                        + " · gaps found — correcting the model";
+                } else {
+                    akLive._note.classList.remove("live", "correcting");
+                    if (d.stopped) akLive._round.innerText = "· "
+                        + (AK_STOP[d.stopped] ? "done — " + AK_STOP[d.stopped] : "audit complete");
+                }
+            }
             break;
         }
     }
@@ -10731,7 +10828,10 @@ async function sendText(text, session) {
 
     try {
         const res = await window.lcl.chat(session.id, text);
-        if (viewing()) typing.remove();
+        // gate BOTH live-global teardowns on viewing(): akLive is a single module
+        // global that always belongs to the FOREGROUND session's audit, so a
+        // background turn resolving must not clear the bubble the user is watching.
+        if (viewing()) { typing.remove(); akLiveClear(); }   // persisted AK wall renders below
 
         if (!res || typeof res !== "object" || res.error) {
             if (viewing()) {

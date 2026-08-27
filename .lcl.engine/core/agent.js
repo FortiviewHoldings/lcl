@@ -4171,6 +4171,24 @@ async function runTurn(session, userText, opts = {}) {
                 const maxR = ak.effectiveMaxRounds(session);
                 report("audit", { phase: "ancient-knowledge",
                                   round: akRound, of: maxR }, steps);
+                // WATCH THE AUDIT HAPPEN. The auditor's words stream to the UI as
+                // it reads — the same rolling preview the driver's reply uses —
+                // so Ancient Knowledge is a second model inspecting the first in
+                // the open (§8b), not a finished wall that appears at turn end.
+                let lastAkStream = 0;
+                const onAkStream = (t) => {
+                    const now = Date.now();
+                    if (now - lastAkStream < 250) return;
+                    lastAkStream = now;
+                    report("ak-generating", {
+                        phase: "ancient-knowledge",
+                        round: akRound, of: maxR,
+                        tokens: t.tokens,
+                        tps: t.elapsedMs > 500
+                            ? +(t.tokens / (t.elapsedMs / 1000)).toFixed(1) : null,
+                        preview: t.text.slice(-240)
+                    }, steps);
+                };
                 // WHICH MODEL AUDITS. Default (opts.auditorSelection undefined)
                 // is the model that just answered — "same as this conversation".
                 // The Ancient Knowledge settings can name a different one: a
@@ -4194,7 +4212,7 @@ async function runTurn(session, userText, opts = {}) {
                          changes,
                          reviewDigest: ak.reviewDigest(session, akObjective),
                          round: akRound }) }],
-                    1024, cancelToken, null,
+                    1024, cancelToken, onAkStream,
                     { selection: auditorSel, session: session });
                 // BILL THE AUDIT. A remote auditor spends real money; leaving it
                 // out silently under-reported every audited remote turn. A local

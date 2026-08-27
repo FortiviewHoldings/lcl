@@ -7456,6 +7456,38 @@ button.small.icon-only {
 .msg-ancient-body .msg-para:last-child,
 .msg-ancient-body > :last-child { margin-bottom: 0; }
 
+/* THE AUDIT FORMING LIVE (§7c #3 / §8b). The same bubble, shimmering while the
+   auditor reads: the round line names what it is doing, a soft pulse on the
+   outer stripe and a glow on the brain read as "working" without spinner
+   vocabulary, and a caret trails the streaming text like the driver's reply. */
+.msg-ancient-round {
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-dim);
+    opacity: 0.9;
+}
+.msg-ancient.live { animation: ak-live-pulse 1.6s ease-in-out infinite; }
+.msg-ancient.live .msg-ancient-head svg { animation: ak-live-glow 1.6s ease-in-out infinite; }
+.msg-ancient.live .msg-ancient-body::after {
+    content: "▍";
+    color: var(--attn);
+    margin-left: 1px;
+    animation: ak-caret 1s steps(1) infinite;
+}
+.msg-ancient.correcting .msg-ancient-round { color: var(--attn); opacity: 1; }
+@keyframes ak-live-pulse {
+    0%, 100% { box-shadow: 3px 0 0 0 rgba(0, 0, 0, 0); }
+    50% { box-shadow: 3px 0 12px -2px var(--attn); }
+}
+@keyframes ak-live-glow { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+@keyframes ak-caret { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+    .msg-ancient.live,
+    .msg-ancient.live .msg-ancient-head svg,
+    .msg-ancient.live .msg-ancient-body::after { animation: none; }
+}
+
 /* POST-CHECK — the deterministic no-fiction gate's caveat. The APP speaking
    about the model's work, so it sits assistant-side with the caution stripe
    on its outer (left) edge — the mirror of Ancient Knowledge's user-side

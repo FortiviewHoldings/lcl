@@ -1049,6 +1049,22 @@ async function runCycle(session, opts = {}) {
             out.rounds = round;
             report("audit", { phase: "ancient-knowledge", round, of: maxR });
 
+            // WATCH THE AUDIT HAPPEN — same rolling preview the chat path streams,
+            // so the orchestrated cycle's interrogation is visible live too (§8b).
+            let lastAkStream = 0;
+            const onAkStream = (t) => {
+                const now = Date.now();
+                if (now - lastAkStream < 250) return;
+                lastAkStream = now;
+                report("ak-generating", {
+                    phase: "ancient-knowledge", round, of: maxR,
+                    tokens: t.tokens,
+                    tps: t.elapsedMs > 500
+                        ? +(t.tokens / (t.elapsedMs / 1000)).toFixed(1) : null,
+                    preview: t.text.slice(-240)
+                });
+            };
+
             let audit = null;
             try {
                 audit = await router.generate(
@@ -1058,7 +1074,7 @@ async function runCycle(session, opts = {}) {
                          changes: out.changes,
                          reviewDigest: reviewDigest(session, obj),
                          round }) }],
-                    1024, cancelToken, null,
+                    1024, cancelToken, onAkStream,
                     { selection: auditorSelection === undefined ? driverSelection
                         : auditorSelection === "local" ? null : auditorSelection,
                       session });

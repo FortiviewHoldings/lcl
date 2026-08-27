@@ -53,7 +53,13 @@ const routerStub = {
     script: [],          // answers, consumed in order
     calls: [],           // every generate() observed: { messages, opts }
     generate: async (messages, maxTokens, cancelToken, onToken, opts) => {
-        routerStub.calls.push({ messages, maxTokens, opts });
+        routerStub.calls.push({ messages, maxTokens, opts, onTokenType: typeof onToken });
+        // if the caller wired a streamer, feed it one frame so streaming is
+        // exercised end to end — the audit's ak-generating preview depends on it
+        if (typeof onToken === "function") {
+            try { onToken({ tokens: 7, elapsedMs: 900, text: "AK STREAM SAMPLE" }); }
+            catch { /* the stub never breaks the loop under test */ }
+        }
         const next = routerStub.script.shift();
         if (!next) return { content: "" };
         return typeof next === "function" ? next() : next;
@@ -197,6 +203,72 @@ const review = (session) => {
         && events.some(e => e.phase === "audit-done" && e.data.stopped === "closed"), null);
     check("'done' is reported once, at the TRUE end of the cycle",
         events.filter(e => e.phase === "done").length === 1, null);
+}
+
+/* --------------------- THE AUDIT IS WATCHED LIVE (§7c #3 / §8b) ----------
+ * The auditor's generation used to pass onToken=null — blocking, so its prose
+ * only existed as a finished wall. Now it streams like the driver's reply and
+ * emits an `ak-generating` preview the renderer grows live, round by round. */
+{
+    const s = makeSession({ effortLevel: 0 });          // ceiling 2
+    const { events, calls } = await turn(s, [
+        { content: "I did part of it." },                                  // driver
+        { content: "VERDICT: GAPS\nGAP: file X was never written" },       // audit 1
+        { content: "Now file X is really written, with the answer." },     // forced driver
+        { content: "VERDICT: CLOSED" }                                     // audit 2
+    ]);
+    // an interrogation call is the one under the overseer system prompt
+    const auditCalls = calls.filter(c =>
+        /Ancient Knowledge overseer/.test(c.messages[0].content));
+    check("THE AUDITOR STREAMS — every interrogation call is handed a function " +
+          "onToken, never the old blocking null",
+        auditCalls.length >= 1 && auditCalls.every(c => c.onTokenType === "function"),
+        auditCalls.map(c => c.onTokenType));
+    const akGen = events.filter(e => e.phase === "ak-generating");
+    check("...and the stream reaches the UI as `ak-generating` — the auditor's " +
+          "words as a rolling preview, tagged phase=ancient-knowledge with a round",
+        akGen.length >= 1
+        && akGen.every(e => e.data.phase === "ancient-knowledge" && e.data.round >= 1)
+        && akGen.some(e => /AK STREAM SAMPLE/.test(String(e.data.preview || ""))),
+        akGen.map(e => e.data));
+}
+
+/* the streaming wiring is on BOTH loops — the chat path (agent.js) and the
+ * orchestrated cycle (ancientKnowledge.js) — so the auditor is visible either
+ * way, not chat-path-only. */
+{
+    const A = fs.readFileSync(path.join(__dirname, "..", ".lcl.engine", "core", "agent.js"), "utf8");
+    const K = fs.readFileSync(path.join(__dirname, "..", ".lcl.engine", "core", "ancientKnowledge.js"), "utf8");
+    check("both AK loops stream the auditor via an onAkStream that reports " +
+          "ak-generating, wired into the audit generate (not chat-path-only)",
+        /const onAkStream =/.test(A) && /report\("ak-generating"/.test(A)
+        && /1024, cancelToken, onAkStream,/.test(A)
+        && /const onAkStream =/.test(K) && /report\("ak-generating"/.test(K)
+        && /1024, cancelToken, onAkStream,/.test(K), null);
+}
+
+/* THE RENDERER PAINTS THE AUDIT LIVE — a dedicated bubble that forms while the
+ * auditor reads (mirrors the persisted .msg-ancient), grown by the ak-generating
+ * preview, then torn down when the persisted wall renders. */
+{
+    const app = fs.readFileSync(path.join(__dirname, "..", "app", "renderer", "app.js"), "utf8");
+    check("the renderer has a LIVE AK bubble — addAncientLive builds the mirror of " +
+          ".msg-ancient (user side, cloned brain, effort colour); akLiveEnsure/" +
+          "akLiveClear manage its one-per-turn lifecycle",
+        /function addAncientLive\(\)/.test(app)
+        && /"msg-ancient live"/.test(app)
+        && /function akLiveEnsure\(\)/.test(app)
+        && /function akLiveClear\(\)/.test(app), null);
+    check("...the ak-generating stream grows the live bubble body, gated to " +
+          "phase=ancient-knowledge so the self-review panel's audit never opens it",
+        /case "ak-generating"/.test(app)
+        && /d\.phase === "ancient-knowledge"/.test(app)
+        && /renderMessageBody\(b\._body/.test(app), null);
+    check("...and the live bubble is TORN DOWN on turn-resolve and on stop — the " +
+          "turn-resolve teardown is viewing()-gated (both live globals together), so " +
+          "a BACKGROUND turn finishing never clears the FOREGROUND session's audit",
+        (app.match(/akLiveClear\(\)/g) || []).length >= 2
+        && /if \(viewing\(\)\) \{ typing\.remove\(\); akLiveClear\(\); \}/.test(app), null);
 }
 
 /* ------------- A BLANK AUDITOR NEVER LAUNDERS INTO "ALL GAPS CLOSED" ---- */
