@@ -469,5 +469,16 @@ check("MOBILE BEST-EFFORT — a phone defaults to the SMALLEST model (SmolLM2 " 
     && /reason === "blocked"/.test(s)
     && !s.includes('liteFallback("load-failed")'), null);
 
+check("APPLE MOBILE gets an ACTIONABLE no-WebGPU message, not a dead end — iOS/" +
+      "iPadOS Safari gates WebGPU behind a Feature Flag, so the fallback hands the " +
+      "visitor the exact switch (Settings > Safari > Advanced > Feature Flags > WebGPU) " +
+      "instead of just saying it can't run",
+    s.includes("const IS_APPLE = (()")
+    && /iPhone\|iPad\|iPod/.test(s)
+    && s.includes("navigator.maxTouchPoints")
+    && s.includes("if (IS_APPLE) {")
+    && s.includes("Feature Flags")
+    && /turn on WebGPU/.test(s), null);
+
 console.log(`\n${pass}/${pass + fail} static-site checks passed`);
 process.exit(fail ? 1 : 0);

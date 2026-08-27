@@ -1273,6 +1273,14 @@ const IS_MOBILE = (() => { try {
   const small = Math.min(screen.width || 9999, screen.height || 9999) < 820;
   return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (coarse && small);
 } catch { return false; } })();
+// APPLE MOBILE (and iPadOS, which masquerades as a Mac but reports touch points):
+// its Safari gates WebGPU behind a Feature Flag on many versions, so a no-WebGPU
+// fallback here can hand the visitor the exact switch to flip, not a dead end.
+const IS_APPLE = (() => { try {
+  const ua = navigator.userAgent || "";
+  return /iPhone|iPad|iPod/i.test(ua)
+    || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+} catch { return false; } })();
 let chosen = IS_MOBILE ? MODELS[0] : MODELS[3];
 try { const saved = localStorage.getItem("lcl-lite-model");
       const f = MODELS.find(m => m.id === saved); if (f) chosen = f; } catch {}
@@ -1352,11 +1360,23 @@ function liteFallback(reason) {
   try { paintModelBtn(false); } catch {}
   let why, status, hint;
   if (reason === "no-webgpu") {
-    why = IS_MOBILE
-      ? "This phone's browser can't run the in-browser model — it has no WebGPU (Safari and most mobile browsers don't expose it yet)."
-      : "This browser has no WebGPU, so the in-browser model can't run — try desktop Chrome or Edge.";
-    status = "no WebGPU here";
-    hint = "runs on desktop Chrome/Edge — or the full app";
+    if (IS_APPLE) {
+      // Actionable: Safari CAN run this, but WebGPU is usually behind a flag on iOS.
+      why = "Safari can run this, but only with WebGPU switched on. On iPhone or iPad: "
+        + "open Settings → Safari → Advanced → Feature Flags, turn on WebGPU, then reload "
+        + "this page. (If WebGPU is already on, your iOS version is just a bit too old for it — "
+        + "the full app runs without it.)";
+      status = "turn on WebGPU in Safari settings";
+      hint = "enable WebGPU in Safari settings, then reload";
+    } else if (IS_MOBILE) {
+      why = "This phone's browser can't run the in-browser model — it has no WebGPU (most mobile browsers don't expose it yet).";
+      status = "no WebGPU here";
+      hint = "runs on desktop Chrome/Edge — or the full app";
+    } else {
+      why = "This browser has no WebGPU, so the in-browser model can't run — try desktop Chrome or Edge.";
+      status = "no WebGPU here";
+      hint = "runs on desktop Chrome/Edge — or the full app";
+    }
   } else if (reason === "blocked") {
     why = "This network is blocking the one-time model download — it filters or intercepts the "
       + "secure connection that fetches the model, and a browser can't click through that for a "
