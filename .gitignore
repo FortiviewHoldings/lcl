@@ -15,6 +15,12 @@ models/*
 !models/registry.json
 !models/.gitkeep
 
+# EXCEPTION: the static site's same-origin lite model. Small int4 shards
+# (<100 MB each) that GitHub Pages serves so the in-browser demo runs on
+# TLS-intercepting networks — nothing cross-origin to reject. This is the
+# one deliberate place weights DO live in the repo.
+!vendor/models/**
+
 # OCR language data (23 MB, re-downloadable, Apache-2.0). Fetched into
 # tools/tesseract/ — see that folder's README for the one-liner.
 *.traineddata

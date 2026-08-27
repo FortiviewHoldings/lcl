@@ -1406,6 +1406,31 @@ async function loadWebLLM() {
   }
   throw lastErr || new Error("web-llm engine unavailable");
 }
+
+/* THE DEFAULT MODEL IS SELF-HOSTED SAME-ORIGIN — its weights and wasm live in
+ * this repo (vendor/models/…) and are served from the very origin the page was
+ * loaded from. On a network that intercepts TLS for OTHER hosts (jsdelivr,
+ * huggingface) but trusts THIS site, that means ZERO cross-origin fetches and
+ * nothing to click through: the model just runs. web-llm's URL resolver always
+ * inserts a "resolve/main/" segment, so the mirrored files live under it. Bigger
+ * models stay CDN-fetched (opt-in) and get the honest fallback if a net blocks them. */
+const SELF_HOSTED = {
+  "SmolLM2-360M-Instruct-q4f16_1-MLC": {
+    model: new URL("./vendor/models/SmolLM2-360M", document.baseURI).href,
+    model_lib: new URL("./vendor/models/SmolLM2-360M/SmolLM2-360M-Instruct-q4f16_1_cs1k-webgpu.wasm", document.baseURI).href,
+  },
+};
+function appConfigFor(webllm) {
+  // Clone the prebuilt config, rewriting ONLY the host of self-hosted models —
+  // their overrides (context window), required features and vram hints carry over.
+  const base = webllm.prebuiltAppConfig;
+  if (!base || !base.model_list) return undefined;
+  const model_list = base.model_list.map(r => {
+    const o = SELF_HOSTED[r.model_id];
+    return o ? Object.assign({}, r, { model: o.model, model_lib: o.model_lib }) : r;
+  });
+  return Object.assign({}, base, { model_list });
+}
 // Tell an HONEST story about WHY a load failed, so the fallback never lies.
 //  blocked = the network filtered/intercepted the download (cert, offline, a
 //            CDN blocked by domain) — unclickable-through for a background fetch.
@@ -1425,6 +1450,7 @@ async function loadModel() {
   if (!navigator.gpu) { liteFallback("no-webgpu"); return; }
   liteDown = false;                                // a fresh WebGPU-capable attempt re-evaluates
   loading = true;
+  let triedSelfHost = false;
   do {
     reloadWanted = false;
     const target = chosen;
@@ -1440,6 +1466,7 @@ async function loadModel() {
       const webllm = await loadWebLLM();           // same-origin first, CDN only as fallback
       stage = "model";
       const built = await webllm.CreateMLCEngine(target.id, {
+        appConfig: appConfigFor(webllm),           // the default model loads 100% same-origin
         initProgressCallback: (p) => {
           const pct = Math.round((p.progress || 0) * 100);
           bar.style.width = pct + "%";
@@ -1462,10 +1489,23 @@ async function loadModel() {
     } catch (e) {
       setTask("");
       if (reloadWanted) continue;   // a switch mid-load is not a failure — reload cleanly
+      const reason = classifyLoadError(e, stage);
+      // A network that blocked a CDN model can still run the SELF-HOSTED one —
+      // it's same-origin, nothing to approve. Fall back to it automatically,
+      // once, instead of giving up: the demo just works on a locked-down network.
+      if (reason === "blocked" && !SELF_HOSTED[target.id] && !triedSelfHost) {
+        triedSelfHost = true;
+        chosen = MODELS[0];         // the on-site, same-origin model
+        paintModelBtn();
+        logAct("network blocked " + target.name + " — loading the built-in on-site model instead");
+        warmSay("that model is blocked on this network — loading the built-in one instead", 0);
+        reloadWanted = true;        // re-enter the loop with the self-hosted target
+        continue;
+      }
       // HONEST about why: a blocked download says so (never a false "no memory"),
       // an OOM says memory. Desktop gets the same honest card the phone does,
       // instead of a raw error string buried in the status line.
-      liteFallback(classifyLoadError(e, stage));
+      liteFallback(reason);
     }
   } while (reloadWanted);
   loading = false;

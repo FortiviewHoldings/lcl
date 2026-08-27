@@ -83,6 +83,34 @@ check("the lite chat runs CLIENT-SIDE via WebLLM, loaded SAME-ORIGIN first " +
             && !/https?:\/\/(cdn\.jsdelivr|esm\.run|unpkg)/.test(v), null);
     }
 }
+{
+    // THE DEFAULT MODEL IS SELF-HOSTED SAME-ORIGIN — the actual cure for a
+    // TLS-intercepting network: no huggingface fetch left to reject, so nothing
+    // to click through. web-llm's URL resolver forces a resolve/main/ segment,
+    // so the mirror MUST live under it or every weight fetch 404s.
+    check("the default model is SELF-HOSTED same-origin — an appConfig override " +
+          "points web-llm at vendor/models/… so a locked-down network has NOTHING " +
+          "cross-origin to approve",
+        /const SELF_HOSTED = \{/.test(s)
+        && /"SmolLM2-360M-Instruct-q4f16_1-MLC"/.test(s)
+        && /function appConfigFor\(webllm\)/.test(s)
+        && s.includes("appConfig: appConfigFor(webllm)")
+        && /vendor\/models\/SmolLM2-360M/.test(s), null);
+    check("...and a CDN model BLOCKED by the network auto-falls-back to the on-site " +
+          "model once — the demo just works instead of only explaining why it can't",
+        /reason === "blocked" && !SELF_HOSTED\[target\.id\] && !triedSelfHost/.test(s)
+        && s.includes("chosen = MODELS[0]"), null);
+    const md = path.join(ROOT, "vendor", "models", "SmolLM2-360M");
+    const rm = path.join(md, "resolve", "main");
+    const need = ["mlc-chat-config.json", "ndarray-cache.json", "tokenizer.json",
+        "vocab.json", "merges.txt", "tokenizer_config.json",
+        "params_shard_0.bin", "params_shard_6.bin"];
+    const missing = need.filter(f => !fs.existsSync(path.join(rm, f)));
+    check("the mirrored weights are present under the resolver's resolve/main/ path " +
+          "(config, tokenizer files, and the param shards)", missing.length === 0, missing);
+    check("...and the model's wasm lib is mirrored alongside them",
+        fs.existsSync(path.join(md, "SmolLM2-360M-Instruct-q4f16_1_cs1k-webgpu.wasm")), null);
+}
 check("...gated on WebGPU with an honest refusal when absent",
     /navigator\.gpu/.test(s) && /no WebGPU/.test(s), null);
 check("...streaming, so the demo feels like the app", /stream:\s*true/.test(s), null);
@@ -436,7 +464,8 @@ check("MOBILE BEST-EFFORT — a phone defaults to the SMALLEST model (SmolLM2 " 
     // failures are CLASSIFIED honestly — a blocked download is never reported as OOM,
     // and the old single "load-failed" lie is gone
     && s.includes("function classifyLoadError(")
-    && s.includes("liteFallback(classifyLoadError(e, stage))")
+    && s.includes("const reason = classifyLoadError(e, stage)")
+    && s.includes("liteFallback(reason)")
     && /reason === "blocked"/.test(s)
     && !s.includes('liteFallback("load-failed")'), null);
 

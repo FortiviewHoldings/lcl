@@ -1,0 +1,2 @@
+# Vendored model binaries must stay byte-exact — never EOL-normalized.
+vendor/models/** -text
