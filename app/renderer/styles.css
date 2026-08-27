@@ -6820,9 +6820,12 @@ button.small.icon-only {
     border-radius: var(--radius-sm);
     background: transparent;
     box-shadow: none;
-    transition: color 120ms ease, background 160ms ease,
-                border-color 160ms ease, box-shadow 160ms ease,
-                transform 120ms ease;
+    /* NO TRANSFORM. A hover that moves the element up 1px shifts the target
+       out from under the cursor and flickers it on/off like a bad bulb —
+       the glass "pop" is done with light (gradient + shadow), which the eye
+       reads as raised without anything actually moving. */
+    transition: color 120ms ease, background 140ms ease,
+                border-color 140ms ease, box-shadow 140ms ease;
 }
 @media (hover: hover) and (pointer: fine) {
     .icon-btn:hover:not(:disabled),
@@ -6835,7 +6838,6 @@ button.small.icon-only {
         border-color: rgba(255, 255, 255, 0.13);
         box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42),
                     inset 0 1px 0 rgba(255, 255, 255, 0.10);
-        transform: translateY(-1px);
     }
 }
 .icon-btn:active:not(:disabled),
@@ -7812,6 +7814,12 @@ details.msg-tool.work-row[open] summary::after { content: "▾"; }
     overflow-y: auto;
     overflow-x: hidden;
     align-items: stretch;
+    /* RESERVE THE SCROLLBAR'S SPACE ALWAYS. Without this, a column's scrollbar
+       appearing when a card is dragged tall narrows that column's content by
+       ~15px for a frame — a visible jitter, and the cause of an intermittent
+       neighbor-movement the harness caught as a flake. With the gutter stable,
+       content width never jumps whether the scrollbar is there or not. */
+    scrollbar-gutter: stable;
 }
 .sb-colwrap > .sb-mod { flex: none; }
 .sb-mod {

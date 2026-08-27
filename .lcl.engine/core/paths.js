@@ -126,6 +126,14 @@ function sessionsDir() {
     return dir;
 }
 
+/** Tier-2 intent ledgers — the durable, flat, per-session record of intent,
+ *  criteria and status (intentLedger.js). On the user's own machine, their IP. */
+function intentDir() {
+    const dir = path.join(dataDir(), "intent");
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
 /**
  * Where a patch session's working copy lives — OUTSIDE the checkout, always.
  *
@@ -301,6 +309,7 @@ module.exports = {
     describeModel,
     dataDir,
     sessionsDir,
+    intentDir,
     patchBayRoot,
     modelsDir,
     readSettings,

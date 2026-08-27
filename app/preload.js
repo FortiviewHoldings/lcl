@@ -135,6 +135,7 @@ contextBridge.exposeInMainWorld("lcl", {
     restartEngine: () => ipcRenderer.invoke("lcl:restartEngine"),
     chooseModel: () => ipcRenderer.invoke("lcl:chooseModel"),
     listSessions: () => ipcRenderer.invoke("lcl:listSessions"),
+    intentSummary: (sessionId) => ipcRenderer.invoke("lcl:intentSummary", sessionId),
     createSession: (title) => ipcRenderer.invoke("lcl:createSession", title),
     getSession: (id) => ipcRenderer.invoke("lcl:getSession", id),
     renameSession: (id, title) => ipcRenderer.invoke("lcl:renameSession", id, title),
@@ -243,6 +244,7 @@ contextBridge.exposeInMainWorld("lcl", {
     contribCancel: () => ipcRenderer.invoke("lcl:contribCancel"),
     contribLastRun: () => ipcRenderer.invoke("lcl:contribLastRun"),
     contribReady: () => ipcRenderer.invoke("lcl:contribReady"),
+    contribCanRelease: () => ipcRenderer.invoke("lcl:contribCanRelease"),
     onContribProgress: (cb) => ipcRenderer.on("lcl:contribProgress", (_e, p) => cb(p)),
     knowledgeLibraries: () => ipcRenderer.invoke("lcl:knowledgeLibraries"),
     // the badge's number, cheap enough to ask at boot — never the inventory

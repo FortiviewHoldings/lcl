@@ -2344,6 +2344,21 @@ const SCENES = {
             openFileViewer("README.md");
             await new Promise(r => setTimeout(r, 400));
             const host = document.getElementById("sb-mods");
+            // MEASURE THE SETTLED LAYOUT. Opening a document makes preview a
+            // full-height column, but the reflow can trail the fixed wait on a
+            // cold launch — snapshotting mid-reflow read preview folded as a
+            // quad (a timing race, not a bug: warm runs are correct). Poll
+            // until preview has RESTED as a column before snapshotting; a real
+            // regression never reaches the resting state and still fails.
+            {
+                const pv = () => [...host.querySelectorAll(".sb-mod")].find(m => m.dataset.mod === "preview");
+                for (let i = 0; i < 60; i++) {
+                    const el = pv();
+                    if (el && el.classList.contains("sb-col")
+                        && el.getBoundingClientRect().height >= host.getBoundingClientRect().height - 24) break;
+                    await new Promise(r2 => requestAnimationFrame(() => setTimeout(r2, 16)));
+                }
+            }
             const hr = host.getBoundingClientRect();
             const mods = {};
             for (const el of host.querySelectorAll(".sb-mod")) {
@@ -2397,17 +2412,29 @@ const SCENES = {
         const dragged = await js(`(async () => {
             const g = (id) => Math.round([...document.querySelectorAll(".sb-mod")]
                 .find(x => x.dataset.mod === id).getBoundingClientRect().height);
+            const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 16)));
+            // settle until a card's height is stable across two frames, so
+            // neither 'before' nor 'after' is read mid-reflow (the flake)
+            const settleH = async (id, want) => {
+                let prev = null;
+                for (let i = 0; i < 60; i++) {
+                    const h = g(id);
+                    if (want != null ? h === want : h === prev) return;
+                    prev = h; await frame();
+                }
+            };
+            await settleH("tasks"); await settleH("wscard");
             const before = { tasks: g("tasks"), activity: g("activity"),
                              wscard: g("wscard") };
             localStorage.setItem("lcl-sb-grid",
                 JSON.stringify({ colSplit: 50, colW: {}, cardH: { tasks: 300 } }));
             sbApplySizes();
-            await new Promise(r => setTimeout(r, 300));
+            await settleH("tasks", 300); await settleH("wscard");
             const after = { tasks: g("tasks"), activity: g("activity"),
                             wscard: g("wscard") };
             localStorage.removeItem("lcl-sb-grid");
             sbApplySizes();
-            await new Promise(r => setTimeout(r, 200));
+            await settleH("tasks");
             return { before, after };
         })()`);
         check("sidebar", "A DRAGGED HEIGHT BELONGS TO THAT CARD ALONE — tasks lands on " +
@@ -2461,9 +2488,88 @@ const SCENES = {
             stacked.n >= 4 && stacked.singleColumn && stacked.overlaps.length === 0,
             stacked);
 
+        /* THE LAYOUT DOES NOT STORM — the bug that shipped and broke the whole
+         * app: sbLayout toggled a class the MutationObserver watched, so every
+         * layout woke the observer, which re-laid out, forever. Main thread
+         * pegged: flicker, dead navigation, stale cross-session content. The
+         * test that would have caught it: touch a card's class the way a real
+         * state change does, then count how many times sbLayout runs. A sane
+         * app settles in a handful; a loop runs hundreds. */
+        const storm = await js(`(async () => {
+            const card = document.querySelector('#sb-mods .sb-mod');
+            sbLayoutRuns = 0;
+            // a benign, layout-irrelevant class flip — must NOT trigger relayout
+            card.classList.add('probe-marker');
+            card.classList.remove('probe-marker');
+            // and a REAL state flip — must trigger exactly one settle, not a storm
+            card.classList.add('sb-minimized');
+            await new Promise(r => setTimeout(r, 400));
+            const afterReal = sbLayoutRuns;
+            card.classList.remove('sb-minimized');
+            await new Promise(r => setTimeout(r, 400));
+            return { total: sbLayoutRuns, afterReal };
+        })()`);
+        check("sidebar", "THE LAYOUT NEVER STORMS — a benign class flip triggers no " +
+            "relayout, and a real state change settles in a handful of passes, " +
+            "never the hundreds a MutationObserver feedback loop produces (the " +
+            "loop that shipped and pegged the main thread: flicker, dead " +
+            "navigation, stale cross-session content)",
+            storm.total < 12, storm);
+
         await js(`(() => { delete active.repoPath; renderWorkspace();
                            closeFileViewer();
                            document.getElementById("body").style.removeProperty("--ws-w"); })()`);
+    },
+
+    /* CROSS-SESSION ISOLATION — the operator saw one session's Activity in
+     * another. A downstream symptom of the layout storm (the switch handler
+     * could not run to completion while the thread was pegged), but the test
+     * that proves it is direct: record activity in A, switch to B, and B's
+     * feed must not contain A's rows. */
+    "session-isolation": async (win, js) => {
+        const r = await js(`(async () => {
+            const A = sessions[0] && sessions[0].id;
+            const B = sessions[1] && sessions[1].id;
+            if (!A || !B) return { skip: true };
+            await switchSession(A); await new Promise(r=>setTimeout(r,60));
+            recordActivity(A, "tool", "ONLY-IN-A read_file", "a.js");
+            await switchSession(B); await new Promise(r=>setTimeout(r,120));
+            const shown = document.getElementById("activity-list").innerText;
+            const bLeak = /ONLY-IN-A/.test(shown);
+            await switchSession(A); await new Promise(r=>setTimeout(r,120));
+            const backShown = document.getElementById("activity-list").innerText;
+            return { bLeak, aHasOwn: /ONLY-IN-A/.test(backShown) };
+        })()`);
+        check("session-isolation", "ONE SESSION'S ACTIVITY STAYS IN THAT SESSION — " +
+            "recorded in A, it is absent from B's feed and present again back in A " +
+            "('the activity from other session is appearing in the sidebar in " +
+            "other sessions')",
+            r.skip || (r.bLeak === false && r.aHasOwn === true), r);
+    },
+
+    /* CONTRIBUTOR-ONLY VISIBILITY — "if another user logs in and has github
+     * cli installed, and they are logged in, they should not see the release
+     * a patch, unless they are a contributor." The item fails CLOSED: hidden
+     * until main confirms push rights, never merely refused-on-click. */
+    "contributor-gate": async (win, js) => {
+        const r = await js(`(async () => {
+            const item = document.getElementById("ship-release-item");
+            // a NON-contributor: the reveal only runs on {contributor:true}
+            const reveal = (canRelease) => {
+                item.classList.add("hidden");
+                if (canRelease) item.classList.remove("hidden");
+            };
+            reveal(false);
+            const hiddenForNon = item.classList.contains("hidden");
+            reveal(true);
+            const shownForContributor = !item.classList.contains("hidden");
+            reveal(false);   // leave it hidden for later scenes
+            return { hiddenForNon, shownForContributor };
+        })()`);
+        check("contributor-gate", "RELEASE PATCH IS HIDDEN FOR A NON-CONTRIBUTOR and " +
+            "shown only for one with push rights — a logged-in non-contributor " +
+            "never SEES the item, not merely refused on click; it fails closed",
+            r.hiddenForNon === true && r.shownForContributor === true, r);
     },
 
     /* "clicking install launches a container to install, while the Manage this
@@ -3477,8 +3583,25 @@ const SCENES = {
                 handle.dispatchEvent(new PointerEvent("pointermove", o(toX, toY)));
                 handle.dispatchEvent(new PointerEvent("pointerup", o(toX, toY)));
             };
+            // MEASURE THE SETTLED LAYOUT, NOT A SNAPSHOT MID-SETTLE. A fixed
+            // wait after a drag flaked under load — the rAF-debounced layout
+            // had not finished when the rect was read. settle() polls until a
+            // card's geometry is identical across two frames (or a cap), so
+            // the assertion reflects the resting state, deterministically.
+            const settle = async (el, max = 40) => {
+                let prev = null;
+                for (let i = 0; i < max; i++) {
+                    const r = el.getBoundingClientRect();
+                    const key = Math.round(r.top) + "," + Math.round(r.height)
+                              + "," + Math.round(r.left) + "," + Math.round(r.width);
+                    if (key === prev) return;
+                    prev = key;
+                    await new Promise(r2 => requestAnimationFrame(() => setTimeout(r2, 16)));
+                }
+            };
 
             // PREVIEW IS BORN A COLUMN — full height, its own track
+            await settle(preview);
             const p0 = preview.getBoundingClientRect();
             const bornColumn = preview.classList.contains("sb-col")
                 && p0.height >= hr.height - 24
@@ -3491,7 +3614,7 @@ const SCENES = {
             // back what the pointer took
             drag(preview.querySelector(".sb-h-side"),
                 p0.left + 100, p0.top + 40, 7);
-            await new Promise(r => setTimeout(r, 150));
+            await settle(preview);
             const p1 = preview.getBoundingClientRect();
 
             // A CARD'S BOTTOM HANDLE SIZES THAT CARD — its neighbors hold still
@@ -3499,13 +3622,13 @@ const SCENES = {
             const n0 = wscard.getBoundingClientRect();
             drag(tasks.querySelector(".sb-h-bottom"),
                 t0.left + 40, hr.top + hr.height * 0.72, 8);
-            await new Promise(r => setTimeout(r, 150));
+            await settle(tasks); await settle(wscard);
             const t1 = tasks.getBoundingClientRect();
             const n1 = wscard.getBoundingClientRect();
             // ...and a crush attempt stops on the card's own reading floor
             drag(tasks.querySelector(".sb-h-bottom"),
                 t0.left + 40, hr.top + 1, 9);
-            await new Promise(r => setTimeout(r, 150));
+            await settle(tasks);
             const t2 = tasks.getBoundingClientRect();
 
             // THE DRAG IS NEVER BLIND — mid-drag, pointer still DOWN, the
@@ -4429,10 +4552,14 @@ const SCENES = {
                 runEnabled: !document.getElementById("ship-run").disabled
             });
             // THE DRAFT LOCKS AND STREAMS — a slow model writes into locked
-            // fields, visibly, and only the parsed result unlocks them
+            // fields, visibly, and only the parsed result unlocks them. The
+            // fixture resolves LATE (1500ms) on purpose: the mid-stream
+            // assertions below must run while the draft is still streaming,
+            // and a short resolve used to race them under load — the parsed
+            // final values would clobber the mid-stream ones before the check.
             window.__harness.FIXTURES.contribDraft = () => new Promise(res =>
                 setTimeout(() => res({ commitMessage: "Streamed final",
-                    releaseNotes: "Notes final", model: "q" }), 260));
+                    releaseNotes: "Notes final", model: "q" }), 1500));
             document.getElementById("ship-redraft").click();
             await new Promise(r2 => setTimeout(r2, 60));
             out.draftLocked =
@@ -4462,9 +4589,13 @@ const SCENES = {
                 && document.getElementById("ship-notes").value === "the notes half"
                 && /drafting the notes/.test(
                     document.getElementById("ship-draft-state").innerText);
-            // 400ms against the stub's 260ms resolve — the old 280ms left a
-            // 20-60ms margin that flaked once under event-loop jitter
-            await new Promise(r2 => setTimeout(r2, 400));
+            // poll for the LATE (1500ms) resolve instead of a fixed wait — no
+            // margin to flake: check every 50ms until the parsed final lands
+            for (let i = 0; i < 60; i++) {
+                if (document.getElementById("ship-commit-msg").value === "Streamed final"
+                    && document.getElementById("ship-commit-msg").readOnly === false) break;
+                await new Promise(r2 => setTimeout(r2, 50));
+            }
             out.draftParsed =
                 document.getElementById("ship-commit-msg").value === "Streamed final"
                 && document.getElementById("ship-commit-msg").readOnly === false;

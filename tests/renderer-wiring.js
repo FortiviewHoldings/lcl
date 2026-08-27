@@ -2150,14 +2150,12 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
         // and a column's open ground below its cards is a drop target too
         && js.includes("const cross = other.parentElement !== mod.parentElement")
         && js.includes("w.appendChild(mod); sbLayout();"), null);
-    check("...and the layout pass keeps its era-crossing guards: the rAF " +
-          "debounce under the sbFillSlack name every caller still speaks, " +
-          "the observer stop, the zero-size bail (a collapsed panel keeps " +
-          "its height), and refreshes from the panel-width drag and the " +
-          "expand-after-slide",
+    check("...and the layout pass keeps its guards: the rAF debounce under the " +
+          "sbFillSlack name every caller speaks, the zero-size bail (a " +
+          "collapsed panel keeps its height), and refreshes from the " +
+          "panel-width drag and the expand-after-slide",
         js.includes("function sbFillSlack")
         && js.includes("function sbLayout")
-        && js.includes("if (!sbApplying) sbFillSlack();")
         && js.includes("!host.clientHeight || !host.clientWidth")
         && (() => {
             const i = js.indexOf('$("ws-resize").addEventListener');
@@ -2165,6 +2163,21 @@ process.on("unhandledRejection", (e) => unhandled.push(String((e && e.message) |
             return i >= 0 && js.slice(i, i + 1200).includes("sbFillSlack()")
                 && t >= 0 && js.slice(t, t + 1600).includes("sbFillSlack()");
         })(), null);
+    check("THE OBSERVERS CANNOT DRIVE A LAYOUT STORM — the MutationObserver " +
+          "reacts ONLY to the state classes an external action sets (never to " +
+          "its own output or a drag transient), and the panel ResizeObserver " +
+          "watches #workspace WIDTH (not #sb-mods, whose scrollbar toggles on " +
+          "a card-height drag) so it fires only on a real resize. This is the " +
+          "fix for the loop that pegged the main thread — flicker, dead " +
+          "navigation, cross-session bleed",
+        js.includes('if (sbApplying || sbDragG) return;')
+        && js.includes('const WATCH = ["sb-minimized", "sb-col", "sb-hidden-view", "sb-popped"]')
+        && js.includes("attributeOldValue: true")
+        && js.includes('document.getElementById("workspace")')
+        && js.includes("panel.clientWidth === lastW")
+        // sb-hset is DEAD — a layout-output class the observer watched is a
+        // self-feeding loop; it is read nowhere and no longer written
+        && !js.includes('classList.add("sb-hset")'), null);
     check("POP STATE SURVIVES A RELOAD, and reordering while a section floats " +
           "keeps its dock spot — the saved order reads a placeholder as the " +
           "module it stands for",
@@ -2435,8 +2448,9 @@ check("THE WORKSPACE CARD SPEAKS IN GLYPHS — 'change' is a folder with an " +
 check("THE GLASS ICON BUTTON — no container is drawn around a glyph at rest; " +
       "the pane appears only under the pointer, in white over whatever ground " +
       "the button sits on (so it is the SAME COLOUR AS THE BACKGROUND), lit " +
-      "at 145deg on hover and flipped to 325deg while pressed so it pops out " +
-      "and then sinks in",
+      "at 145deg on hover and flipped to 325deg while pressed. The 'pop' is " +
+      "done with LIGHT ALONE — NO transform: a hover that moves the element " +
+      "1px shifts it out from under the cursor and flickers it like a bad bulb",
     (() => {
         const i = css.indexOf("THE GLASS ICON BUTTON");
         if (i < 0) return false;
@@ -2445,8 +2459,9 @@ check("THE GLASS ICON BUTTON — no container is drawn around a glyph at rest; "
             && seg.includes("background: transparent")
             && seg.includes("linear-gradient(145deg")
             && seg.includes("linear-gradient(325deg")
-            && seg.includes("transform: translateY(-1px)")
-            && seg.includes("inset 0 2px 5px");
+            && seg.includes("inset 0 2px 5px")
+            // the hover must NOT move the element — that was the flicker
+            && !/:hover:not\(:disabled\)\s*\{[^}]*translateY/.test(seg);
     })()
     // every square icon control shares it — sidebar cards and step copies too
     && (() => {

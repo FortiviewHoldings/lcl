@@ -193,7 +193,11 @@
                          message drafted by a local model from the diff.
                          The badge repeats HERE so the menu says which item
                          the top-level badge belongs to. -->
-                    <button data-action="ship-release">Release Patch…<span
+                    <!-- HIDDEN BY DEFAULT — fail closed. Revealed at boot only
+                         for a proven contributor (gh authed + push rights);
+                         a logged-in non-contributor never sees it. -->
+                    <button data-action="ship-release" id="ship-release-item"
+                        class="hidden">Release Patch…<span
                         id="ship-badge" class="menu-badge hidden"></span></button>
                 </div>
             </div>

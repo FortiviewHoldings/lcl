@@ -466,5 +466,26 @@ check("THE DRAFT WRITES ONE FIELD AT A TIME — the generation carries both " +
             && seg.includes('drafting the ${cut >= 0 ? "notes" : "commit"}');
     })(), null);
 
+check("CONTRIBUTOR-ONLY VISIBILITY — Release Patch is HIDDEN by default and " +
+      "revealed only for a proven contributor (push rights), so a logged-in " +
+      "non-contributor never SEES it ('they should not see the release a " +
+      "patch, unless they are a contributor'). Fails closed: any error keeps " +
+      "it hidden, and none of the badge polling runs for a non-contributor",
+    // main: the lean check, failing closed at every branch
+    sec.includes('ipcMain.handle("lcl:contribCanRelease"')
+    && sec.includes("if (!repo) return { contributor: false }")
+    && sec.includes('/true/.test(perm.out)')
+    && pre.includes('contribCanRelease: () => ipcRenderer.invoke("lcl:contribCanRelease")')
+    // markup: default hidden
+    && /id="ship-release-item"[\s\S]{0,40}class="hidden"/.test(html)
+    // renderer: reveal ONLY on {contributor:true}, and gate the polling behind it
+    && js.includes("(await window.lcl.contribCanRelease()).contributor")
+    && (() => {
+        const k = js.indexOf("RELEASE PATCH IS FOR CONTRIBUTORS ONLY");
+        const seg = js.slice(k, k + 1400);
+        return k > 0 && seg.includes("if (!ok) return;")
+            && seg.indexOf("if (!ok) return;") < seg.indexOf("shipBadgeFromBoot();");
+    })(), null);
+
 console.log(`\n${pass}/${pass + fail} contrib-ship checks passed`);
 process.exit(fail ? 1 : 0);

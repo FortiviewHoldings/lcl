@@ -7194,6 +7194,17 @@ function guard(fn) {
 
 ipcMain.handle("lcl:listSessions", guard(() => ({ sessions: sessions.list() })));
 
+// THE INTENT LEDGER, read-only to the UI — the durable Tier-2 record for a
+// session (intent, open/done criteria, archived count). This is what the
+// coming Ancient Knowledge surface reads to show the build's true state; for
+// now it makes the ledger visible instead of a black box.
+ipcMain.handle("lcl:intentSummary", guard((_e, sessionId) => {
+    try {
+        const il = require("../.lcl.engine/core/intentLedger");
+        return il.summarize(paths.intentDir(), sessionId);
+    } catch (e) { return { intent: "", open: [], done: [], archivedCount: 0, total: 0 }; }
+}));
+
 ipcMain.handle("lcl:createSession", guard((_e, title) => sessions.create(String(title || ""))));
 
 /**
@@ -11765,6 +11776,36 @@ function contribDiscoverRepo() {
  * the ALREADY-LINKED checkout (no discovery scan at boot). "Ready" = there
  * is something a contributor could cut right now: uncommitted changes, or
  * commits origin does not have (a failed push, an unshipped resume). */
+/* CONTRIBUTOR OR NOT — the cheap check that decides whether "Release Patch"
+ * is even VISIBLE. A logged-in non-contributor (gh installed and authed, but
+ * no push rights on this app's repo, or no linked checkout at all) must never
+ * SEE the item, not merely be refused on click. Fail CLOSED: anything short
+ * of proven push access returns false, so the item stays hidden by default.
+ *
+ * ASYNC, NEVER execFileSync — this runs at BOOT, and the synchronous version
+ * blocked the whole main process (and thus the window and all IPC) for as
+ * long as gh took, up to seconds each. Every subprocess here is awaited off
+ * the event loop, so the boot check never freezes the UI. */
+function contribExecAsync(bin, args, cwd, timeoutMs = 15000) {
+    return new Promise((resolve) => {
+        const { execFile } = require("child_process");
+        execFile(bin, args, { cwd, timeout: timeoutMs, windowsHide: true,
+                              env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GCM_INTERACTIVE: "Never" } },
+            (err, stdout) => resolve({ ok: !err, out: String(stdout || "").trim() }));
+    });
+}
+ipcMain.handle("lcl:contribCanRelease", guard(async () => {
+    const repo = contribDiscoverRepo().repo;
+    if (!repo) return { contributor: false };
+    if (!(await contribExecAsync("gh", ["--version"], repo)).ok) return { contributor: false };
+    if (!(await contribExecAsync("gh", ["auth", "status"], repo)).ok) return { contributor: false };
+    const remote = contribRemote(repo);
+    if (!remote) return { contributor: false };
+    const perm = await contribExecAsync("gh",
+        ["api", `repos/${remote.owner}/${remote.repo}`, "--jq", ".permissions.push"], repo);
+    return { contributor: perm.ok && /true/.test(perm.out) };
+}));
+
 ipcMain.handle("lcl:contribReady", guard(async () => {
     const repo = contribRepoRoot();
     if (!repo) return { ready: false };

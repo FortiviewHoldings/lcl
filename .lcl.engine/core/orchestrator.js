@@ -11,6 +11,7 @@ const agent = require("./agent");
 const selfAudit = require("./selfAudit");
 const { parseToolJson } = require("./toolParse");
 const coverage = require("./coverage");
+const intentLedger = require("./intentLedger");   // pure fs — safe at load
 
 /**
  * The orchestrator — .lcl's "mitochondria".
@@ -468,6 +469,30 @@ async function runGoal(session, goal, opts = {}) {
     onTask({ id: planId, n: 0, total: steps.length, title: `Plan: ${steps.length} steps`,
              status: "done", detail: steps.map(s => s.title).join(" · ") });
 
+    // TIER 2 — THE INTENT LEDGER. The user's goal (verbatim) and the criteria
+    // this build is measured against (the material's own topics, and each plan
+    // step) are recorded to a durable flat file the moment they exist — before
+    // the model can drift. Per-step verify results land as status updates
+    // below. This is what survives when the hot context is compacted; it never
+    // sinks the run if it fails (a ledger write is not the work).
+    // this goal's id — scopes every criterion to THIS goal, so a later goal in
+    // the same session cannot inherit its "done" (the review's collision bug)
+    const goalId = "g" + goalStartedAt;
+    try {
+        const ilDir = require("./paths").intentDir();
+        const now = Date.now();
+        intentLedger.recordIntent(ilDir, session.id, goalId, planningGoal, now);
+        if (checklist) {
+            for (const it of checklist.items) {
+                intentLedger.recordCriterion(ilDir, session.id, goalId, "cov", it.id, it.title, now);
+            }
+        }
+        for (const st of steps) {
+            intentLedger.recordCriterion(ilDir, session.id, goalId, "step", st.n,
+                                         st.title || st.action, now);
+        }
+    } catch { /* the ledger is Tier 2; a write failure never stops the build */ }
+
     const allChanges = [];
     // the build's tool messages across every step, handed to the Ancient
     // Knowledge cycle so its untested-logic gap sees what ran (and what did not)
@@ -593,6 +618,15 @@ async function runGoal(session, goal, opts = {}) {
                 reason: critique.pass
                     ? (critique.skipped ? `passed unexamined: ${critique.skipped}` : "passed")
                     : critique.problem } });
+            // ...and the same verdict updates this step's criterion in Tier 2,
+            // so the ledger's live front knows what is done vs still open
+            try {
+                const files = [...changeByPath.values()].map(c => c.path).filter(Boolean);
+                const il = require("./intentLedger");
+                il.recordStatus(require("./paths").intentDir(), session.id,
+                    il.criterionId(goalId, "step", step.n),
+                    critique.pass ? "done" : "failed", files.join(", "), Date.now());
+            } catch { /* Tier 2 write, never fatal */ }
             if (critique.pass) break;
         }
 

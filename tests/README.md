@@ -23,28 +23,26 @@ cd ui/electron && npx electron . --remote-debugging-port=9222
 then run a suite:
 
 ```bash
-py -3 tests/ui/ui-core.test.py
+py -3 tests/ui/landing.test.py
 ```
 
 | suite | asserts |
 |---|---|
-| `ui-core.test.py` | landing page, branded modal, agent file write, green change chip, revert, message actions |
 | `video-backdrop.test.py` | CSP allows the video, decodes 1280x720, pauses when hidden |
 | `intro-playback.test.py` | plays once per visit, never loops, silent inside a session, mute persists |
 | `audio-fade.test.py` | samples `video.volume` across playback to prove the tail fade |
 | `branding.test.py` | wordmark and icon wiring, asset presence |
 | `anim-perf.test.py` | bounded stage, no permanent `will-change`, motion modes |
-| `agent-write.test.py` | the readme.md regression: engine key, tool repair, progress events |
 
 Two gotchas these encode, both learned the hard way:
 
 - CDP needs `suppress_origin=True` — Electron rejects the WebSocket origin.
 - The app **pauses the intro on blur by design**, so a test that measures
-  playback must foreground the window first (see `helpers/foreground-capture.py`).
+  playback must foreground the window first.
   A frozen `currentTime` usually means the window lost focus, not a bug.
 
 ## helpers/
 
-`cdp-screenshot.py` captures from the compositor and is the reliable option.
-`window-capture.py` uses PrintWindow, which is faster but returns **stale
-frames** under software rendering — trust DOM assertions over any bitmap.
+`ui-state.py` reads DOM/app state over CDP for the suites above. (The old
+screenshot helpers carried hardcoded machine-specific scratchpad paths and were
+removed — trust DOM assertions over any bitmap.)

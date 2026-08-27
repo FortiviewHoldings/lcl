@@ -6841,7 +6841,9 @@ function sbZipWrapKeys(w1, w2) {
  * panel (its inner block scrolls); a dragged height (g.cardH) belongs to
  * THAT card alone. A panel too narrow for two legible columns stacks one.
  */
+let sbLayoutRuns = 0;   // a counter a test can watch — a loop shows as a storm
 function sbLayout(gOverride) {
+    sbLayoutRuns++;
     const host = document.getElementById("sb-mods");
     // clientWidth 0 = the panel is collapsed or mid-slide — a layout written
     // in that state is nonsense the reopen never corrects
@@ -6984,13 +6986,11 @@ function sbLayout(gOverride) {
             // independently now
             m.style.height = Math.min(h, Math.round(host.clientHeight * 0.9)) + "px";
             m.style.maxHeight = "none";
-            m.classList.add("sb-hset");
         } else {
             m.style.height = "";
             // natural height, capped so one huge listing cannot eat the
             // panel — the card's inner block scrolls past the cap
             m.style.maxHeight = spec.fixed ? "" : capPx + "px";
-            m.classList.remove("sb-hset");
         }
     });
     cols.forEach((m, i) => {
@@ -7000,7 +7000,6 @@ function sbLayout(gOverride) {
         m.style.gridRow = String(trayN + 1);
         m.style.alignSelf = "stretch";
         m.style.height = ""; m.style.maxHeight = "";
-        m.classList.remove("sb-hset");
     });
     minim.forEach((m, i) => {
         m.style.gridColumn = "1 / -1";
@@ -7575,9 +7574,47 @@ function sbToggleViewMenu() {
     // the panel changes size — both are class flips or window geometry, and
     // sbFillSlack is rAF-debounced so observing broadly costs one measure a
     // frame at worst
-    new MutationObserver(() => { if (!sbApplying) sbFillSlack(); }).observe($("sb-mods"),
-        { attributes: true, attributeFilter: ["class"], subtree: true });
+    new MutationObserver((records) => {
+        // THE OBSERVER MUST NOT DRIVE THE LOOP. sbApplying could never stop it
+        // — observer callbacks are delivered as microtasks AFTER the guarded
+        // block resets the flag (this is the flicker: layout writes a class,
+        // the observer wakes, re-lays out, writes again). It reacts ONLY to
+        // the state classes an EXTERNAL action sets (minimize/col/hide/pop),
+        // never to a drag transient or to layout's own output, and never
+        // while a drag owns the grid.
+        if (sbApplying || sbDragG) return;
+        const WATCH = ["sb-minimized", "sb-col", "sb-hidden-view", "sb-popped"];
+        let real = false;
+        for (const r of records) {
+            const before = new Set(String(r.oldValue || "").split(/\s+/));
+            const after = new Set([...r.target.classList]);
+            for (const c of WATCH) {
+                if (before.has(c) !== after.has(c)) { real = true; break; }
+            }
+            if (real) break;
+        }
+        if (real) sbFillSlack();
+    }).observe($("sb-mods"),
+        { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true });
     window.addEventListener("resize", () => sbFillSlack());
+    // THE PANEL RESIZING IS THE ONE REAL LAYOUT TRIGGER THE OLD LOOP MASKED.
+    // A --ws-w change resizes #workspace a frame after the style is set, so a
+    // single layout call reads the OLD width and folds wrong (the buggy
+    // MutationObserver used to brute-force past this). Observe #workspace,
+    // whose width tracks --ws-w and changes ONLY on a genuine resize — never
+    // from a card's height (that scrolls inside #sb-mods, so observing
+    // #sb-mods instead fired on every scrollbar toggle and moved neighbors).
+    // sbLayout never changes #workspace's width, so this cannot loop.
+    try {
+        const panel = document.getElementById("workspace");
+        let lastW = panel ? panel.clientWidth : 0;
+        if (panel) new ResizeObserver(() => {
+            if (sbDragG) return;
+            if (panel.clientWidth === lastW) return;   // height-only change: ignore
+            lastW = panel.clientWidth;
+            sbFillSlack();
+        }).observe(panel);
+    } catch { /* no ResizeObserver: window-resize + explicit calls still fire */ }
 })();
 
 async function openFileViewer(relPath) {
@@ -18615,17 +18652,27 @@ async function openEscalation() {
     // the knowledge badge: shipped sources not yet on this machine, known at
     // boot without opening anything — the count is ~64 stats, not the inventory
     kbBadgeFromBoot();
-    // the patch badge: something ready to release in the linked checkout,
-    // known the same way — at boot, then LIVE: the checkout changes while
-    // the app sits open (a contributor is working in it), and a badge that
-    // waits for a menu click to be right is not a notification. A slow tick
-    // plus window focus keeps it honest; the menu click stays as the
-    // freshest read.
-    shipBadgeFromBoot();
-    setInterval(shipBadgeFromBoot, 60_000);
-    window.addEventListener("focus", shipBadgeFromBoot);
-    const patchLabel = document.querySelector('.menu[data-menu="patch"] .menu-label');
-    if (patchLabel) patchLabel.addEventListener("click", shipBadgeFromBoot);
+    // RELEASE PATCH IS FOR CONTRIBUTORS ONLY, AND FAILS CLOSED. The menu
+    // item starts hidden; it appears only once main confirms this user has
+    // push rights on the app's own repo. A logged-in non-contributor never
+    // sees it — and none of the badge polling runs for them either, so a
+    // regular user's app never spawns gh on a loop it can do nothing with.
+    (async () => {
+        let ok = false;
+        try { ok = !!(await window.lcl.contribCanRelease()).contributor; } catch { /* stay hidden */ }
+        if (!ok) return;                      // hidden item, no polling: done
+        const item = $("ship-release-item");
+        if (item) item.classList.remove("hidden");
+        // the patch badge: something ready to release in the linked checkout,
+        // known the same way — at boot, then LIVE: the checkout changes while
+        // the app sits open, and a badge that waits for a menu click to be
+        // right is not a notification. Contributors only.
+        shipBadgeFromBoot();
+        setInterval(shipBadgeFromBoot, 60_000);
+        window.addEventListener("focus", shipBadgeFromBoot);
+        const patchLabel = document.querySelector('.menu[data-menu="patch"] .menu-label');
+        if (patchLabel) patchLabel.addEventListener("click", shipBadgeFromBoot);
+    })();
 
     // A SPEND WINDOW ROLLS OVER ON A CLOCK, not on a user action. Left idle
     // across a five-hour boundary, the plan ring and GO strip kept showing the
