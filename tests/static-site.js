@@ -171,14 +171,15 @@ check("...the landing SHOWS the warm-up, front and center — a lit label and a 
     && s.includes('id="warm-track"') && s.includes('id="warm-bar"')
     && s.includes("caches in this browser")
     && /warmSay\([^)]*, pct\)/.test(s)
-    && s.includes('warmSay(target.name + " is ready — the demo answers the moment you enter", 100)'), null);
+    && s.includes('warmSay(target.name + " is ready — ask it anything below and it answers instantly", 100)'), null);
 check("...and a model switched mid-load QUEUES a clean reload instead of " +
       "racing the load in flight",
     /reloadWanted/.test(s)
     && s.includes("if (reloadWanted) continue;"), null);
 check("...ready is announced where the visitor is — the warm line flips to " +
-      "'answers the moment you enter' and the composer is already enabled",
-    s.includes("the demo answers the moment you enter")
+      "'ask it anything below and it answers instantly' (no ambiguous 'enter') and the composer is already enabled",
+    s.includes("ask it anything below and it answers instantly")
+    && !s.includes("the moment you enter")
     && s.includes("box.disabled = false; send.disabled = false;"), null);
 
 /* ---- SESSIONS AND THE WORKSPACE ARE REAL, IN BROWSER STORAGE ----
@@ -385,6 +386,31 @@ check("lite-vs-full is an explicit table, not a blur — the lite page does not 
 check("the system prompt tells the model what it IS — a lite in-browser demo " +
       "that points capability questions at the full app",
     /You are \.lcl lite/.test(s), null);
+
+check("THE WORKBENCH-EXPLAINER HALF sits over the signature starfield — a " +
+      "canvas behind the features/asks/patching/etc sections (not the chat " +
+      "above), animated and reduced-motion aware",
+    s.includes('<div id="bench-stars">')
+    && s.includes('<canvas id="starfield"')
+    && s.includes("#bench-stars > section")
+    && s.includes("function starfield()")
+    && s.includes('prefers-reduced-motion: reduce)").matches) return')
+    && /@media \(prefers-reduced-motion: reduce\) \{ #starfield \{ display: none/.test(s), null);
+
+check("MOBILE BEST-EFFORT — a phone defaults to the SMALLEST model, does NOT " +
+      "auto-download on page load (data cost — it waits for the visitor to " +
+      "enter the chat), and a device with no WebGPU / too little memory gets " +
+      "an honest fallback + download CTA instead of a dead chat box",
+    s.includes("const IS_MOBILE = (()")
+    && s.includes("let chosen = IS_MOBILE ? MODELS[0] : MODELS[1]")
+    && s.includes("function liteFallback(")
+    && s.includes('if (!navigator.gpu) { liteFallback("no-webgpu"); return; }')
+    && s.includes("if (navigator.gpu && !IS_MOBILE) setTimeout(loadModel, 1000)")
+    // the load / fallback starts on ENTER (consent), not page load
+    && (() => { const k = s.indexOf("function enterBench()");
+                return k > 0 && s.slice(k, k + 700).includes("if (navigator.gpu) { if (IS_MOBILE) loadModel(); }"); })()
+    // a phone OOM falls back honestly, not a raw error
+    && s.includes('if (IS_MOBILE) { liteFallback("load-failed"); }'), null);
 
 console.log(`\n${pass}/${pass + fail} static-site checks passed`);
 process.exit(fail ? 1 : 0);

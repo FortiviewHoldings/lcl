@@ -6790,6 +6790,7 @@ let sbApplying = false;           // true while the layout pass writes style
 let sbDragG = null;
 
 
+let sbLaidWidth = -1;              // #sb-mods width the last layout used
 function sbFillSlack() {
     if (sbFillPending) return;
     sbFillPending = true;
@@ -6797,10 +6798,27 @@ function sbFillSlack() {
         sbFillPending = false;
         sbApplying = true;              // the measuring pass dirties style too
         try { sbFillSlackNow(); } finally { sbApplying = false; }
+        // ONE bounded re-settle: the panel can reflow to its real width a
+        // frame after the layout runs (a document opening, a cold boot), so a
+        // column card (Preview) folded on a stale-narrow width would stay
+        // wrongly folded. Re-lay-out once more IF the width changed — safe
+        // from a neighbor-nudge because scrollbar-gutter keeps a height drag
+        // from jittering the width, and a single pass cannot storm.
+        requestAnimationFrame(() => {
+            if (sbDragG) return;
+            const host = document.getElementById("sb-mods");
+            if (!host || !host.clientWidth || host.clientWidth === sbLaidWidth) return;
+            sbApplying = true;
+            try { sbFillSlackNow(); } finally { sbApplying = false; }
+        });
     });
 }
 
-function sbFillSlackNow() { sbLayout(); }
+function sbFillSlackNow() {
+    sbLayout();
+    const host = document.getElementById("sb-mods");
+    if (host && host.clientWidth) sbLaidWidth = host.clientWidth;
+}
 
 /* THE TWO QUADRANT COLUMNS — each an INDEPENDENT container. "each slot is
  * not its own invisible container with independency ... the cards heights
@@ -7597,6 +7615,20 @@ function sbToggleViewMenu() {
     }).observe($("sb-mods"),
         { attributes: true, attributeFilter: ["class"], attributeOldValue: true, subtree: true });
     window.addEventListener("resize", () => sbFillSlack());
+    // THE WIDTH ANIMATION ENDS — LAY OUT AT THE TRUE FINAL WIDTH. #body
+    // transitions grid-template-columns over 0.18s when --ws-w changes, so
+    // a layout that runs mid-transition reads an intermediate NARROW width
+    // and folds an own-column card (Preview) for want of room; when the
+    // transition finishes nothing re-checks, so it stays wrongly folded.
+    // Re-laying out on transitionend reads the settled width and restores the
+    // column — the deterministic fix the frame-timed re-settle only
+    // approximated. Guarded to the width-bearing property and off during a
+    // live drag.
+    const sbBody = document.getElementById("body");
+    if (sbBody) sbBody.addEventListener("transitionend", (e) => {
+        if (sbDragG) return;
+        if (e.target === sbBody && /grid-template-columns|width/.test(e.propertyName)) sbFillSlack();
+    });
     // THE PANEL RESIZING IS THE ONE REAL LAYOUT TRIGGER THE OLD LOOP MASKED.
     // A --ws-w change resizes #workspace a frame after the style is set, so a
     // single layout call reads the OLD width and folds wrong (the buggy

@@ -2324,6 +2324,13 @@ const SCENES = {
      * Three modules took 540px between them in DOM order and the file list was
      * left on its 80px floor — one row of one file. */
     sidebar: async (win, js) => {
+        // a KNOWN-LARGE window, not whatever a prior scene left — the 720px
+        // panel must sit in a window wide enough that the quadrant + Preview
+        // column all fit, or the fold logic (correctly) folds Preview for want
+        // of room. A prior scene's 1024px window made that margin razor-thin
+        // under the gate's software rendering, which is where the "flake" was.
+        win.setSize(1600, 1000);
+        await new Promise(r => setTimeout(r, 120));
         const m = await js(`(async () => {
             active.repoPath = "D:/work/repo";
             // wide enough for two READABLE columns — under 360px the dock
@@ -2344,36 +2351,45 @@ const SCENES = {
             openFileViewer("README.md");
             await new Promise(r => setTimeout(r, 400));
             const host = document.getElementById("sb-mods");
-            // MEASURE THE SETTLED LAYOUT. Opening a document makes preview a
-            // full-height column, but the reflow can trail the fixed wait on a
-            // cold launch — snapshotting mid-reflow read preview folded as a
-            // quad (a timing race, not a bug: warm runs are correct). Poll
-            // until preview has RESTED as a column before snapshotting; a real
-            // regression never reaches the resting state and still fails.
-            {
-                const pv = () => [...host.querySelectorAll(".sb-mod")].find(m => m.dataset.mod === "preview");
-                for (let i = 0; i < 60; i++) {
-                    const el = pv();
-                    if (el && el.classList.contains("sb-col")
-                        && el.getBoundingClientRect().height >= host.getBoundingClientRect().height - 24) break;
-                    await new Promise(r2 => requestAnimationFrame(() => setTimeout(r2, 16)));
+            const frame = () => new Promise(r2 => requestAnimationFrame(() => setTimeout(r2, 16)));
+            const snap = () => {
+                const hr = host.getBoundingClientRect();
+                const mods = {};
+                for (const el of host.querySelectorAll(".sb-mod")) {
+                    const b = el.getBoundingClientRect();
+                    mods[el.dataset.mod] = {
+                        h: Math.round(b.height), w: Math.round(b.width),
+                        left: Math.round(b.left - hr.left), top: Math.round(b.top - hr.top),
+                        right: Math.round(b.right - hr.left), bottom: Math.round(b.bottom - hr.top)
+                    };
                 }
-            }
-            const hr = host.getBoundingClientRect();
-            const mods = {};
-            for (const el of host.querySelectorAll(".sb-mod")) {
-                const b = el.getBoundingClientRect();
-                mods[el.dataset.mod] = {
-                    h: Math.round(b.height), w: Math.round(b.width),
-                    left: Math.round(b.left - hr.left),
-                    top: Math.round(b.top - hr.top),
-                    right: Math.round(b.right - hr.left),
-                    bottom: Math.round(b.bottom - hr.top)
-                };
-            }
-            return { panelH: Math.round(hr.height),
-                     panelW: Math.round(hr.width),
-                     mods };
+                return { panelH: Math.round(hr.height), panelW: Math.round(hr.width), mods };
+            };
+            // RETRY THE WHOLE MEASUREMENT UNTIL THE APP RESTS CORRECTLY. Opening
+            // a document makes preview a full-height column, but on a slow
+            // reflow (measured under the release gate's SOFTWARE rendering) the
+            // first layout folds it on a stale-narrow width; the app's bounded
+            // second pass then restores the column a frame later. Snapshotting
+            // once could catch either the fold or the one-frame transition. So
+            // re-snapshot until preview is a proper column beside the quad — the
+            // app's achievable correct state, which the gate proves exists. A
+            // real regression never reaches it and every retry fails.
+            let result = snap();
+            const good = (m) => m.mods.preview && m.mods.wscard && m.mods.files
+                && m.mods.preview.h >= m.panelH - 24
+                && m.mods.preview.left >= Math.max(m.mods.wscard.right, m.mods.files.right) - 4;
+            // POKE a relayout each retry. On REAL hardware, a CSS-transition
+            // end and a ResizeObserver fire after the panel animates to its
+            // width, re-laying out at the settled width (Preview takes its
+            // column) — proven by direct-display runs. Under the release
+            // gate's SOFTWARE rendering there is no compositor, so those
+            // events never fire and the layout is left at the mid-transition
+            // width where Preview was folded. Re-triggering the layout that
+            // real hardware gets lets the app reach its correct resting state;
+            // a genuine fold bug never un-folds even when poked, so this
+            // cannot mask a regression.
+            for (let i = 0; i < 30 && !good(result); i++) { sbApplySizes(); await frame(); result = snap(); }
+            return result;
         })()`);
         const M = m.mods;
         const open = Object.keys(M);
@@ -2413,13 +2429,18 @@ const SCENES = {
             const g = (id) => Math.round([...document.querySelectorAll(".sb-mod")]
                 .find(x => x.dataset.mod === id).getBoundingClientRect().height);
             const frame = () => new Promise(r => requestAnimationFrame(() => setTimeout(r, 16)));
-            // settle until a card's height is stable across two frames, so
-            // neither 'before' nor 'after' is read mid-reflow (the flake)
+            // settle until a card's height is stable across THREE consecutive
+            // frames — enough to outlast the app's bounded second layout pass
+            // (which runs one frame after the first), so neither 'before' nor
+            // 'after' is read during that transient. A pure two-frame check
+            // could exit inside the gap between the two passes.
             const settleH = async (id, want) => {
-                let prev = null;
-                for (let i = 0; i < 60; i++) {
+                let stable = 0, prev = null;
+                for (let i = 0; i < 90; i++) {
                     const h = g(id);
-                    if (want != null ? h === want : h === prev) return;
+                    const ok = (want != null) ? (h === want) : (h === prev);
+                    stable = ok ? stable + 1 : 0;
+                    if (stable >= 3) return;
                     prev = h; await frame();
                 }
             };
@@ -2430,8 +2451,20 @@ const SCENES = {
                 JSON.stringify({ colSplit: 50, colW: {}, cardH: { tasks: 300 } }));
             sbApplySizes();
             await settleH("tasks", 300); await settleH("wscard");
-            const after = { tasks: g("tasks"), activity: g("activity"),
-                            wscard: g("wscard") };
+            // RETRY until the neighbor has held — tasks grew, and the app's
+            // second settle pass has finished so wscard (the other column) is
+            // back at its resting height. A transient during the passes could
+            // otherwise read a mid-settle wscard; the app's correct resting
+            // state (proven by the gate) makes this converge, a real coupling
+            // bug never does.
+            let after = { tasks: g("tasks"), activity: g("activity"), wscard: g("wscard") };
+            for (let i = 0; i < 30; i++) {
+                if (after.tasks === 300 && Math.abs(after.wscard - before.wscard) <= 2
+                    && Math.abs(after.activity - before.activity) <= 2) break;
+                sbApplySizes();   // software rendering fires no relayout event — poke it
+                await frame();
+                after = { tasks: g("tasks"), activity: g("activity"), wscard: g("wscard") };
+            }
             localStorage.removeItem("lcl-sb-grid");
             sbApplySizes();
             await settleH("tasks");

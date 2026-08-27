@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>.lcl — an AI workbench that runs on your machine</title>
+<title>.lcl — Local Compute Layer</title>
 <meta name="description" content="An AI workbench that runs on your machine, with the network switched off. This page opens the way the app does — try the lite version in your browser, then download the real thing.">
 <link rel="icon" type="image/png" href="app/assets/icon.png">
 <style>
@@ -365,6 +365,23 @@
      BELOW THE FOLD — same skin, production register.
      ============================================================ */
   section { padding: 56px 0; border-top: 1px solid var(--line); }
+
+  /* ---- the signature starfield behind the workbench-explainer half ---- */
+  #bench-stars { position: relative; }
+  #starfield {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    z-index: 0; pointer-events: none; display: block;
+    /* fade in from the seam with the chat above, so it arrives rather than
+       cuts on; the star field is drawn on transparent, over the page ground */
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 120px);
+            mask-image: linear-gradient(180deg, transparent 0, #000 120px);
+  }
+  #bench-stars > section, #bench-stars > footer { position: relative; z-index: 1; }
+  /* the sections stay readable over the stars — a whisper of ground behind
+     their content, not an opaque block that would hide the field */
+  #bench-stars > section { background:
+     linear-gradient(180deg, rgba(5,5,5,.62), rgba(5,5,5,.72)); }
+  @media (prefers-reduced-motion: reduce) { #starfield { display: none; } }
   .wrap { max-width: 960px; margin: 0 auto; padding: 0 20px; }
   h2 { font-size: 19px; letter-spacing: var(--ls-tight); margin-bottom: 4px; }
   .micro { font-size: var(--fs-tiny); letter-spacing: var(--ls-wide);
@@ -620,6 +637,11 @@
   <a class="primary" id="nav-dl" href="https://github.com/FortiviewHoldings/lcl/releases/latest">Download</a>
 </nav>
 
+<!-- THE WORKBENCH-EXPLAINER HALF, over the signature starfield. The canvas
+     sits behind these sections only (not the landing/chat above), drifting
+     slowly so the dark ground has depth without pulling focus. -->
+<div id="bench-stars">
+<canvas id="starfield" aria-hidden="true"></canvas>
 <section id="features">
   <div class="wrap">
     <div class="micro">the full app</div>
@@ -879,6 +901,7 @@
       with the network switched off.</div>
   </div>
 </footer>
+</div><!-- /bench-stars -->
 
 <script type="module">
 const $ = (id) => document.getElementById(id);
@@ -1138,6 +1161,14 @@ function enterBench() {
   try { sessionStorage.setItem("lcl-lite-bench", "1"); } catch {}
   paintSessions(); paintChat(); paintFiles();
   box.focus();
+  // ENTERING THE CHAT IS THE CONSENT TO FETCH A MODEL. Desktop already warmed
+  // on page load; a phone must NOT auto-download ~0.5 GB before the visitor
+  // asks for it, so the best-effort load starts here — and a browser with no
+  // WebGPU shows the honest fallback here instead of a dead composer.
+  if (!engine && !loading && !liteDown) {
+    if (navigator.gpu) { if (IS_MOBILE) loadModel(); }
+    else liteFallback("no-webgpu");
+  }
 }
 $("landing-skip").addEventListener("click", () => { enterBench(); logAct("session opened"); });
 try { if (sessionStorage.getItem("lcl-lite-bench") === "1") enterBench(); } catch {}
@@ -1230,7 +1261,17 @@ const MODELS = [
   { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", name: "Qwen2.5 1.5B", meta: "~1.2 GB · the app's starter class" },
   { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", name: "Llama 3.2 1B", meta: "~0.8 GB" },
 ];
-let chosen = MODELS[1];
+// BEST-EFFORT ON PHONES. A mobile browser's only real chance at running a
+// model in-page is the SMALLEST one (0.5B) — the 1.5B starter class will not
+// fit. Detect a phone (mobile UA, or a coarse pointer on a small screen) and
+// default the lite target to the small model.
+const IS_MOBILE = (() => { try {
+  const ua = navigator.userAgent || "";
+  const coarse = matchMedia("(pointer: coarse)").matches;
+  const small = Math.min(screen.width || 9999, screen.height || 9999) < 820;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (coarse && small);
+} catch { return false; } })();
+let chosen = IS_MOBILE ? MODELS[0] : MODELS[1];
 try { const saved = localStorage.getItem("lcl-lite-model");
       const f = MODELS.find(m => m.id === saved); if (f) chosen = f; } catch {}
 const menu = $("model-menu");
@@ -1299,20 +1340,40 @@ function systemMsg() {
     "live in the full app (the download on the landing screen) — you are the in-browser taste " +
     "of it." + workspaceContext() };
 }
+// THE HONEST FALLBACK when the in-browser model can't run here — no WebGPU,
+// or a phone that ran out of memory trying. Shown in place of a dead chat.
+let liteDown = false;
+function liteFallback(reason) {
+  if (liteDown) return; liteDown = true;
+  box.disabled = true; send.disabled = true;
+  box.placeholder = "runs on desktop Chrome/Edge — or the full app";
+  try { paintModelBtn(false); } catch {}
+  const why = reason === "load-failed"
+    ? "This phone has WebGPU but not enough memory to run even the smallest model in the browser."
+    : IS_MOBILE
+      ? "Phone browsers can't run the in-browser model yet — WebGPU is missing or too limited here."
+      : "This browser has no WebGPU, so the in-browser model can't run — try desktop Chrome or Edge.";
+  addMsgEl("msg-sys", why + " The full app is a free download for Windows (the button up top) and "
+    + "runs entirely on your own machine, offline. On desktop, this same page runs the model right "
+    + "in your browser.");
+  statusEl.textContent = reason === "load-failed" ? "not enough memory on this device" : "no WebGPU here";
+  warmSay("");
+  logAct("lite demo unavailable on this device (" + reason + ")");
+}
+
 async function loadModel() {
   if (generating) return;
   if (loading) { reloadWanted = true; return; }   // a switch mid-load queues a clean reload
-  if (!navigator.gpu) {
-    statusEl.textContent = "this browser has no WebGPU — use Chrome or Edge on desktop";
-    return;
-  }
+  if (!navigator.gpu) { liteFallback("no-webgpu"); return; }
   loading = true;
   do {
     reloadWanted = false;
     const target = chosen;
     engine = null;
     statusEl.textContent = "fetching WebLLM…";
-    warmSay("warming the lite model — " + target.name, 0);
+    warmSay((IS_MOBILE
+        ? "trying a small model on your phone (~0.5 GB, experimental) — "
+        : "warming the lite model — ") + target.name, 0);
     setTask("loading " + target.name + "…");
     logAct("loading " + target.name);
     try {
@@ -1330,7 +1391,7 @@ async function loadModel() {
       engine = built;
       bar.style.width = "100%";
       statusEl.textContent = "loaded — all local from here";
-      warmSay(target.name + " is ready — the demo answers the moment you enter", 100);
+      warmSay(target.name + " is ready — ask it anything below and it answers instantly", 100);
       $("mk-engine").textContent = "webllm · " + target.name.toLowerCase();
       paintModelBtn(true);
       setTask("");
@@ -1338,9 +1399,13 @@ async function loadModel() {
       box.disabled = false; send.disabled = false;
       if ($("bench").classList.contains("live")) box.focus();
     } catch (e) {
-      statusEl.textContent = "could not load: " + String(e && e.message || e).slice(0, 120);
-      warmSay("");
-      setTask(""); logAct("model load failed");
+      setTask("");
+      // a phone that OOMs gets the honest fallback, not a raw error string
+      if (IS_MOBILE) { liteFallback("load-failed"); }
+      else {
+        statusEl.textContent = "could not load: " + String(e && e.message || e).slice(0, 120);
+        warmSay(""); logAct("model load failed");
+      }
     }
   } while (reloadWanted);
   loading = false;
@@ -1394,7 +1459,61 @@ box.addEventListener("keydown", (e) => {
    anyone clicks Just chat the weights are fetching or fetched (they cache in
    this browser, so return visits warm instantly) and the demo answers instead
    of asking the visitor to wait. */
-if (navigator.gpu) setTimeout(loadModel, 1000);
+// Desktop with WebGPU warms early. A phone must not auto-fetch a model on page
+// load (mobile data), so its load waits for the visitor to enter the chat
+// (enterBench); a browser with no WebGPU shows the fallback there too.
+if (navigator.gpu && !IS_MOBILE) setTimeout(loadModel, 1000);
+
+/* ---- the signature starfield: a slow, deep drift behind the explainer ---- */
+(function starfield() {
+  const cv = document.getElementById("starfield");
+  const host = document.getElementById("bench-stars");
+  if (!cv || !host) return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const ctx = cv.getContext("2d");
+  let W = 0, H = 0, dpr = Math.min(window.devicePixelRatio || 1, 2), stars = [];
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  function build() {
+    const r = host.getBoundingClientRect();
+    W = Math.max(1, Math.round(r.width)); H = Math.max(1, Math.round(r.height));
+    cv.width = W * dpr; cv.height = H * dpr;
+    cv.style.width = W + "px"; cv.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // density scales with area; three depths drift at different speeds
+    const n = Math.min(420, Math.round(W * H / 6000));
+    stars = Array.from({ length: n }, () => {
+      const depth = Math.random();                 // 0 far … 1 near
+      return { x: rnd(0, W), y: rnd(0, H),
+               r: 0.4 + depth * 1.3,
+               base: 0.12 + depth * 0.55,
+               tw: rnd(0, Math.PI * 2),             // twinkle phase
+               tws: rnd(0.4, 1.4),                  // twinkle speed
+               vy: 2 + depth * 8 };                 // px/sec upward drift
+    });
+  }
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    ctx.clearRect(0, 0, W, H);
+    for (const s of stars) {
+      s.y -= s.vy * dt;
+      if (s.y < -2) { s.y = H + 2; s.x = rnd(0, W); }
+      s.tw += s.tws * dt;
+      const a = Math.max(0, s.base * (0.65 + 0.35 * Math.sin(s.tw)));
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255," + a.toFixed(3) + ")";
+      ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  build();
+  requestAnimationFrame(frame);
+  let t = null;
+  const rebuild = () => { clearTimeout(t); t = setTimeout(build, 120); };
+  window.addEventListener("resize", rebuild);
+  try { new ResizeObserver(rebuild).observe(host); } catch (e) { /* resize covers it */ }
+})();
 </script>
 </body>
 </html>
