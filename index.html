@@ -1257,21 +1257,23 @@ $("tg-term").addEventListener("click", () => {
 
 /* ---- the model picker: the app's grouped menu, lite edition ---- */
 const MODELS = [
+  { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", name: "SmolLM2 360M", meta: "~0.3 GB · smallest, best on phones" },
   { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", name: "Qwen2.5 0.5B", meta: "~0.5 GB · quick" },
-  { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", name: "Qwen2.5 1.5B", meta: "~1.2 GB · the app's starter class" },
   { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", name: "Llama 3.2 1B", meta: "~0.8 GB" },
+  { id: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC", name: "Qwen2.5 1.5B", meta: "~1.2 GB · the app's starter class" },
 ];
 // BEST-EFFORT ON PHONES. A mobile browser's only real chance at running a
-// model in-page is the SMALLEST one (0.5B) — the 1.5B starter class will not
-// fit. Detect a phone (mobile UA, or a coarse pointer on a small screen) and
-// default the lite target to the small model.
+// model in-page is the SMALLEST one (SmolLM2 360M, ~0.3 GB) — the 0.5B+ classes
+// rarely fit a phone's per-tab memory. Detect a phone (mobile UA, or a coarse
+// pointer on a small screen) and default the lite target to that small model;
+// desktop still defaults to the 1.5B starter class.
 const IS_MOBILE = (() => { try {
   const ua = navigator.userAgent || "";
   const coarse = matchMedia("(pointer: coarse)").matches;
   const small = Math.min(screen.width || 9999, screen.height || 9999) < 820;
   return /Android|iPhone|iPad|iPod|Mobile/i.test(ua) || (coarse && small);
 } catch { return false; } })();
-let chosen = IS_MOBILE ? MODELS[0] : MODELS[1];
+let chosen = IS_MOBILE ? MODELS[0] : MODELS[3];
 try { const saved = localStorage.getItem("lcl-lite-model");
       const f = MODELS.find(m => m.id === saved); if (f) chosen = f; } catch {}
 const menu = $("model-menu");
@@ -1340,44 +1342,103 @@ function systemMsg() {
     "live in the full app (the download on the landing screen) — you are the in-browser taste " +
     "of it." + workspaceContext() };
 }
-// THE HONEST FALLBACK when the in-browser model can't run here — no WebGPU,
-// or a phone that ran out of memory trying. Shown in place of a dead chat.
+// THE HONEST FALLBACK when the in-browser model can't run here. It NAMES the
+// real cause — a network that blocked the download is NOT reported as "no
+// memory", and the same honest card is shown on desktop as on a phone.
 let liteDown = false;
 function liteFallback(reason) {
   if (liteDown) return; liteDown = true;
   box.disabled = true; send.disabled = true;
-  box.placeholder = "runs on desktop Chrome/Edge — or the full app";
   try { paintModelBtn(false); } catch {}
-  const why = reason === "load-failed"
-    ? "This phone has WebGPU but not enough memory to run even the smallest model in the browser."
-    : IS_MOBILE
-      ? "Phone browsers can't run the in-browser model yet — WebGPU is missing or too limited here."
+  let why, status, hint;
+  if (reason === "no-webgpu") {
+    why = IS_MOBILE
+      ? "This phone's browser can't run the in-browser model — it has no WebGPU (Safari and most mobile browsers don't expose it yet)."
       : "This browser has no WebGPU, so the in-browser model can't run — try desktop Chrome or Edge.";
+    status = "no WebGPU here";
+    hint = "runs on desktop Chrome/Edge — or the full app";
+  } else if (reason === "blocked") {
+    why = "This network is blocking the one-time model download — it filters or intercepts the "
+      + "secure connection that fetches the model, and a browser can't click through that for a "
+      + "background download the way it can for a page. On a network that allows it, the model loads normally.";
+    status = "network blocked the model download";
+    hint = "your network is blocking the download — the full app needs none";
+  } else if (reason === "oom") {
+    why = IS_MOBILE
+      ? "This phone has WebGPU but not enough memory to hold even the smallest model in the browser."
+      : "This device ran out of memory loading the model in the browser.";
+    status = "not enough memory on this device";
+    hint = "not enough memory here — try the full app";
+  } else {
+    why = "The in-browser model couldn't start on this device.";
+    status = "lite demo unavailable here";
+    hint = "try desktop Chrome/Edge — or the full app";
+  }
+  box.placeholder = hint;
   addMsgEl("msg-sys", why + " The full app is a free download for Windows (the button up top) and "
-    + "runs entirely on your own machine, offline. On desktop, this same page runs the model right "
-    + "in your browser.");
-  statusEl.textContent = reason === "load-failed" ? "not enough memory on this device" : "no WebGPU here";
+    + "runs entirely on your own machine — fully offline, with no model download over the network. "
+    + "On desktop Chrome or Edge, this same page runs the model right in your browser.");
+  statusEl.textContent = status;
   warmSay("");
-  logAct("lite demo unavailable on this device (" + reason + ")");
+  logAct("lite demo unavailable (" + reason + ")");
+}
+
+/* THE ENGINE CODE LOADS SAME-ORIGIN FIRST — the off-grid promise covers the
+ * page's OWN code, not only the model. A TLS-inspecting network can't be
+ * clicked through for a background module import (unlike a full-page nav), so a
+ * CDN copy of the engine dies silently there and takes the whole demo with it.
+ * A vendored same-origin file rides the page's own accepted certificate. The
+ * CDN entries are only a fallback for a tree shipped without the vendored file. */
+const WEBLLM_SOURCES = [
+  new URL("./vendor/web-llm.js", document.baseURI).href,
+  "https://esm.run/@mlc-ai/web-llm",
+  "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm/+esm",
+];
+let webllmMod = null;
+async function loadWebLLM() {
+  if (webllmMod) return webllmMod;
+  let lastErr = null;
+  for (const src of WEBLLM_SOURCES) {
+    try {
+      const m = await import(src);
+      if (m && m.CreateMLCEngine) { webllmMod = m; return m; }
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("web-llm engine unavailable");
+}
+// Tell an HONEST story about WHY a load failed, so the fallback never lies.
+//  blocked = the network filtered/intercepted the download (cert, offline, a
+//            CDN blocked by domain) — unclickable-through for a background fetch.
+//  oom     = WebGPU is here but the device ran out of memory for the model.
+//  unknown = anything else.
+function classifyLoadError(e, stage) {
+  const m = String((e && (e.message || e.name)) || e || "").toLowerCase();
+  if (stage === "engine-code") return "blocked";  // the engine code itself never arrived
+  if (/out of memory|oom|allocation|device.?lost|createbuffer|too large|buffer size|maxbuffer|storage buffer/.test(m)) return "oom";
+  if (/fetch|network|load|cache|cors|failed to|403|404|err_|dns|ssl|cert|abort|timeout|not found/.test(m)) return "blocked";
+  return "unknown";
 }
 
 async function loadModel() {
   if (generating) return;
   if (loading) { reloadWanted = true; return; }   // a switch mid-load queues a clean reload
   if (!navigator.gpu) { liteFallback("no-webgpu"); return; }
+  liteDown = false;                                // a fresh WebGPU-capable attempt re-evaluates
   loading = true;
   do {
     reloadWanted = false;
     const target = chosen;
     engine = null;
-    statusEl.textContent = "fetching WebLLM…";
+    let stage = "engine-code";
+    statusEl.textContent = "fetching the lite engine…";
     warmSay((IS_MOBILE
-        ? "trying a small model on your phone (~0.5 GB, experimental) — "
+        ? "trying a small model on your phone (~0.3 GB, experimental) — "
         : "warming the lite model — ") + target.name, 0);
     setTask("loading " + target.name + "…");
     logAct("loading " + target.name);
     try {
-      const webllm = await import("https://esm.run/@mlc-ai/web-llm");
+      const webllm = await loadWebLLM();           // same-origin first, CDN only as fallback
+      stage = "model";
       const built = await webllm.CreateMLCEngine(target.id, {
         initProgressCallback: (p) => {
           const pct = Math.round((p.progress || 0) * 100);
@@ -1400,12 +1461,11 @@ async function loadModel() {
       if ($("bench").classList.contains("live")) box.focus();
     } catch (e) {
       setTask("");
-      // a phone that OOMs gets the honest fallback, not a raw error string
-      if (IS_MOBILE) { liteFallback("load-failed"); }
-      else {
-        statusEl.textContent = "could not load: " + String(e && e.message || e).slice(0, 120);
-        warmSay(""); logAct("model load failed");
-      }
+      if (reloadWanted) continue;   // a switch mid-load is not a failure — reload cleanly
+      // HONEST about why: a blocked download says so (never a false "no memory"),
+      // an OOM says memory. Desktop gets the same honest card the phone does,
+      // instead of a raw error string buried in the status line.
+      liteFallback(classifyLoadError(e, stage));
     }
   } while (reloadWanted);
   loading = false;

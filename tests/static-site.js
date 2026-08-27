@@ -61,7 +61,28 @@ check("...and it says the release is signed and verified, because that is the st
     /Ed25519-signed release/.test(s), null);
 
 /* ---- the lite chat: local, honest, no trackers ---- */
-check("the lite chat runs CLIENT-SIDE via WebLLM", /esm\.run\/@mlc-ai\/web-llm/.test(s), null);
+check("the lite chat runs CLIENT-SIDE via WebLLM, loaded SAME-ORIGIN first " +
+      "(vendored) with a CDN only as fallback — off-grid code, and the one " +
+      "engine source a TLS-inspecting network cannot break for a background import",
+    /vendor\/web-llm\.js/.test(s)
+    && /esm\.run\/@mlc-ai\/web-llm/.test(s)
+    && /async function loadWebLLM\(\)/.test(s)
+    && s.indexOf("vendor/web-llm.js") < s.indexOf("esm.run/@mlc-ai/web-llm"), null);
+{
+    // the vendored engine must actually be THERE (Pages serves the repo tree),
+    // and it must be SELF-CONTAINED — a same-origin file that itself phoned a
+    // CDN would defeat the entire reason it exists.
+    const vend = path.join(ROOT, "vendor", "web-llm.js");
+    check("the vendored engine is present same-origin (vendor/web-llm.js)",
+        fs.existsSync(vend), null);
+    if (fs.existsSync(vend)) {
+        const v = fs.readFileSync(vend, "utf8");
+        check("...and it is SELF-CONTAINED — exports CreateMLCEngine and pulls NO " +
+              "code from a CDN (no jsdelivr/esm.run/unpkg import in the bundle)",
+            / as CreateMLCEngine/.test(v)
+            && !/https?:\/\/(cdn\.jsdelivr|esm\.run|unpkg)/.test(v), null);
+    }
+}
 check("...gated on WebGPU with an honest refusal when absent",
     /navigator\.gpu/.test(s) && /no WebGPU/.test(s), null);
 check("...streaming, so the demo feels like the app", /stream:\s*true/.test(s), null);
@@ -397,20 +418,27 @@ check("THE WORKBENCH-EXPLAINER HALF sits over the signature starfield — a " +
     && s.includes('prefers-reduced-motion: reduce)").matches) return')
     && /@media \(prefers-reduced-motion: reduce\) \{ #starfield \{ display: none/.test(s), null);
 
-check("MOBILE BEST-EFFORT — a phone defaults to the SMALLEST model, does NOT " +
-      "auto-download on page load (data cost — it waits for the visitor to " +
-      "enter the chat), and a device with no WebGPU / too little memory gets " +
-      "an honest fallback + download CTA instead of a dead chat box",
+check("MOBILE BEST-EFFORT — a phone defaults to the SMALLEST model (SmolLM2 " +
+      "360M, the one with a real chance of fitting a phone), does NOT auto-" +
+      "download on page load (data cost — it waits for the visitor to enter " +
+      "the chat), and EVERY failure gets an honest, CLASSIFIED fallback " +
+      "(no-WebGPU / network-blocked / out-of-memory) + download CTA — never a " +
+      "dead box, and never a false 'no memory' for what is really a blocked network",
     s.includes("const IS_MOBILE = (()")
-    && s.includes("let chosen = IS_MOBILE ? MODELS[0] : MODELS[1]")
+    && s.includes("let chosen = IS_MOBILE ? MODELS[0] : MODELS[3]")
+    && s.includes("SmolLM2-360M-Instruct-q4f16_1-MLC")
     && s.includes("function liteFallback(")
     && s.includes('if (!navigator.gpu) { liteFallback("no-webgpu"); return; }')
     && s.includes("if (navigator.gpu && !IS_MOBILE) setTimeout(loadModel, 1000)")
     // the load / fallback starts on ENTER (consent), not page load
     && (() => { const k = s.indexOf("function enterBench()");
                 return k > 0 && s.slice(k, k + 700).includes("if (navigator.gpu) { if (IS_MOBILE) loadModel(); }"); })()
-    // a phone OOM falls back honestly, not a raw error
-    && s.includes('if (IS_MOBILE) { liteFallback("load-failed"); }'), null);
+    // failures are CLASSIFIED honestly — a blocked download is never reported as OOM,
+    // and the old single "load-failed" lie is gone
+    && s.includes("function classifyLoadError(")
+    && s.includes("liteFallback(classifyLoadError(e, stage))")
+    && /reason === "blocked"/.test(s)
+    && !s.includes('liteFallback("load-failed")'), null);
 
 console.log(`\n${pass}/${pass + fail} static-site checks passed`);
 process.exit(fail ? 1 : 0);
