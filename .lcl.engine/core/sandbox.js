@@ -3,7 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const paths = require("./paths");
-const { ToolError } = require("./fsTools");
+const { ToolError, resolveInRoot } = require("./fsTools");
 
 /**
  * SANDBOX — build it, prove it, then let it out.
@@ -923,9 +923,41 @@ const TOOL_ENTRY = {
                 if (v && typeof v === "object" && typeof v.content === "string") files[k] = v.content;
             }
         }
+        // A FILE THE MODEL ALREADY WROTE TO THE WORKSPACE. The natural call is
+        // "test capacitor_simulation.js" — a NAME, not the content re-pasted.
+        // Measured: the model wrote a file, called sandbox_test referencing it by
+        // path, got a shape error, and the turn stalled. Resolve any named
+        // workspace file(s) against the root and read them in.
+        if (_root) {
+            const named = [];
+            if (typeof args.file === "string") named.push(args.file);
+            if (typeof args.path === "string") named.push(args.path);
+            if (Array.isArray(args.files)) {
+                for (const n of args.files) if (typeof n === "string" && n.trim()) named.push(n);
+            } else if (typeof args.files === "string" && !args.files.trim().startsWith("{")) {
+                named.push(args.files);
+            }
+            if ((!files || !Object.keys(files).length) && named.length) {
+                const resolved = {};
+                for (const n of named) {
+                    try { resolved[n.split("\\").join("/")] = fs.readFileSync(resolveInRoot(_root, n), "utf8"); }
+                    catch { /* not a file in the workspace */ }
+                }
+                if (Object.keys(resolved).length) files = resolved;
+            }
+            // a NAMED file left with an empty body: fill it from the workspace copy
+            if (files) {
+                for (const [k, v] of Object.entries(files)) {
+                    if (typeof v === "string" && !v.trim()) {
+                        try { files[k] = fs.readFileSync(resolveInRoot(_root, k), "utf8"); } catch { /* leave */ }
+                    }
+                }
+            }
+        }
         if (!files || !Object.keys(files).length) {
             throw new ToolError('sandbox_test needs {"files": {"name.js": "…"}, "checks": [...]} ' +
-                '— or just {"code": "…", "language": "python|node"} and the file is made for you');
+                '— or {"code": "…", "language": "python|node"}, or {"file": "already-written.js"} ' +
+                'to test a file that is already in your workspace');
         }
         const onNote = typeof ctx.onNote === "function" ? ctx.onNote : () => {};
         const box = create({ name: args.name || "check" });
@@ -964,9 +996,11 @@ const TOOL_ENTRY = {
                 : "Checks failed — fix the code and run it again before writing anything real."
         };
     },
-    help: 'sandbox_test {"files": {"solve.js": "…code…"}, "checks": [{"name": "works", ' +
-        '"language": "node", "code": "…assertions…"}]} — write code to a disposable ' +
-        'folder and RUN it there; nothing touches real files until the checks pass'
+    help: 'sandbox_test — write code to a disposable folder and RUN it there; nothing ' +
+        'touches real files until the checks pass. To test a file you ALREADY wrote to ' +
+        'the workspace: {"file": "already-written.js"}. To test fresh code: ' +
+        '{"code": "…", "language": "python|node"}. Or full: {"files": {"solve.js": "…code…"}, ' +
+        '"checks": [{"name": "works", "language": "node", "code": "…assertions…"}]}'
 };
 
 module.exports = {

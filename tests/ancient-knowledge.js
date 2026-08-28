@@ -475,6 +475,51 @@ const review = (session) => {
         /chat: \(id, content, opts\) =>/.test(pre), null);
 }
 
+/* ═══════════ A SHORT PUSH RESUMES THE OPEN WORK — it is not a new request ══
+ * The measured failure: a prior turn stalled on a plan, the user typed "go",
+ * AK briefed on the word "go" ("done = acknowledges 'go'"), the model met that
+ * by acknowledging, and AK CLOSED with nothing built. A nudge must resume the
+ * open objective and be audited against the ORIGINAL ask. */
+{
+    const s = makeSession();
+    ak.openObjective(s, "Build the CSV parser");   // a prior request, still OPEN
+    s.messages.push(
+        { role: "user", content: "Build the CSV parser" },
+        { role: "assistant", content: "Here's my plan: I'll read the spec and write it." });
+    const before = s.akReview.objectives.length;
+
+    const { res } = await turn(s,
+        [{ content: "Done — parser written; it splits a CSV row into fields." },
+         { content: "VERDICT: CLOSED" }],
+        { userText: "go", turnOpts: { frontDoor: true } });
+
+    check("a trivial push ('go') does NOT open a second objective — it resumes the open one",
+        s.akReview.objectives.length === before
+        && /Build the CSV parser/.test(s.akReview.objectives[0].ask), s.akReview.objectives);
+    check("...AK does NOT brief on the word 'go' (no intake bubble for the nudge)",
+        briefs(res.newMessages).length === 0, briefs(res.newMessages).map(m => String(m.content).slice(0, 40)));
+    check("...the audit still runs, measuring the resumed work not the nudge",
+        audits(res.newMessages).length >= 1, audits(res.newMessages).length);
+
+    // ...but a REAL follow-up request still gets its own brief (guard against
+    // swallowing genuine new asks as "resumes")
+    const s2 = makeSession();
+    ak.openObjective(s2, "Build the parser");
+    s2.messages.push({ role: "user", content: "Build the parser" },
+                     { role: "assistant", content: "Done." });
+    const { res: r2 } = await turn(s2,
+        [{ content: "INTENT: add tests\nDONE MEANS:\n- unit tests exist" },
+         { content: "Added tests." }, { content: "VERDICT: CLOSED" }],
+        { userText: "now add unit tests for every function", turnOpts: { frontDoor: true } });
+    check("a genuine follow-up request is NOT mistaken for a nudge — it still briefs",
+        briefs(r2.newMessages).length >= 1, briefs(r2.newMessages).length);
+
+    const A3 = fs.readFileSync(path.join(__dirname, "..", ".lcl.engine", "core", "agent.js"), "utf8");
+    check("agent.js: the front door resumes on a trivial push and the audit uses the resumed ask",
+        /_trivialPush/.test(A3) && /akResumedAsk = _openObj\.ask/.test(A3)
+        && /akResumedAsk \|\| String\(userMsg\.content\)/.test(A3), null);
+}
+
 /* THE FULL BRAIN-ON SEQUENCE COMPOSES. With the front door ON: AK is asked
  * FIRST (its brief, under the overseer prompt), the model gets the criteria in
  * its context, then the audit runs — and the objective is opened exactly ONCE

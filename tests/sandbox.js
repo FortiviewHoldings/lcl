@@ -141,6 +141,22 @@ function check(name, cond, detail = "") {
     check("a destroyed box is gone from disk", !fs.existsSync(box.dir));
     check("a destroyed box is no longer listed", !sandbox.list().some(b => b.id === box.id));
 
+    /* ---- #2: sandbox_test can test a file the model ALREADY wrote to the
+     * workspace, by NAME — the natural call the model kept getting wrong ---- */
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "lcl-ws-"));
+    fs.writeFileSync(path.join(ws, "already.js"), "console.log('ran the workspace file');");
+    const wf = await sandbox.TOOL_ENTRY.run(ws, { file: "already.js" }, {});
+    check("sandbox_test resolves {file:'already.js'} from the workspace and RUNS it",
+        wf.green === true, wf);
+    const wf2 = await sandbox.TOOL_ENTRY.run(ws, { files: ["already.js"] }, {});
+    check("...a files:[names] array is resolved from the workspace too", wf2.green === true, wf2);
+    const wf3 = await sandbox.TOOL_ENTRY.run(ws, { files: { "already.js": "" } }, {});
+    check("...a named file with an empty body is filled from the workspace copy", wf3.green === true, wf3);
+    let refused = false;
+    try { await sandbox.TOOL_ENTRY.run(ws, { file: "not-here.js" }, {}); } catch { refused = true; }
+    check("...a name not in the workspace still errors clearly — never a silent pass", refused);
+    fs.rmSync(ws, { recursive: true, force: true, maxRetries: 12, retryDelay: 120 });
+
     fs.rmSync(dest, { recursive: true, force: true, maxRetries: 12, retryDelay: 120 });
     fs.rmSync(DATA, { recursive: true, force: true, maxRetries: 12, retryDelay: 120 });
     console.log(`\n${pass}/${pass + fail} sandbox checks passed`);

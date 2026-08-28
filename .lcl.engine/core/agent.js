@@ -2196,6 +2196,9 @@ async function runTurn(session, userText, opts = {}) {
     // so an unchanged set is not re-run every round — a new write changes the
     // key and forces a fresh verification
     let akVerifiedKey = null;
+    // set when a short push ("go") resumed an open objective: the audit measures
+    // the ORIGINAL ask this holds, not the one-word nudge
+    let akResumedAsk = null;
     let akStopped = null;            // the NAMED reason the cycle ended
     let akAuditorUsd = 0;            // auditor spend this turn
     let akTurnUsd0 = 0;              // turnUsd snapshot when the cycle began
@@ -2364,7 +2367,24 @@ async function runTurn(session, userText, opts = {}) {
     // own critic) and when the brain is off.
     if (session.ancientKnowledge === true && !opts.stepMode && !continuation
         && !cancelToken.cancelled && opts.frontDoor !== false) {
-        try {
+        // A SHORT PUSH IS NOT A NEW REQUEST. When a prior objective is still
+        // OPEN and the user just nudges it forward ("go", "continue", "what are
+        // you waiting for"), that continues the open work. Briefing on the nudge
+        // as if IT were the ask is how a one-word "go" got its own acceptance
+        // criteria ("the response acknowledges the prompt 'go'") — which the
+        // model then "met" by acknowledging, and AK closed with NOTHING built.
+        // Reuse the open objective so the audit measures the ORIGINAL ask, and
+        // skip the brief.
+        const _openObj = akMod.currentObjective(session);
+        const _push = String(userText).trim();
+        const _trivialPush = _openObj && (_push.length <= 3
+            || /^(go|continue|proceed|keep going|carry on|finish( it)?|do it|go ahead|yes|yep|yeah|ok|okay|sure|please|next)\b[.!\s]*$/i.test(_push)
+            || /^(what|why)\b.{0,40}\b(waiting|doing|stopped|going on)\b/i.test(_push));
+        if (_trivialPush) {
+            akObjective = _openObj;
+            akResumedAsk = _openObj.ask;
+            report("ak-intake-done", { resumed: true, criteria: 0 }, steps);
+        } else try {
             const frontAsk = String(userText)
                 + (akAddenda.length ? "\n\nAlso: " + akAddenda.join(" · ") : "");
             const intakeSel = opts.auditorSelection === undefined ? sel
@@ -4335,7 +4355,7 @@ async function runTurn(session, userText, opts = {}) {
                      { role: "user", content: ak.auditPrompt({
                          // the afterthoughts are interrogated as part of the
                          // original request, so "done" has to cover them too
-                         userAsk: String(userMsg.content) + (akAddenda.length
+                         userAsk: (akResumedAsk || String(userMsg.content)) + (akAddenda.length
                              ? "\n\nAnd, added while you were working:\n"
                                + akAddenda.map(a => `- ${a}`).join("\n") : ""),
                          response: String(lastAssistant.content),
@@ -4386,7 +4406,7 @@ async function runTurn(session, userText, opts = {}) {
                             let ver = null;
                             if (session.repoPath && !cancelToken.cancelled) {
                                 ver = await ak.runVerification({
-                                    userAsk: String(userMsg.content),
+                                    userAsk: akResumedAsk || String(userMsg.content),
                                     files: ak.producedCodeFiles(newMessages),
                                     readFile: (rel) => require("fs").readFileSync(
                                         path.join(session.repoPath, rel), "utf8"),
