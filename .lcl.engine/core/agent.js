@@ -489,8 +489,25 @@ function machineBlock(sel) {
  * a test that greps this file for the right words proves nothing about where
  * the text actually goes.
  */
+// A NODE THE OPERATOR OWNS IS NOT A THIRD PARTY. The operator's profile — the
+// learned tailoring AND the imported preference/standards notes — is withheld
+// from a remote model without per-session permission, so it can never leak to a
+// third-party API. But the operator's OWN node (their Spark, their fleet) is
+// their hardware, merely reached over HTTP; sending their standards there is the
+// whole point of running on it, not a leak. Measured: a session driven on the
+// operator's node got NONE of their imported standards — the model built
+// generic because the very rules that make it theirs were suppressed as if the
+// node were OpenAI. The gate now exempts owned nodes and stands only against
+// genuine third-party remotes — the same "a machine you own is not a spend"
+// line the escalation tools already draw. Factored into one predicate so the
+// two blocks it guards can never drift apart.
+function profileWithheldFrom(session, sel) {
+    return router.usingRemote(sel)
+        && !cloudModels.isNodeEndpoint(sel)
+        && !sessionPerms.forSession(session).tailoring;
+}
 function tailoringBlockFor(session, sel) {
-    if (router.usingRemote(sel) && !sessionPerms.forSession(session).tailoring) return "";
+    if (profileWithheldFrom(session, sel)) return "";
     return require("./tailor").promptBlock();
 }
 
@@ -504,8 +521,14 @@ function tailoringBlockFor(session, sel) {
  * above.
  */
 function prefsBlockFor(session, sel) {
-    if (router.usingRemote(sel) && !sessionPerms.forSession(session).tailoring) return "";
-    return require("./operatorPrefs").promptBlock();
+    if (profileWithheldFrom(session, sel)) return "";
+    // TOKEN BUDGET PER LAYER. The operator's full standards ride a wide window
+    // (their node, a big remote); the small local floor gets a tight slice so
+    // the richer block never crowds the base prompt, which already runs near
+    // that window. Scaled off the model's published/derived context.
+    const win = Number((LIMITS(sel) || {}).contextLength) || 0;
+    const budget = win >= 100_000 ? 9000 : win >= 32_000 ? 5000 : 2000;
+    return require("./operatorPrefs").promptBlock({ maxBlockChars: budget });
 }
 
 /**
@@ -1988,6 +2011,13 @@ async function runTurn(session, userText, opts = {}) {
     // for the UI's chips); the bounded appendix rides only this turn's
     // model-facing copy.
     const atts = Array.isArray(opts.attachments) ? opts.attachments : [];
+    // A CONTINUATION resumes a turn the user already started — the model picks
+    // up from the transcript it already has (an approved tool's result is the
+    // last message). The nudge that prompts it to continue rides the model-
+    // facing context ONLY; nothing new is written to the transcript as the
+    // user's, the front door does not re-brief, and the still-open objective is
+    // reused rather than a second one opened for the one request.
+    const continuation = opts.continuation === true;
     const userMsg = { role: "user", content: userText };
     if (atts.length) {
         userMsg.attachments = atts.map(a => ({ id: a.id, name: a.name,
@@ -1995,8 +2025,11 @@ async function runTurn(session, userText, opts = {}) {
     }
     const modelText = atts.length
         ? userText + attachmentAppendix(atts, tools, !!root) : userText;
-    const working = [...session.messages, { role: "user", content: modelText }];
-    const newMessages = [userMsg];
+    const working = [...session.messages];
+    if (!continuation || (userText && String(userText).trim())) {
+        working.push({ role: "user", content: modelText });
+    }
+    const newMessages = continuation ? [] : [userMsg];
     const changes = [];
     const pendingApprovals = [];
     // a free fleet seat ask_fleet DISCOVERED mid-turn — lifted off the
@@ -2159,6 +2192,10 @@ async function runTurn(session, userText, opts = {}) {
     // what to call first instead of being asked again for "real work".
     let akIdleRound = 0;
     let akObjective = null;          // this turn's row in session.akReview
+    // the produced-file set AK has already PROVEN with its own test this turn,
+    // so an unchanged set is not re-run every round — a new write changes the
+    // key and forces a fresh verification
+    let akVerifiedKey = null;
     let akStopped = null;            // the NAMED reason the cycle ended
     let akAuditorUsd = 0;            // auditor spend this turn
     let akTurnUsd0 = 0;              // turnUsd snapshot when the cycle began
@@ -2325,7 +2362,7 @@ async function runTurn(session, userText, opts = {}) {
     // straight through to the model exactly as before — the front door can
     // never block or break a turn. Off in stepMode (the orchestrator runs its
     // own critic) and when the brain is off.
-    if (session.ancientKnowledge === true && !opts.stepMode
+    if (session.ancientKnowledge === true && !opts.stepMode && !continuation
         && !cancelToken.cancelled && opts.frontDoor !== false) {
         try {
             const frontAsk = String(userText)
@@ -2386,6 +2423,13 @@ async function runTurn(session, userText, opts = {}) {
             report("ak-intake-done", {
                 error: String((err && err.message) || err).slice(0, 100) }, steps);
         }
+    }
+
+    // A continuation skipped the front door — reuse the request's still-open
+    // objective so the audit that follows measures the resumed work against the
+    // brief already set, not a fresh row.
+    if (continuation && session.ancientKnowledge === true && !opts.stepMode) {
+        try { akObjective = akMod.currentObjective(session); } catch { akObjective = null; }
     }
 
     akLoop: for (;;) {
@@ -4214,7 +4258,11 @@ async function runTurn(session, userText, opts = {}) {
         && session.ancientKnowledge === true && newMessages.length > 0) {
         try {
             const ak = require("./ancientKnowledge");
-            const userMsg = newMessages.find(m => m.role === "user");
+            // a continuation writes no new user message, so the ask it is judged
+            // against is the original one, still on the session's transcript
+            const userMsg = newMessages.find(m => m.role === "user")
+                || (continuation ? [...session.messages].reverse()
+                        .find(m => m.role === "user") : null);
             // the newest REAL answer — not a prior audit bubble, not a
             // clarify (the model asking the user something)
             const lastAssistant = [...newMessages].reverse()
@@ -4318,14 +4366,63 @@ async function runTurn(session, userText, opts = {}) {
                 const verdict = cancelToken.cancelled
                     ? { status: "unavailable", gaps: [], raw: "" }
                     : ak.parseVerdict(auditResult && auditResult.content);
-                // THE LOOP'S OWN GAP, not the auditor's opinion: code that was
-                // written this turn and never executed is assumed, and a CLOSED
-                // verdict does not outrank that fact.
-                {
+                // EVIDENCE OVER THE MODEL'S WORD. Code written this turn and
+                // never run is not merely flagged — Ancient Knowledge writes its
+                // OWN behavioural test and RUNS it against those files in the
+                // sandbox, and the real result decides. A pass is the evidence a
+                // "closed" verdict rests on; a failure IS the gap, carrying the
+                // actual error back to the model. Only when a test cannot be got
+                // to run at all does it fall back to the mechanical "never
+                // executed" flag — so unverified code is never quietly called
+                // done, and the auditor never marks the worker's own homework.
+                if (verdict.status !== "unavailable") {
                     const mech = ak.untestedLogicGap(newMessages);
-                    if (mech && verdict.status !== "unavailable") {
-                        verdict.gaps = [...(verdict.gaps || []), mech];
-                        if (verdict.status === "closed") verdict.status = "gaps";
+                    if (mech) {
+                        const vkey = ak.producedCodeFiles(newMessages).join("|");
+                        if (vkey && vkey === akVerifiedKey) {
+                            // AK already proved this exact set this turn — the
+                            // files did not change, so do not re-run or re-flag
+                        } else {
+                            let ver = null;
+                            if (session.repoPath && !cancelToken.cancelled) {
+                                ver = await ak.runVerification({
+                                    userAsk: String(userMsg.content),
+                                    files: ak.producedCodeFiles(newMessages),
+                                    readFile: (rel) => require("fs").readFileSync(
+                                        path.join(session.repoPath, rel), "utf8"),
+                                    generate: router.generate, sandbox,
+                                    selection: auditorSel, session, cancelToken
+                                });
+                                // BILL A REMOTE VERIFIER, exactly as the audit is
+                                // billed — a local one has no usage and adds nothing
+                                if (ver && ver.usage && ver.usage.remote && ver.usage.usage) {
+                                    akAuditorUsd += (ver.usage.cost && ver.usage.cost.usd) || 0;
+                                    try { require("./ledger").record({
+                                        sessionId: session.id, sessionTitle: session.title,
+                                        model: ver.usage.model, endpoint: ver.usage.endpoint,
+                                        inputTokens: ver.usage.usage.prompt_tokens,
+                                        outputTokens: ver.usage.usage.completion_tokens,
+                                        usd: (ver.usage.cost && ver.usage.cost.usd) || 0,
+                                        via: "ancient-knowledge", localNode: !!ver.usage.localNode
+                                    }); } catch { /* bookkeeping never breaks the turn */ }
+                                }
+                            }
+                            if (ver && ver.ran) {
+                                report("ak-verify", { ok: ver.ok,
+                                    preview: String(ver.output || "").slice(-240) }, steps);
+                                if (ver.ok) {
+                                    akVerifiedKey = vkey;   // proven — supersedes the flag
+                                } else {
+                                    verdict.gaps = [...(verdict.gaps || []), ver.gap];
+                                    if (verdict.status === "closed") verdict.status = "gaps";
+                                }
+                            } else {
+                                // no runnable test could be got — the honest
+                                // mechanical fallback, never a silent pass
+                                verdict.gaps = [...(verdict.gaps || []), mech];
+                                if (verdict.status === "closed") verdict.status = "gaps";
+                            }
+                        }
                     }
                 }
                 // the cycle's spend = auditor calls + every forced driver

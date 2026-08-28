@@ -322,6 +322,159 @@ const review = (session) => {
         && /BEFORE the model/.test(ak.intakePrompt({ userAsk: "x" })), null);
 }
 
+/* ═══════════ AK DRIVES VERIFICATION — it writes the test, not the model ═══
+ * The measured failure: a model "verified" its web app by grepping script.js
+ * for "requestAnimationFrame" and printing passed. AK must author a test that
+ * EXERCISES the code and runs it, and reject a string/name-presence check. */
+{
+    const p = ak.verifyPrompt({ userAsk: "build a CSV parser", files: ["parse.js"], entry: "parse.js" });
+    check("the verify prompt names the files, forbids a presence-check, and demands " +
+          "a runnable test that asserts real behaviour",
+        /parse\.js/.test(p) && /EXERCISES/.test(p)
+        && /not a test/.test(p) && /LANG:/.test(p) && /TEST:/.test(p)
+        && /exit non-zero/.test(p), null);
+
+    const t1 = ak.parseVerifyTest(
+        "LANG: node\nTEST:\n```js\nconst p=require('./parse.js');\n" +
+        "if(p('a,b').length!==2) throw new Error('bad'); console.log('parsed 2 fields');\n```");
+    check("parseVerifyTest reads the language and the fenced test program",
+        t1 && t1.language === "node" && /require\('\.\/parse\.js'\)/.test(t1.code)
+        && /parsed 2 fields/.test(t1.code), t1);
+
+    const t2 = ak.parseVerifyTest("LANG: python\nTEST:\n```\nimport parse\nassert parse.run()==3\n```");
+    check("...python is recognised, and an unlabelled fence still parses",
+        t2 && t2.language === "python" && /assert parse\.run\(\)==3/.test(t2.code), t2);
+
+    check("a reply with no test at all is null — unverified code stays unverified, " +
+          "never laundered into 'tested'",
+        ak.parseVerifyTest("I think it looks fine.") === null
+        && ak.parseVerifyTest("") === null, null);
+
+    const t3 = ak.parseVerifyTest("LANG: node\nTEST:\nconst x=require('./a.js'); if(!x) throw 'no';");
+    check("...a test the model gave WITHOUT a code fence is still recovered",
+        t3 && /require\('\.\/a\.js'\)/.test(t3.code), t3);
+}
+
+/* ═══════════ AK RUNS ITS OWN TEST — evidence, not the model's word ════════
+ * generate + sandbox + readFile are injected, so the whole path is exercised
+ * with no live model and no real box. */
+{
+    const src = { "parse.js": "module.exports = s => s.split(',');" };
+    const readFile = (rel) => { if (!(rel in src)) throw new Error("ENOENT"); return src[rel]; };
+    const genTest = async () => ({ content:
+        "LANG: node\nTEST:\n```\nconst p=require('./parse.js');\n" +
+        "if(p('a,b').length!==2) throw new Error('x'); console.log('ok');\n```" });
+    const mkSandbox = (runResult) => {
+        const written = {};
+        return { _written: written, create: () => ({ id: "box-x" }),
+                 write: (id, rel, content) => { written[rel] = content; },
+                 runScript: async () => runResult, destroy: () => {} };
+    };
+
+    const sbPass = mkSandbox({ ok: true, output: "ok\n" });
+    const pass = await ak.runVerification({ userAsk: "csv", files: ["parse.js"],
+        readFile, generate: genTest, sandbox: sbPass });
+    check("runVerification: a passing test reports ran+ok, and the produced file was " +
+          "copied into the box at its real relative path",
+        pass.ran === true && pass.ok === true
+        && sbPass._written["parse.js"] === src["parse.js"], pass);
+
+    const fail = await ak.runVerification({ userAsk: "csv", files: ["parse.js"],
+        readFile, generate: genTest, sandbox: mkSandbox({ ok: false,
+            output: "AssertionError: expected 2, got 0\n" }) });
+    check("runVerification: a failing test is ok:false and the gap carries the REAL error, " +
+          "not 'you didn't test it'",
+        fail.ran === true && fail.ok === false
+        && /expected 2, got 0/.test(fail.gap), fail);
+
+    const noTest = await ak.runVerification({ userAsk: "csv", files: ["parse.js"],
+        readFile, generate: async () => ({ content: "looks fine to me" }),
+        sandbox: mkSandbox({ ok: true }) });
+    check("runVerification: an auditor that gives no runnable test → ran:false " +
+          "(caller falls back to the flag; never a silent pass)", noTest.ran === false, noTest);
+
+    const noFiles = await ak.runVerification({ userAsk: "csv", files: [],
+        readFile, generate: genTest, sandbox: mkSandbox({ ok: true }) });
+    check("runVerification: no produced code → ran:false", noFiles.ran === false, noFiles);
+
+    const broken = await ak.runVerification({ userAsk: "csv", files: ["parse.js"],
+        readFile, generate: genTest,
+        sandbox: { create: () => { throw new Error("no box"); } } });
+    check("runVerification: a throwing sandbox is caught → ran:false, never breaks the turn",
+        broken.ran === false, broken);
+
+    const msgs = [
+        { role: "tool", tool: "write_file", content: '{"written":"src/app.js","bytes":10}' },
+        { role: "tool", tool: "write_file", content: '{"written":"notes.txt","bytes":3}' },
+        { role: "tool", tool: "write_file", content: '{"written":"src/app.js","bytes":12}' }
+    ];
+    const produced = ak.producedCodeFiles(msgs);
+    check("producedCodeFiles lists code files written this turn, deduped, skipping non-code",
+        produced.length === 1 && produced[0] === "src/app.js", produced);
+
+    const A = fs.readFileSync(path.join(__dirname, "..", ".lcl.engine", "core", "agent.js"), "utf8");
+    check("agent.js wires it: AK runs its OWN test and the verdict rests on the result, " +
+          "with the mechanical flag only as fallback",
+        /ak\.runVerification\(/.test(A) && /ak\.producedCodeFiles\(/.test(A)
+        && /akVerifiedKey/.test(A)
+        && /ak\.untestedLogicGap\(newMessages\)/.test(A), null);
+}
+
+/* ═══════════ CONTINUATION — the turn resumes after an approved action ═════
+ * The reported bug: approve a staged script and the turn just ends. A
+ * continuation re-runs the model on the transcript it already has (its approved
+ * script result is the last message), writes NO new user turn, does not
+ * re-brief, and reuses the request's still-open objective so the audit measures
+ * the ORIGINAL ask — not the "keep going" nudge. */
+{
+    const s = makeSession();
+    ak.openObjective(s, "Build the CSV parser");
+    s.messages.push(
+        { role: "user", content: "Build the CSV parser" },
+        { role: "assistant", content: "Proposed a script to check it." },
+        { role: "tool", name: "run_script", approved: true,
+          content: "run_script finished: exit 0 (clean). Output: parsed 2 fields" });
+    const before = s.akReview.objectives.length;
+
+    const { res } = await turn(s,
+        [{ content: "The parser works — CSV split into fields, verified by the run." },
+         { content: "VERDICT: CLOSED" }],
+        { userText: "Your approved script ran (result above). Finish the task.",
+          turnOpts: { continuation: true } });
+
+    check("a continuation writes NO new user message into the transcript",
+        res.newMessages.every(m => m.role !== "user"), res.newMessages.map(m => m.role));
+    check("...the model's continuation answer lands",
+        res.newMessages.some(m => m.role === "assistant" && /parser works/i.test(m.content)), null);
+    check("...Ancient Knowledge still audits the resumed work",
+        audits(res.newMessages).length >= 1, audits(res.newMessages).length);
+    check("...it REUSES the open objective (no duplicate row for one request), judged " +
+          "against the ORIGINAL ask, not the continuation nudge",
+        s.akReview.objectives.length === before
+        && /Build the CSV parser/.test(s.akReview.objectives[0].ask), s.akReview.objectives);
+
+    const A2 = fs.readFileSync(path.join(__dirname, "..", ".lcl.engine", "core", "agent.js"), "utf8");
+    check("agent.js: continuation writes no user turn, skips the front door, reuses the objective",
+        /const continuation = opts\.continuation === true/.test(A2)
+        && /&& !continuation\b/.test(A2)
+        && /akMod\.currentObjective\(session\)/.test(A2), null);
+
+    const app = fs.readFileSync(path.join(__dirname, "..", "app", "renderer", "app.js"), "utf8");
+    check("renderer: approving a script CONTINUES the turn (res.continue → sendText continuation), " +
+          "and sendText's continuation writes no user bubble",
+        /if \(res && res\.continue\)/.test(app)
+        && /\{ continuation: true \}/.test(app)
+        && /function sendText\(text, session, sendOpts/.test(app)
+        && /if \(!continuation\) addMessageRow\("user"/.test(app), null);
+    const main = fs.readFileSync(path.join(__dirname, "..", "app", "main.js"), "utf8");
+    check("main: lcl:chat threads continuation through to runTurn",
+        /chatOpts && chatOpts\.continuation/.test(main)
+        && /continuation: continueTurn/.test(main), null);
+    const pre = fs.readFileSync(path.join(__dirname, "..", "app", "preload.js"), "utf8");
+    check("preload: chat passes the continuation opts through",
+        /chat: \(id, content, opts\) =>/.test(pre), null);
+}
+
 /* THE FULL BRAIN-ON SEQUENCE COMPOSES. With the front door ON: AK is asked
  * FIRST (its brief, under the overseer prompt), the model gets the criteria in
  * its context, then the audit runs — and the objective is opened exactly ONCE

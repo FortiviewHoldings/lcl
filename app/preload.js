@@ -143,7 +143,7 @@ contextBridge.exposeInMainWorld("lcl", {
     markSessionRead: (id) => ipcRenderer.invoke("lcl:markSessionRead", id),
     diag: (rec) => ipcRenderer.invoke("lcl:diag", rec),
     deleteSession: (id) => ipcRenderer.invoke("lcl:deleteSession", id),
-    chat: (id, content) => ipcRenderer.invoke("lcl:chat", id, content),
+    chat: (id, content, opts) => ipcRenderer.invoke("lcl:chat", id, content, opts),
     trainingSources: () => ipcRenderer.invoke("lcl:trainingSources"),
     sparkModes: () => ipcRenderer.invoke("lcl:sparkModes"),
     sparkMode: (nodeId, mode) => ipcRenderer.invoke("lcl:sparkMode", nodeId, mode),

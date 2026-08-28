@@ -8794,7 +8794,11 @@ function recordRemoteAttempt(s, sel, outcome, detail) {
     } catch { return null; }      // bookkeeping never breaks a turn
 }
 
-ipcMain.handle("lcl:chat", async (_e, id, content) => {
+ipcMain.handle("lcl:chat", async (_e, id, content, chatOpts) => {
+    // a CONTINUATION resumes the turn the user already started (e.g. after an
+    // approved script ran) — no new user message, no re-brief, the model picks
+    // up from the transcript it already has
+    const continueTurn = !!(chatOpts && chatOpts.continuation);
     // An approval running in THIS session mutates the same session file outside
     // this handler's lock, so it excludes a new turn here — and only here.
     if (approvalsRunning.has(id)) {
@@ -9156,6 +9160,7 @@ ipcMain.handle("lcl:chat", async (_e, id, content) => {
                 // this turn's attachments, and the staging root that keeps
                 // already-staged copies readable on LATER turns (@attachments/)
                 attachments: atts, attachRoot: attachmentsDirFor(s.id),
+                continuation: continueTurn,
                 onProgress, cancelToken,
                 selection: drive.sel,
                 preferredFallback: planFallback,

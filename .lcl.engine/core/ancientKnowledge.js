@@ -229,6 +229,124 @@ function handoffInstruction(brief) {
     );
 }
 
+/* ═══════════ VERIFICATION AK DRIVES, NOT THE MODEL ═══════════════════════
+ *
+ * The measured failure: a model "verified" its own web app by writing a check
+ * that grepped script.js for the string "requestAnimationFrame" and printed
+ * "passed". The sandbox faithfully ran it. A grep for a function name is not a
+ * test, and an auditor that accepts the audited party's own self-check has
+ * verified nothing.
+ *
+ * So when a turn produced code, AK writes ITS OWN test — one that loads the
+ * produced files, runs them, and asserts real behaviour — for the loop to run
+ * in the sandbox against those exact files. A pass is evidence "done" can lean
+ * on; a failure IS the gap, and the real error goes back to the model to fix.
+ * The overseer proves the work runs; it does not take the worker's word, and it
+ * does not let the worker mark its own homework.
+ */
+function verifyPrompt({ userAsk, files, entry }) {
+    const list = (files || []).slice(0, 25).map(f => `- ${f}`).join("\n") || "- (the files just written)";
+    return (
+        `The user asked:\n\n"""${String(userAsk).slice(0, 1500)}"""\n\n` +
+        `The model wrote these files in the workspace, and claims they work:\n` +
+        `${list}\n` +
+        (entry ? `The entry point is \`${entry}\`.\n` : ``) +
+        `\nDo NOT trust that. Write ONE test program that actually EXERCISES ` +
+        `this code — it loads or imports the produced files, runs the real ` +
+        `behaviour the request is about, and ASSERTS the result. Checking that ` +
+        `a string or a function NAME is present is not a test and will be ` +
+        `rejected. Your test runs in a sandbox next to those files.\n\n` +
+        `Reply in EXACTLY this format, nothing else:\n` +
+        `LANG: <node|python>\n` +
+        `TEST:\n` +
+        "```\n<the complete, runnable test program>\n```\n" +
+        `It MUST exit non-zero on any failure (throw, assert, or exit(1)) and ` +
+        `print, in plain words, what behaviour it checked and what it saw.`
+    );
+}
+
+/* Read the auditor's test back out. Returns { language, code } or null when it
+ * gave nothing runnable (the caller then treats the code as unverified rather
+ * than pretending a missing test passed — the same rule as a blank verdict). */
+function parseVerifyTest(text) {
+    const raw = String(text || "");
+    if (!raw.trim()) return null;
+    const lm = /^\s*LANG\s*:\s*(node|python|js|py|javascript)\b/im.exec(raw);
+    const language = lm ? (/^(py|python)$/i.test(lm[1]) ? "python" : "node") : "node";
+    // the fenced block AFTER "TEST:", or the first fenced block anywhere, or —
+    // if the model skipped the fence — everything after TEST:
+    const afterTest = /TEST\s*:/i.test(raw) ? raw.split(/TEST\s*:/i).slice(1).join("TEST:") : raw;
+    let code = "";
+    const fence = /```[a-z0-9]*\s*\n([\s\S]*?)```/i.exec(afterTest);
+    if (fence) code = fence[1].trim();
+    else if (/TEST\s*:/i.test(raw)) code = afterTest.replace(/^\s*\n/, "").trim();
+    if (!code) return null;
+    return { language, code };
+}
+
+/* Run AK's OWN test against the produced files, in the sandbox, and report what
+ * actually happened. Dependency-injected (generate, sandbox, readFile) so the
+ * whole path is unit-testable with no live model and no real box.
+ *
+ * Returns one of:
+ *   { ran:false, reason }               — nothing runnable (no files, no test, cancelled)
+ *   { ran:true,  ok:true,  output }     — the code passed a test AK wrote and ran
+ *   { ran:true,  ok:false, output, gap }— it failed; `gap` carries the real error back
+ *
+ * NEVER throws. A verification that cannot run is a fallback to the mechanical
+ * "never executed" flag, never a turn-breaker — the model's answer still stands.
+ * `usage` (the raw generate result) rides back so the caller can bill a remote
+ * verifier exactly as it bills a remote audit. */
+async function runVerification({ userAsk, files, readFile, generate, sandbox,
+                                 selection, session, cancelToken = {}, timeoutMs = 30000 } = {}) {
+    try {
+        const list = (files || []).filter(Boolean);
+        if (!list.length) return { ran: false, reason: "no-files" };
+        const contents = [];
+        for (const rel of list.slice(0, 25)) {
+            let text; try { text = readFile(rel); } catch { continue; }
+            if (typeof text !== "string" || text.length > 400000) continue;
+            contents.push({ rel, text });
+        }
+        if (!contents.length) return { ran: false, reason: "unreadable" };
+
+        const gen = await generate(
+            [{ role: "system", content: SYSTEM },
+             { role: "user", content: verifyPrompt({
+                 userAsk: String(userAsk || ""),
+                 files: contents.map(c => c.rel), entry: contents[0].rel }) }],
+            700, cancelToken, null, { selection, session });
+        if (cancelToken.cancelled) return { ran: false, reason: "cancelled", usage: gen };
+        const test = parseVerifyTest(gen && gen.content);
+        if (!test) return { ran: false, reason: "no-test", usage: gen };
+
+        const box = sandbox.create({ name: "ak-verify" });
+        try {
+            // the produced files land at their real relative paths, so the
+            // test's own require('./x.js') / import resolves the same way it
+            // would in the workspace
+            for (const c of contents) sandbox.write(box.id, c.rel, c.text);
+            const r = await sandbox.runScript(box.id,
+                { language: test.language, code: test.code, timeoutMs });
+            const output = String((r && r.output) || "").slice(-1500);
+            if (r && r.ok) return { ran: true, ok: true, output, usage: gen };
+            // the tail of the run is the failure the model has to fix — the
+            // real error, not "you didn't test it"
+            const firstErr = output.split(/\r?\n/).map(s => s.trim())
+                .filter(Boolean).slice(-6).join(" ").slice(0, 300) || "it exited non-zero";
+            return {
+                ran: true, ok: false, output, usage: gen,
+                gap: `the code does not pass the test Ancient Knowledge ran against ` +
+                     `it: ${firstErr}. Fix the code so this passes — AK will run it again.`
+            };
+        } finally {
+            try { sandbox.destroy(box.id); } catch { /* scratch box */ }
+        }
+    } catch (e) {
+        return { ran: false, reason: "error:" + String((e && e.message) || e).slice(0, 120) };
+    }
+}
+
 /**
  * The forcing move — a user-role instruction the driver cannot read as
  * praise. It demands ACTION: the driver re-enters the step loop with a
@@ -458,6 +576,22 @@ function untestedLogicGap(messages) {
         `a run_script for the user to approve, before calling this done.`;
 }
 
+/* The code files this turn WROTE — read from the same write_file / edit_file
+ * tool results untestedLogicGap reads, so "what was produced" and "was it run"
+ * never disagree. This is what AK's own test runs against. */
+function producedCodeFiles(messages) {
+    const out = [];
+    for (const m of (messages || [])) {
+        if (m.failed) continue;
+        const tool = m.tool || m.name || "";
+        if (tool === "write_file" || tool === "edit_file") {
+            const mm = String(m.content || "").match(/"written"\s*:\s*"([^"]+)"/);
+            if (mm && CODE_EXT_RE.test(mm[1]) && !out.includes(mm[1])) out.push(mm[1]);
+        }
+    }
+    return out;
+}
+
 function parseVerdict(text) {
     const raw = String(text || "").trim();
     if (!raw) return { status: "unavailable", gaps: [], raw: "" };
@@ -575,6 +709,21 @@ function openObjective(session, ask) {
     // an unbounded session must not grow an unbounded record
     if (r.objectives.length > 200) r.objectives = r.objectives.slice(-200);
     return obj;
+}
+
+/* The request still being worked — the most recent objective that has not
+ * closed. A CONTINUATION (the model resuming after an approved action ran)
+ * resumes THIS objective rather than opening a second row for one request, so
+ * the audit measures completion against the brief already set, not a fresh one. */
+function currentObjective(session) {
+    try {
+        const r = ensureReview(session);
+        const objs = (r && Array.isArray(r.objectives)) ? r.objectives : [];
+        for (let i = objs.length - 1; i >= 0; i--) {
+            if (objs[i] && objs[i].status !== "closed") return objs[i];
+        }
+    } catch { /* no review yet */ }
+    return null;
 }
 
 /**
@@ -1322,7 +1471,10 @@ module.exports = { untestedLogicGap,
     // the front door (§8b): AK reads the request and sets the brief BEFORE the
     // model, then hands the model those acceptance criteria to build against
     intakePrompt, parseBrief, briefBubble, handoffInstruction,
-    ensureReview, openObjective, updateObjective, reviewDigest,
+    // verification AK drives: it writes its OWN behavioural test of the produced
+    // code and runs it, rather than trusting the model's self-check
+    verifyPrompt, parseVerifyTest, producedCodeFiles, runVerification,
+    ensureReview, openObjective, currentObjective, updateObjective, reviewDigest,
     reviewFileName, composeReview, writeReview,
     rulesFileName, writeGroundRules, ensureOpDir, ensureIgnored, OP_DIR,
     // the advocate half: answering a model's question from what the user

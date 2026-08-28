@@ -2704,6 +2704,18 @@ function addScriptCard(proposal) {
             clean ? "ok" : warned ? "warned" : "failed"
         );
         scrollToBottom(true);
+
+        // DON'T STOP AT THE APPROVAL. The model proposed this script as a STEP
+        // toward the task; main appended its result and flagged the turn can
+        // continue. Pick it back up so Ancient Knowledge drives to done instead
+        // of ending the moment permission was granted. (continue is set only on
+        // a clean run — a failed action is the user's call, not an auto-retry.)
+        if (res && res.continue) {
+            const sess = sessions.find(x => x.id === proposal.sessionId) || active;
+            if (sess) sendText("Your approved action ran — its result is above. " +
+                "Continue and finish the task against the original request.",
+                sess, { continuation: true });
+        }
     });
 
     actions.appendChild(reject);
@@ -10813,8 +10825,12 @@ async function sendMessage() {
  * bubble without the text having to survive a round trip through the composer —
  * the composer is where the user is already typing their next thought.
  */
-async function sendText(text, session) {
+async function sendText(text, session, sendOpts = {}) {
     if (!text || !session) return;
+    // a CONTINUATION resumes a turn after an approved action ran — it runs the
+    // turn UI (typing, progress, render) but writes no user bubble, sets no
+    // pending question, and asks main to continue rather than start a new turn
+    const continuation = sendOpts.continuation === true;
 
     // THE AFTERTHOUGHT PATH. This session is already working and Ancient
     // Knowledge is on, so the message is not a new turn — it joins the request
@@ -10822,7 +10838,7 @@ async function sendText(text, session) {
     // as part of the original ask, which is what makes "did you do everything"
     // cover it. Drawn as its own line so it is never mistaken for a turn that
     // is about to be answered on its own.
-    if (pending && active && active.id === session.id
+    if (!continuation && pending && active && active.id === session.id
         && active.ancientKnowledge === true) {
         const res = await window.lcl.chat(session.id, text).catch(() => null);
         if (res && res.addendum) {
@@ -10837,7 +10853,7 @@ async function sendText(text, session) {
     // NO ANCIENT KNOWLEDGE, SO IT WAITS — visibly. Falling through to the
     // silent `return` below is what made the composer feel dead: the text
     // vanished from the box and landed nowhere.
-    if (pending && active && active.id === session.id) {
+    if (!continuation && pending && active && active.id === session.id) {
         const list = queuedSends.get(session.id) || [];
         if (list.length >= 10) {
             addError("Ten messages are already waiting — let this turn finish.");
@@ -10857,7 +10873,7 @@ async function sendText(text, session) {
     // the mid-turn re-add (switchSession) both draw from this list
     const sentAtts = (active && active.id === session.id
         && Array.isArray(active.stagedAttachments)) ? active.stagedAttachments.slice() : [];
-    addMessageRow("user", text, baseIndex, undefined, sentAtts);
+    if (!continuation) addMessageRow("user", text, baseIndex, undefined, sentAtts);
     scrollToBottom(true);
 
     // Remember the QUESTION, not just the fact of being busy. It is not in the
@@ -10866,7 +10882,7 @@ async function sendText(text, session) {
     // status bubble — the turn continues in main, but the UI goes blank.
     pendingSessions.add(session.id);
     if (remoteActive()) remotePending.add(session.id);
-    pendingQuestions.set(session.id, { text, at: Date.now(), attachments: sentAtts });
+    if (!continuation) pendingQuestions.set(session.id, { text, at: Date.now(), attachments: sentAtts });
     setControls();
     setStatus("busy", "working…");
     const typing = addTyping();
@@ -10877,7 +10893,8 @@ async function sendText(text, session) {
     const viewing = () => active && active.id === session.id;
 
     try {
-        const res = await window.lcl.chat(session.id, text);
+        const res = await window.lcl.chat(session.id, text,
+            continuation ? { continuation: true } : undefined);
         // gate BOTH live-global teardowns on viewing(): akLive is a single module
         // global that always belongs to the FOREGROUND session's audit, so a
         // background turn resolving must not clear the bubble the user is watching.
@@ -10898,7 +10915,7 @@ async function sendText(text, session) {
                 // an argument for MARKING the question unsent, not for erasing
                 // it. The user still has to be able to read what they asked and
                 // send it again.
-                markLastUserUnsent(text);
+                if (!continuation) markLastUserUnsent(text);
                 if (res && res.cancelled) addError("Stopped.");
                 else addError("Error: " + ((res && res.error) || "No response."),
                               { retry: text, session });
