@@ -2099,8 +2099,11 @@ function addMessageRow(role, text, index, meta, attachments) {
         const bodyLine = document.createElement("div");
         bodyLine.className = "msg-ancient-body";
         // the stored content carries a redundant "**Ancient Knowledge Audit:**"
+        // (or, for the front-door brief, "**Ancient Knowledge — brief:**")
         // prefix — the header says it now, so strip it before rendering
-        const auditText = String(text).replace(/^\s*\*\*Ancient Knowledge Audit:\*\*\s*/, "");
+        const auditText = String(text)
+            .replace(/^\s*\*\*Ancient Knowledge Audit:\*\*\s*/, "")
+            .replace(/^\s*\*\*Ancient Knowledge — brief:\*\*\s*/, "");
         if (window.lclSyntax) window.lclSyntax.renderMessageBody(bodyLine, auditText, { markdown: true });
         else bodyLine.innerText = auditText;
         note.appendChild(head); note.appendChild(bodyLine);
@@ -3703,6 +3706,23 @@ function akLiveEnsure() {
 function akLiveClear() {
     if (akLive) { try { akLive.remove(); } catch { /* already gone */ } akLive = null; }
 }
+// THE FRONT DOOR'S OWN BUBBLE (§8b). The intake brief forms in its own live
+// node BEFORE the model answers, and stays visible — settled, not live — while
+// the model builds, so what AK asked for is on screen the whole time the work
+// happens. Tracked apart from akLive so the later audit opens a fresh bubble
+// below the brief instead of overwriting it; both are torn down together on
+// turn-resolve, when the persisted brief + audit walls render in their place.
+let akIntakeLive = null;
+function akIntakeEnsure() {
+    if (!akIntakeLive || !akIntakeLive.isConnected) akIntakeLive = addAncientLive();
+    return akIntakeLive;
+}
+function akIntakeClear() {
+    if (akIntakeLive) {
+        try { akIntakeLive.remove(); } catch { /* already gone */ }
+        akIntakeLive = null;
+    }
+}
 
 /**
  * Append one line to the live step log (or update the last, for progress
@@ -4122,6 +4142,8 @@ const PHASE_TEXT = {
     // read the work is legible instead of a silent stretch of "writing"
     "audit": "reviewing its own work",
     "audit-reviewer": "reviewing its own work",
+    "ak-intake": "setting the brief",
+    "ak-intake-done": "brief set — handing off",
     "ak-generating": "reviewing its own work",
     "audit-done": "audit finished",
     "done": "finishing up"
@@ -4177,6 +4199,7 @@ function stopProgress() {
         liveBubble._waitTimer = null;
     }
     akLiveClear();   // a cancelled or failed turn drops the live audit bubble too
+    akIntakeClear(); // ...and the front door's brief bubble with it
     liveBubble = null;
 }
 
@@ -4718,6 +4741,33 @@ window.lcl.onProgress((info) => {
                     (d.preview.length >= 240 ? "…" : "") + d.preview;
             }
             break;
+        case "ak-intake": {
+            // THE FRONT DOOR, WATCHED LIVE (§8b). Before the model answers,
+            // Ancient Knowledge reads the request and sets the brief — shown in
+            // its own bubble, streamed as it forms, so the user sees AK receive
+            // the request and hand off rather than the model starting cold.
+            const b = akIntakeEnsure();
+            b._note.classList.add("live");
+            b._round.innerText = "· setting the brief";
+            if (typeof d.preview === "string" && d.preview) {
+                const txt = (d.preview.length >= 240 ? "…" : "") + d.preview;
+                if (window.lclSyntax) window.lclSyntax.renderMessageBody(b._body, txt, { markdown: true });
+                else b._body.innerText = txt;
+            }
+            break;
+        }
+        case "ak-intake-done": {
+            // the brief is set: settle the bubble (no longer "live") and leave
+            // it on screen while the model builds against it. The persisted
+            // brief wall renders in its place when the turn resolves.
+            if (akIntakeLive && akIntakeLive.isConnected) {
+                akIntakeLive._note.classList.remove("live");
+                akIntakeLive._round.innerText = d.error ? "· brief unavailable"
+                    : (d.criteria ? "· brief set — handed to the model"
+                                  : "· no brief — the model builds from your request");
+            }
+            break;
+        }
         case "audit":
             // ANCIENT KNOWLEDGE, WATCHED LIVE. Only AK sets d.phase; the
             // self-review panel's "audit" carries d.status instead and must not
@@ -10831,7 +10881,7 @@ async function sendText(text, session) {
         // gate BOTH live-global teardowns on viewing(): akLive is a single module
         // global that always belongs to the FOREGROUND session's audit, so a
         // background turn resolving must not clear the bubble the user is watching.
-        if (viewing()) { typing.remove(); akLiveClear(); }   // persisted AK wall renders below
+        if (viewing()) { typing.remove(); akLiveClear(); akIntakeClear(); }   // persisted AK walls render below
 
         if (!res || typeof res !== "object" || res.error) {
             if (viewing()) {
@@ -14333,7 +14383,7 @@ const EFFORT_LEVELS = [
         if (!wasOn && !active.repoPath) {
             const link = await modal({
                 title: "Ancient Knowledge needs a workspace",
-                message: "With the brain on, every response is interrogated " +
+                message: "With Ancient Knowledge on, every response is interrogated " +
                     "against your request until the gaps close, and a living " +
                     "session review is written to ancient_knowledge.md in this " +
                     "conversation's workspace folder.",
@@ -14416,9 +14466,10 @@ async function openAncientSettings() {
 
     const note = document.createElement("div");
     note.className = "pref-note pref-purpose";
-    note.innerText = "This is THIS conversation's audit agent. When the brain is " +
-        "lit, it checks each answer against what you asked, presses for the fix, " +
-        "and keeps ancient_knowledge.md in your workspace. These settings belong " +
+    note.innerText = "This is THIS conversation's audit agent. When Ancient " +
+        "Knowledge is on, it sets the brief before the model, checks each answer " +
+        "against what you asked, presses for the fix, and keeps " +
+        "ancient_knowledge.md in your workspace. These settings belong " +
         "to this session — another conversation has its own.";
     wrap.appendChild(note);
 

@@ -147,6 +147,88 @@ function auditPrompt({ userAsk, response, changes, reviewDigest, round }) {
     );
 }
 
+/* ═══════════════════════════════════════════════ THE FRONT DOOR (§8b) ═══
+ *
+ * The request reaches Ancient Knowledge BEFORE the model. Where the audit
+ * grades finished work, the intake sets the terms: it names the real intent
+ * and states, up front, what "done" MEANS as concrete acceptance criteria —
+ * the same conditions the audit will later hold the work to. That brief is
+ * shown to the user (AK receives the request and hands off, in the open) and
+ * fed to the model, so the model builds against the criteria from its first
+ * token instead of the auditor only catching the miss afterwards.
+ */
+function intakePrompt({ userAsk, reviewDigest }) {
+    return (
+        `The user just asked:\n\n"""${String(userAsk).slice(0, 2000)}"""\n\n` +
+        (reviewDigest ? reviewDigest + "\n\n" : ``) +
+        `You see this request BEFORE the model does. Set the brief it must ` +
+        `build against: name the real intent, then the concrete, checkable ` +
+        `conditions that make it genuinely DONE — the same conditions you will ` +
+        `later hold the work to. Match the user's own standards and stack; do ` +
+        `not invent scope they did not ask for.\n\n` +
+        `Reply in EXACTLY this format, nothing else:\n\n` +
+        `INTENT: <one sentence — what they actually want, in your words>\n` +
+        `DONE MEANS:\n` +
+        `- <a concrete, verifiable acceptance criterion>\n` +
+        `- <another>\n` +
+        `(3 to 6 criteria. Each must be something you could later verify from ` +
+        `the response or the changed files. No preamble, no plan, no steps, no ` +
+        `code.)`
+    );
+}
+
+/* Read the intake back. INTENT is one line; the criteria are the bullets under
+ * DONE MEANS (or, if the model skipped the header, any bullets it gave). A
+ * reply with no criteria at all returns null — the caller then falls straight
+ * through to the model, exactly as if the front door were off, so a rambling
+ * or empty intake can never block a turn. */
+function parseBrief(text) {
+    const raw = String(text || "");
+    if (!raw.trim()) return null;
+    let intent = "";
+    const im = /^\s*INTENT\s*:\s*(.+)$/im.exec(raw);
+    if (im) intent = im[1].replace(/\s+/g, " ").trim().slice(0, 300);
+    const criteria = [];
+    const seen = new Set();
+    for (const line of raw.split(/\r?\n/)) {
+        const bm = /^\s*(?:[-*•]|\d+[.)])\s+(.+?)\s*$/.exec(line);
+        if (!bm) continue;
+        const c = bm[1].replace(/\s+/g, " ").trim();
+        const key = normGap(c);
+        if (c.length > 2 && key && !seen.has(key)) {
+            seen.add(key);
+            criteria.push(c.slice(0, 240));
+        }
+    }
+    if (!criteria.length) return null;
+    return { intent, criteria: criteria.slice(0, 8), raw: raw.slice(0, 2000) };
+}
+
+/* The transcript bubble the user sees — AK's own voice, brain-marked like the
+ * audit. The prefix is load-bearing the same way the audit's is: the renderer
+ * keys the brain bubble off it and strips it. */
+function briefBubble(brief) {
+    const head = `**Ancient Knowledge — brief:**`;
+    const intent = brief.intent ? ` ${brief.intent}` : ``;
+    return `${head}${intent}\n\nDone means:\n` +
+        brief.criteria.map(c => `- ${c}`).join("\n");
+}
+
+/* The hand-off the MODEL reads — a user-role instruction carrying the criteria
+ * into its context. Kept out of the transcript (the bubble above is what the
+ * user sees); this is the machinery that makes the model build against them. */
+function handoffInstruction(brief) {
+    const list = brief.criteria.map(c => `- ${c}`).join("\n");
+    return (
+        `Ancient Knowledge reviewed this request before you began and set the ` +
+        `brief you are to build against.\n\n` +
+        (brief.intent ? `Intent: ${brief.intent}\n\n` : ``) +
+        `It is DONE only when every one of these is true:\n${list}\n\n` +
+        `Build against them with real work — call tools, write and change ` +
+        `files, verify results. Do not restate this brief; meet it.`
+    );
+}
+
 /**
  * The forcing move — a user-role instruction the driver cannot read as
  * praise. It demands ACTION: the driver re-enters the step loop with a
@@ -1237,6 +1319,9 @@ module.exports = { untestedLogicGap,
     maxRounds, effectiveMaxRounds, groundRules, systemFor,
     BUDGET_USD, SYSTEM, STOP_WORDS, runCycle,
     auditPrompt, forceInstruction, parseVerdict, normGap, bubbleText,
+    // the front door (§8b): AK reads the request and sets the brief BEFORE the
+    // model, then hands the model those acceptance criteria to build against
+    intakePrompt, parseBrief, briefBubble, handoffInstruction,
     ensureReview, openObjective, updateObjective, reviewDigest,
     reviewFileName, composeReview, writeReview,
     rulesFileName, writeGroundRules, ensureOpDir, ensureIgnored, OP_DIR,

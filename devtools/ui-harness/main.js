@@ -5629,6 +5629,89 @@ const SCENES = {
         await js(`chat.querySelectorAll(".msg-row.ancient, .msg-typing, .msg-ancient").forEach(e => e.remove());
             akLiveClear(); stopProgress(); true;`);
     },
+
+    /* THE FRONT DOOR, WATCHED LIVE (§8b). The reported failure was "the model is
+     * running first, before ancient knowledge." Here AK receives the request and
+     * sets the brief in its OWN bubble BEFORE the model — streamed, then settled
+     * and kept on screen while the build happens; a later audit opens a separate
+     * bubble below it, never overwriting the brief. DOM from events, no layout
+     * timing, so it holds under the gate's software renderer. */
+    akIntake: async (win, js) => {
+        const setup = await js(`(() => {
+            active = active || (window.__harness && window.__harness.SESSIONS && window.__harness.SESSIONS[0]);
+            if (!active) return false;
+            chat.querySelectorAll(".msg-row.ancient, .msg-typing, .msg-ancient").forEach(e => e.remove());
+            akLiveClear(); akIntakeClear();
+            active.effortLevel = 0;
+            const typing = addTyping();
+            startProgress(typing);
+            return !!(active.id && liveBubble);
+        })()`);
+        check("akIntake", "an active session and a live turn exist to receive the brief",
+            setup === true, null);
+
+        // AK reads the request FIRST, and the brief streams in
+        await js(`window.lcl.__fire("onProgress", { sessionId: active.id, phase: "ak-intake",
+            detail: { phase: "ancient-knowledge" } });
+            window.lcl.__fire("onProgress", { sessionId: active.id, phase: "ak-intake",
+            detail: { phase: "ancient-knowledge",
+                preview: "Intent: build an interactive lab. Done means: every concept explained." } });
+            true;`);
+        await wait(180);
+        const intake = await js(`(() => {
+            const b = chat.querySelector(".msg-ancient.live");
+            if (!b) return null;
+            const head = b.querySelector(".msg-ancient-head");
+            return { hasBrain: !!(head && head.querySelector("svg")),
+                round: (b.querySelector(".msg-ancient-round") || {}).innerText || "",
+                body: (b.querySelector(".msg-ancient-body") || {}).innerText || "" };
+        })()`);
+        check("akIntake", "ANCIENT KNOWLEDGE SPEAKS FIRST — a live brief bubble appears BEFORE " +
+            "the model answers, brain-marked, 'setting the brief'",
+            !!(intake && intake.hasBrain && /setting the brief/.test(intake.round)), intake);
+        check("akIntake", "…the brief's words stream into the body as AK reads the request",
+            !!(intake && /interactive lab/.test(intake.body)), intake && intake.body);
+        await shoot(win, "ak-intake");
+
+        // the brief is set → it SETTLES (no longer live) and stays on screen
+        await js(`window.lcl.__fire("onProgress", { sessionId: active.id, phase: "ak-intake-done",
+            detail: { criteria: 3 } }); true;`);
+        await wait(120);
+        const settled = await js(`(() => {
+            const live = chat.querySelectorAll(".msg-ancient.live").length;
+            const all = chat.querySelectorAll(".msg-ancient").length;
+            const b = chat.querySelector(".msg-ancient");
+            return { live, all, round: (b && (b.querySelector(".msg-ancient-round")||{}).innerText) || "" };
+        })()`);
+        check("akIntake", "the brief SETTLES when it is set — no longer live, but kept on screen " +
+            "(handed to the model) while the build happens",
+            settled.live === 0 && settled.all === 1 && /handed to the model/.test(settled.round), settled);
+
+        // the model builds, then the audit runs — a SEPARATE bubble; the brief stays
+        await js(`window.lcl.__fire("onProgress", { sessionId: active.id, phase: "audit",
+            detail: { phase: "ancient-knowledge", round: 1, of: 2 } });
+            window.lcl.__fire("onProgress", { sessionId: active.id, phase: "ak-generating",
+            detail: { phase: "ancient-knowledge", round: 1, of: 2,
+                preview: "Checking the lab against the brief." } }); true;`);
+        await wait(150);
+        const both = await js(`(() => ({
+            all: chat.querySelectorAll(".msg-ancient").length,
+            live: chat.querySelectorAll(".msg-ancient.live").length }))()`);
+        check("akIntake", "the audit opens its OWN bubble below the brief — the brief is never " +
+            "overwritten (two bubbles now, one of them the live audit)",
+            both.all === 2 && both.live === 1, both);
+
+        // teardown drops both live nodes; the persisted walls render in their place
+        await js(`stopProgress(); true;`);
+        await wait(100);
+        const gone = await js(`chat.querySelectorAll(".msg-ancient.live").length === 0
+            && chat.querySelectorAll(".msg-ancient").length === 0`);
+        check("akIntake", "stopProgress tears down BOTH the brief and the audit live bubbles, so " +
+            "the persisted transcript is the single truth after the turn", gone === true, null);
+
+        await js(`chat.querySelectorAll(".msg-row.ancient, .msg-typing, .msg-ancient").forEach(e => e.remove());
+            akLiveClear(); akIntakeClear(); stopProgress(); true;`);
+    },
 };
 
 /* ---------------------------------------------------------------- plumbing */

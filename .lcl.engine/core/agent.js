@@ -2313,6 +2313,81 @@ async function runTurn(session, userText, opts = {}) {
                  costUsd: turnUsd > 0 ? +turnUsd.toFixed(5) : undefined };
     }
 
+    // ═══════════════════════════════════════════════ THE FRONT DOOR (§8b) ═══
+    // With Ancient Knowledge on, the request reaches AK FIRST — not the model.
+    // AK reads the ask against the standing review, names the intent and states
+    // what "done" means as concrete acceptance criteria, and hands the model
+    // that brief; the model then builds against the criteria from its first
+    // token, and the user watches AK receive the request and hand off, in the
+    // open. The turn's objective is opened HERE so the audit that follows
+    // measures "done" against the very brief AK set. Purely additive and fully
+    // guarded: a rambling, empty, or failed intake yields no brief and falls
+    // straight through to the model exactly as before — the front door can
+    // never block or break a turn. Off in stepMode (the orchestrator runs its
+    // own critic) and when the brain is off.
+    if (session.ancientKnowledge === true && !opts.stepMode
+        && !cancelToken.cancelled && opts.frontDoor !== false) {
+        try {
+            const frontAsk = String(userText)
+                + (akAddenda.length ? "\n\nAlso: " + akAddenda.join(" · ") : "");
+            const intakeSel = opts.auditorSelection === undefined ? sel
+                : opts.auditorSelection === "local" ? null
+                : opts.auditorSelection;
+            akObjective = akMod.openObjective(session, frontAsk);
+            for (const c of akClarifyLog) akMod.noteClarify(session, akObjective, c);
+            report("ak-intake", { phase: "ancient-knowledge" }, steps);
+            let lastIntake = 0;
+            const onIntake = (t) => {
+                const now = Date.now();
+                if (now - lastIntake < 250) return;
+                lastIntake = now;
+                report("ak-intake", { phase: "ancient-knowledge",
+                    tokens: t.tokens, preview: t.text.slice(-240) }, steps);
+            };
+            const briefRes = await router.generate(
+                [{ role: "system", content: akMod.systemFor(session) },
+                 { role: "user", content: akMod.intakePrompt({
+                     userAsk: frontAsk,
+                     reviewDigest: akMod.reviewDigest(session, akObjective) }) }],
+                384, cancelToken, onIntake, { selection: intakeSel, session });
+            // a remote intake spends real money — billed like any auditor call
+            if (briefRes && briefRes.remote && briefRes.usage) {
+                akAuditorUsd += (briefRes.cost && briefRes.cost.usd) || 0;
+                try {
+                    require("./ledger").record({
+                        sessionId: session.id, sessionTitle: session.title,
+                        model: briefRes.model, endpoint: briefRes.endpoint,
+                        inputTokens: briefRes.usage.prompt_tokens,
+                        outputTokens: briefRes.usage.completion_tokens,
+                        usd: (briefRes.cost && briefRes.cost.usd) || 0,
+                        via: "ancient-knowledge", localNode: !!briefRes.localNode });
+                } catch { /* bookkeeping never breaks the turn */ }
+            }
+            const brief = cancelToken.cancelled ? null
+                : akMod.parseBrief(briefRes && briefRes.content);
+            if (brief && brief.criteria.length) {
+                // AK speaks first: the visible brief lands in the transcript
+                newMessages.push({ role: "assistant",
+                    content: akMod.briefBubble(brief),
+                    meta: { model: "ancient-knowledge", intake: true } });
+                // ...and the model builds against it — the hand-off rides the
+                // model-facing context only, never the transcript
+                working.push({ role: "user",
+                    content: akMod.handoffInstruction(brief) });
+                if (session.repoPath) {
+                    try { akMod.writeReview(session); }
+                    catch { /* the review file must never break the turn */ }
+                }
+                report("ak-intake-done", { criteria: brief.criteria.length }, steps);
+            } else {
+                report("ak-intake-done", { criteria: 0 }, steps);
+            }
+        } catch (err) {
+            report("ak-intake-done", {
+                error: String((err && err.message) || err).slice(0, 100) }, steps);
+        }
+    }
+
     akLoop: for (;;) {
     for (;;) {
         if (cancelToken.cancelled) {
@@ -4156,13 +4231,20 @@ async function runTurn(session, userText, opts = {}) {
                     // Ancient Knowledge for that session, so when the model
                     // responds, Ancient Knowledge is ready to respond to it with
                     // the original request plus the afterthoughts the user had.
-                    akObjective = ak.openObjective(session,
-                        String(userMsg.content) + (akAddenda.length
-                            ? "\n\nAlso, while you were working: "
-                              + akAddenda.join(" · ") : ""));
-                    // everything AK already answered on their behalf this turn
-                    // belongs on the record before the first interrogation
-                    for (const c of akClarifyLog) ak.noteClarify(session, akObjective, c);
+                    // THE FRONT DOOR MAY HAVE OPENED IT ALREADY. When Ancient
+                    // Knowledge briefed the request up front (§8b), this turn's
+                    // objective already exists and its advocate answers are
+                    // logged; opening a second row here would double-count the
+                    // request. Only open when the front door did not run.
+                    if (!akObjective) {
+                        akObjective = ak.openObjective(session,
+                            String(userMsg.content) + (akAddenda.length
+                                ? "\n\nAlso, while you were working: "
+                                  + akAddenda.join(" · ") : ""));
+                        // everything AK already answered on their behalf this turn
+                        // belongs on the record before the first interrogation
+                        for (const c of akClarifyLog) ak.noteClarify(session, akObjective, c);
+                    }
                 }
                 // honour the session's akRounds knob (1..8), falling back to the
                 // effort-derived ceiling — the orchestrated path already does this

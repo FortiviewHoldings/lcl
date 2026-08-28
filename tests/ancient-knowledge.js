@@ -139,11 +139,22 @@ async function turn(session, script, opts = {}) {
         // report() hands ONE object: { phase, detail, step, elapsedMs }
         onProgress: (ev) => events.push({ phase: ev.phase, data: ev.detail || {} }),
         cancelToken: opts.cancelToken || { cancelled: false },
+        // THE FRONT DOOR IS ISOLATED (§8b). In production, brain-on means the
+        // intake runs FIRST and consumes the first scripted answer. The
+        // audit-loop tests below are about the LOOP — who is asked what, when it
+        // forces, when it stops — so they keep the front door OFF and their
+        // scripts stay about the loop, not the brief. The intake has its own
+        // dedicated tests that turn it ON with turnOpts:{ frontDoor: true } and
+        // prove the full brain-on sequence composes.
+        frontDoor: false,
         ...opts.turnOpts
     });
     return { res, events, calls: routerStub.calls };
 }
-const audits = (msgs) => msgs.filter(m => m.meta && m.meta.model === "ancient-knowledge");
+// the audit bubbles a turn produced — the front-door BRIEF (meta.intake) is its
+// own thing and is excluded here so the loop tests count only interrogations
+const audits = (msgs) => msgs.filter(m => m.meta && m.meta.model === "ancient-knowledge" && !m.meta.intake);
+const briefs = (msgs) => msgs.filter(m => m.meta && m.meta.intake === true);
 const review = (session) => {
     const f = path.join(session.repoPath, session.akReviewFile || "ancient_knowledge.md");
     return fs.existsSync(f) ? fs.readFileSync(f, "utf8") : null;
@@ -268,7 +279,128 @@ const review = (session) => {
           "turn-resolve teardown is viewing()-gated (both live globals together), so " +
           "a BACKGROUND turn finishing never clears the FOREGROUND session's audit",
         (app.match(/akLiveClear\(\)/g) || []).length >= 2
-        && /if \(viewing\(\)\) \{ typing\.remove\(\); akLiveClear\(\); \}/.test(app), null);
+        && /if \(viewing\(\)\) \{ typing\.remove\(\); akLiveClear\(\); akIntakeClear\(\); \}/.test(app), null);
+}
+
+/* ═══════════════════ THE FRONT DOOR — AK RECEIVES FIRST, HANDS OFF (§8b) ═══
+ * The reported failure: "it is supposed to write the request to ancient
+ * knowledge and it hand off, not the user hand off straight to the model.
+ * right now the model is running first, before ancient knowledge." The front
+ * door reverses that — with the brain on, AK reads the request BEFORE the
+ * model, states what "done" means, and hands the model those criteria. */
+
+/* the intake reader is pure — a formatted brief parses; a rambling or empty one
+ * yields null so the turn falls straight through to the model, never blocked. */
+{
+    const b = ak.parseBrief(
+        "INTENT: Build an interactive lab from the chapter\n" +
+        "DONE MEANS:\n" +
+        "- Every concept in the chapter is explained\n" +
+        "- Inputs and outputs can be emulated in the page\n" +
+        "3. The code actually runs, not just written");
+    check("parseBrief reads the intent and the acceptance criteria",
+        b && /interactive lab/i.test(b.intent) && b.criteria.length === 3
+        && /emulated/i.test(b.criteria[1]), b);
+    check("...numbered as well as dashed bullets are read as criteria",
+        b && /the code actually runs/i.test(b.criteria[2]), b && b.criteria);
+    check("a brief with no criteria is null — the front door then falls through " +
+          "to the model exactly as if it were off, so it can never block a turn",
+        ak.parseBrief("I think you should build something nice.") === null
+        && ak.parseBrief("") === null, null);
+    check("duplicate criteria (same shape, different case/punctuation) collapse to one",
+        (() => { const x = ak.parseBrief("DONE MEANS:\n- File X is written\n- file x is WRITTEN!");
+            return x && x.criteria.length === 1; })(), null);
+    const hb = ak.handoffInstruction(b);
+    check("the hand-off carries the criteria to the MODEL and demands work, not restatement",
+        /interactive lab/i.test(hb) && /Inputs and outputs/i.test(hb)
+        && /DONE only when/i.test(hb) && /Do not restate/i.test(hb), null);
+    check("the visible brief bubble is brain-marked with the load-bearing prefix",
+        /^\*\*Ancient Knowledge — brief:\*\*/.test(ak.briefBubble(b)), ak.briefBubble(b).slice(0, 60));
+    check("the intake prompt asks for intent + checkable done-criteria, before the model",
+        /INTENT:/.test(ak.intakePrompt({ userAsk: "x" }))
+        && /DONE MEANS:/.test(ak.intakePrompt({ userAsk: "x" }))
+        && /BEFORE the model/.test(ak.intakePrompt({ userAsk: "x" })), null);
+}
+
+/* THE FULL BRAIN-ON SEQUENCE COMPOSES. With the front door ON: AK is asked
+ * FIRST (its brief, under the overseer prompt), the model gets the criteria in
+ * its context, then the audit runs — and the objective is opened exactly ONCE
+ * (the front door owns it; the audit reuses it, never a second row). */
+{
+    const s = makeSession({ effortLevel: 0 });                       // ceiling 2
+    const { res, events, calls } = await turn(s, [
+        { content: "INTENT: Write file X\nDONE MEANS:\n- File X exists\n- It holds the answer" }, // intake brief
+        { content: "Done — file X is written with the answer." },    // driver
+        { content: "VERDICT: CLOSED" }                               // audit
+    ], { turnOpts: { frontDoor: true } });
+
+    check("ANCIENT KNOWLEDGE IS ASKED FIRST — the very first generation is the " +
+          "intake, under the overseer prompt, setting the brief before the model",
+        calls.length >= 1
+        && /Ancient Knowledge overseer/.test(calls[0].messages[0].content)
+        && /Set the brief/.test(calls[0].messages[1].content), calls[0] && calls[0].messages[1].content.slice(0, 80));
+    check("the model then builds AGAINST the brief — the criteria reach its context " +
+          "as a hand-off before it answers",
+        calls[1] && calls[1].messages.some(m => m.role === "user"
+            && /Ancient Knowledge reviewed this request before you began/.test(m.content)
+            && /File X exists/.test(m.content)), null);
+    check("the user SEES AK hand off — a brain-marked brief bubble lands, before " +
+          "the audit bubble, carrying the criteria",
+        briefs(res.newMessages).length === 1
+        && /File X exists/.test(briefs(res.newMessages)[0].content), briefs(res.newMessages));
+    check("the brief is watched live — an ak-intake event streams, then ak-intake-done",
+        events.some(e => e.phase === "ak-intake")
+        && events.some(e => e.phase === "ak-intake-done" && e.data.criteria === 2), null);
+    check("THE OBJECTIVE IS OPENED ONCE — the front door owns it and the audit " +
+          "reuses that same row (no double-count of the request)",
+        s.akReview.objectives.length === 1
+        && s.akReview.objectives[0].rounds >= 1, s.akReview.objectives.length);
+}
+
+/* the fall-through is real, not just unit-tested: an intake with no criteria
+ * produces no brief bubble and no hand-off, and the model answers anyway. */
+{
+    const s = makeSession({ effortLevel: 0 });
+    const { res, calls } = await turn(s, [
+        { content: "Sure, I can help with that!" },                  // intake: no criteria
+        { content: "Here is the answer." },                         // driver
+        { content: "VERDICT: CLOSED" }                              // audit
+    ], { turnOpts: { frontDoor: true } });
+    check("a criterion-less intake yields NO brief bubble and NO hand-off — the " +
+          "model builds from the raw request, unblocked",
+        briefs(res.newMessages).length === 0
+        && !calls.some(c => c.messages.some(m =>
+            /Ancient Knowledge reviewed this request before you began/.test(m.content))), null);
+}
+
+/* the front door is wired into the CHAT path and guarded — brain-on, not
+ * stepMode, and never fatal (a thrown intake falls through to the model). */
+{
+    const A = fs.readFileSync(path.join(__dirname, "..", ".lcl.engine", "core", "agent.js"), "utf8");
+    check("agent.js opens the front door before the audit loop: intake generate, " +
+          "parseBrief, a visible brief bubble, and a hand-off into `working`",
+        /THE FRONT DOOR/.test(A)
+        && /akMod\.intakePrompt\(/.test(A)
+        && /akMod\.parseBrief\(/.test(A)
+        && /content: akMod\.briefBubble\(brief\)/.test(A)
+        && /working\.push\(\{ role: "user",\s*content: akMod\.handoffInstruction\(brief\)/.test(A), null);
+    check("...guarded: brain-on and not stepMode, and the whole block is in a " +
+          "try/catch so a failed intake never breaks the turn",
+        /session\.ancientKnowledge === true && !opts\.stepMode/.test(A)
+        && /opts\.frontDoor !== false/.test(A), null);
+    check("...and it opens the objective at the front, with the audit-time open " +
+          "guarded so the request is never counted twice",
+        /akObjective = akMod\.openObjective\(session, frontAsk\)/.test(A)
+        && /if \(!akObjective\) \{\s*akObjective = ak\.openObjective/.test(A), null);
+    const app = fs.readFileSync(path.join(__dirname, "..", "app", "renderer", "app.js"), "utf8");
+    check("the renderer paints the brief live in its OWN bubble (akIntakeEnsure/" +
+          "akIntakeClear), settles it on ak-intake-done, and names it Ancient " +
+          "Knowledge (not 'the brain')",
+        /function akIntakeEnsure\(\)/.test(app)
+        && /function akIntakeClear\(\)/.test(app)
+        && /case "ak-intake"/.test(app)
+        && /case "ak-intake-done"/.test(app)
+        && !/With the brain on, every response/.test(app), null);
 }
 
 /* ------------- A BLANK AUDITOR NEVER LAUNDERS INTO "ALL GAPS CLOSED" ---- */
