@@ -4695,6 +4695,7 @@ function recordStep(list, phase, detail, t, keepTools = false) {
 
 module.exports = {
     runTurn, shouldPlanConfirm, systemPrompt, buildModelMessages, tailoringBlockFor,
+    profileWithheldFrom,
     // the fabrication detector and the heading it hunts, exported so the
     // regression suite tests the real one instead of a copy that can drift
     stripFabricated, TOOL_RESULT_HEADING, FABRICATED_RE,

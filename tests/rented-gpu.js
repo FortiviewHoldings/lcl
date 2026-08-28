@@ -160,10 +160,24 @@ check("it runs WIDE like any remote service rather than queueing behind the " +
     router.usingRemote({ id: "rent" }) === true);
 
 check("the per-session permissions govern it unchanged: it is remote, so the " +
-      "tailoring gate treats it as somewhere a profile must not go by default",
+      "tailoring gate treats it as somewhere a profile must not go by default — " +
+      "and the owned-node exemption must NOT leak to a rented box",
     (() => {
-        const agentSrc = fs.readFileSync(path.join(ROOT, ".lcl.engine", "core", "agent.js"), "utf8");
-        return /router\.usingRemote\(sel\) && !sessionPerms\.forSession\(session\)\.tailoring/.test(agentSrc);
+        // BEHAVIOURAL, not a grep for implementation text: prove where the
+        // profile actually goes. The gate exempts hardware the operator OWNS
+        // (a node) from needing per-session permission; a rented GPU is somebody
+        // else's machine and must stay gated exactly like a plain API.
+        const agent = require(path.join(ROOT, ".lcl.engine", "core", "agent.js"));
+        const plain = { id: "s", perms: {} };
+        const granted = { id: "s", perms: { tailoring: true } };
+        const rentedSel = { id: "rent", model: "x", baseUrl: "https://gpu.example.com", rented: true };
+        const apiSel = { id: "api", model: "x", baseUrl: "https://api.example.com/v1" };
+        const ownNode = { id: "spark", model: "x", baseUrl: "http://100.64.0.1:11434",
+                          localNode: true, node: { id: "n1" } };
+        return agent.profileWithheldFrom(plain, rentedSel) === true      // rented third party: withheld
+            && agent.profileWithheldFrom(plain, apiSel) === true         // plain API: withheld
+            && agent.profileWithheldFrom(plain, ownNode) === false       // operator's own node: rides
+            && agent.profileWithheldFrom(granted, rentedSel) === false;  // once granted, it rides
     })());
 
 check("the flag survives a relink, so refreshing a catalogue cannot quietly " +
