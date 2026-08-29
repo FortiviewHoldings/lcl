@@ -95,8 +95,9 @@ const PY = process.platform === "win32" ? "py" : "python3";
         rj && rj.green === true, JSON.stringify(rj && rj.checks).slice(0, 160));
     let refused = "";
     try { await sandbox.TOOL_ENTRY.run(null, {}, {}); } catch (e) { refused = e.message; }
-    check("an empty call is still refused, and the error now teaches the easy shape",
-        /just \{"code"/.test(refused), refused);
+    check("an empty call is still refused, and the error teaches BOTH easy shapes — " +
+          "fresh {code} AND {file} for a file already in the workspace",
+        /\{"code"/.test(refused) && /\{"file"/.test(refused), refused);
 
     console.log(`\n${pass} passed, ${fail} failed`);
     process.exit(fail ? 1 : 0);
