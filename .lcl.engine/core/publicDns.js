@@ -150,8 +150,15 @@ function remember(host, ip) {
  */
 function lookup(hostname, options, callback) {
     const cb = typeof options === "function" ? options : callback;
+    const opts = typeof options === "function" ? {} : (options || {});
+    // Node 19+/24 calls a custom lookup with { all: true } and then reads
+    // addresses[0].address — a scalar (addr, family) callback becomes "Invalid
+    // IP address: undefined", and every door/funnel request throws. Answer the
+    // array form when asked, scalar otherwise, so it works on every Node.
+    const ok = (ip, fam) => opts.all
+        ? cb(null, [{ address: ip, family: fam }]) : cb(null, ip, fam);
     publicAddress(hostname).then((r) => {
-        if (r.ip) return cb(null, r.ip, 4);
+        if (r.ip) return ok(r.ip, 4);
         // let a name with no MagicDNS shadow resolve normally: a door on a
         // plain public host is legitimate and must keep working
         dns.lookup(hostname, { family: 4 }, (err, addr, fam) => {
@@ -165,7 +172,7 @@ function lookup(hostname, options, callback) {
                 e.code = "ELCLNOTPUBLIC";
                 return cb(e);
             }
-            cb(null, addr, fam);
+            ok(addr, fam);
         });
     }).catch((e) => cb(e));
 }

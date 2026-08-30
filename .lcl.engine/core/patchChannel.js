@@ -154,10 +154,25 @@ function netDeps() {
                     const lib = parsed.protocol === "https:" ? https : http;
                     const r = await new Promise((res, rej) => {
                         const req = lib.request(parsed, {
-                            method: "GET", timeout: 60000,
+                            // NO CONNECTION POOLING. Node 19+ turns keep-alive on by
+                            // default, so a second request to the same host REUSES the
+                            // socket and never re-runs the pinned lookup — the SSRF
+                            // guard (isBlockedAddress, below) silently stops running.
+                            // A fresh connection per fetch keeps the guard on every
+                            // request; a 60-second poll pays nothing for it.
+                            method: "GET", timeout: 60000, agent: false,
                             headers: { "User-Agent": UA, "Accept": "*/*" },
                             lookup: (host, opts, cb) => {
                                 if (netTools.isBlockedAddress(pinnedIp)) return cb(new Error("blocked address"));
+                                // NODE CALLS THIS WITH { all: true } and then reads
+                                // addresses[0].address (measured on Node 24: opts is
+                                // { hints: 0, all: true }). A scalar (addr, family)
+                                // callback yields "Invalid IP address: undefined" and
+                                // every patch poll throws — the same class of bug as the
+                                // object-not-unwrapped one above, one layer down. Answer
+                                // the array form when asked, scalar otherwise, so the
+                                // pinned lookup works on every Node version.
+                                if (opts && opts.all) return cb(null, [{ address: pinnedIp, family: pinnedFamily }]);
                                 cb(null, pinnedIp, pinnedFamily);
                             },
                         }, (resp) => res(resp));

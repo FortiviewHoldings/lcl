@@ -3071,6 +3071,13 @@ async function streamChatOnce(messages, opts = {}) {
             port: target.port,
             path: target.path,
             lookup: target.lookup,
+            // NO CONNECTION POOLING. Node 19+ turns keep-alive on by default, so
+            // the door socket would stay open after a turn ends — leaving the
+            // node loading a runner for a turn already done and past Stop's reach
+            // (the exact leak described above). A fresh connection per turn ties
+            // the socket's lifetime to the turn's; a streamed LLM turn dwarfs the
+            // connect cost, so it is free.
+            agent: false,
             // START with the first-token budget; markFirstToken relaxes it to the
             // full leash the moment a token arrives, so a stall that never answers
             // resolves in firstTokenMs while real generation keeps the long leash.

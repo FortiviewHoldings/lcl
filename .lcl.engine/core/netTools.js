@@ -101,6 +101,11 @@ function requestOnce(urlStr, pinnedIp) {
         const req = lib.request(url, {
             method: "GET",
             timeout: TIMEOUT_MS,
+            // NO CONNECTION POOLING. Node 19+ keep-alive would let a later fetch
+            // to the same host reuse a socket and skip the pinned lookup below —
+            // the guard must connect every request to the address vetted for
+            // THAT request, not one vetted earlier.
+            agent: false,
             // A BROWSER USER-AGENT, BECAUSE VENDOR DOCS REFUSE ANYTHING ELSE.
             // Measured: waveshare.com/wiki returned 403 to "lcl-local-agent/1.0"
             // and 200 to a normal Chrome string — so a model asked to "find the
@@ -125,6 +130,9 @@ function requestOnce(urlStr, pinnedIp) {
                 const fam = net.isIPv6(pinnedIp) ? 6 : 4;
                 // re-verify at the last moment — defence in depth
                 if (isBlockedAddress(pinnedIp)) return cb(new ToolError("blocked address"));
+                // Node 19+/24 calls this with { all: true } and reads
+                // addresses[0].address — answer the array form when asked.
+                if (opts && opts.all) return cb(null, [{ address: pinnedIp, family: fam }]);
                 cb(null, pinnedIp, fam);
             }
         }, (res) => {
